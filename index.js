@@ -3,6 +3,7 @@ import { extension_settings, getContext, renderExtensionTemplateAsync } from '..
 import { applyPaginationMode, initPaginationEvent } from './pagination.js';
 import { applyVisualMode } from './visual.js';
 import { initMulu, applyMuluSettings } from './mulu.js';
+import { initMenu, applyMenuMode } from './menu.js';
 
 const extensionName = 'TwT';
 
@@ -11,6 +12,15 @@ const defaultSettings = {
     swipeEnabled: true,
     messagePageEnabled: false,
     customWhitelist: '.mes_reasoning_details, .thought-block',
+    menuEnabled: false,
+    menuOptRegenerate: true,
+    menuOptSwipe: true,
+    menuOptDelete: false,
+    menuOptHide: false,
+    menuOptEdit: false,
+    menuOptExcerpt: false,
+    menuInvokeMethod: 'longpress',
+    menuLongpressDelay: 500,
     visualEnabled: false, 
     muluEnabled: false,
     muluBtnStart: true,
@@ -91,6 +101,23 @@ function updatePageTabVisibility() {
     const $tabContent = $('#twt-tab-page');
     
     if (extension_settings.twt.enabled) {
+        $tabBtn.show();
+    } else {
+        $tabBtn.hide();
+        if ($tabBtn.hasClass('active')) {
+            $tabBtn.removeClass('active');
+            $tabContent.hide().removeClass('active');
+            $('[data-tab="twt-tab-settings"]').addClass('active');
+            $('#twt-tab-settings').show().addClass('active');
+        }
+    }
+}
+
+function updateMenuTabVisibility() {
+    const $tabBtn = $('#tab-btn-menu');
+    const $tabContent = $('#twt-tab-menu');
+    
+    if (extension_settings.twt.menuEnabled) {
         $tabBtn.show();
     } else {
         $tabBtn.hide();
@@ -317,6 +344,15 @@ function bindUI() {
     const $swipeEnabled = $('#twt_swipe_enabled');
     const $messagePageEnabled = $('#twt_message_page_enabled');
     const $customWhitelist = $('#twt_custom_whitelist');
+    const $menuEnabled = $('#twt_menu_enabled');
+    const $menuInvokeMethod = $('#twt_menu_invoke_method');
+    const $menuLongpressDelay = $('#twt_menu_longpress_delay');
+    const $menuOptRegenerate = $('#twt_menu_opt_regenerate');
+    const $menuOptSwipe = $('#twt_menu_opt_swipe');
+    const $menuOptDelete = $('#twt_menu_opt_delete');
+    const $menuOptHide = $('#twt_menu_opt_hide');
+    const $menuOptEdit = $('#twt_menu_opt_edit');
+    const $menuOptExcerpt = $('#twt_menu_opt_excerpt');
     const $visualEnabled = $('#twt_visual_enabled');
     const $muluEnabled = $('#twt_mulu_enabled');
     const $optimizeEnabled = $('#twt_optimize_enabled');
@@ -337,6 +373,25 @@ function bindUI() {
     $swipeEnabled.prop('checked', extension_settings.twt.swipeEnabled);
     $messagePageEnabled.prop('checked', extension_settings.twt.messagePageEnabled);
     $customWhitelist.val(extension_settings.twt.customWhitelist || '');
+    $menuEnabled.prop('checked', extension_settings.twt.menuEnabled);
+    $menuInvokeMethod.val(extension_settings.twt.menuInvokeMethod || 'longpress');
+    $menuLongpressDelay.val(extension_settings.twt.menuLongpressDelay || 500);
+    $menuOptRegenerate.prop('checked', extension_settings.twt.menuOptRegenerate);
+    $menuOptSwipe.prop('checked', extension_settings.twt.menuOptSwipe);
+    $menuOptDelete.prop('checked', extension_settings.twt.menuOptDelete);
+    $menuOptHide.prop('checked', extension_settings.twt.menuOptHide);
+    $menuOptEdit.prop('checked', extension_settings.twt.menuOptEdit);
+    $menuOptExcerpt.prop('checked', extension_settings.twt.menuOptExcerpt);
+    
+    const updateLongpressDelayRow = () => {
+        if ($menuInvokeMethod.val() === 'longpress') {
+            $('#twt_menu_longpress_delay_row').show();
+        } else {
+            $('#twt_menu_longpress_delay_row').hide();
+        }
+    };
+    updateLongpressDelayRow();
+
     $visualEnabled.prop('checked', extension_settings.twt.visualEnabled);
     $muluEnabled.prop('checked', extension_settings.twt.muluEnabled);
     $optimizeEnabled.prop('checked', extension_settings.twt.optimizeEnabled);
@@ -591,6 +646,57 @@ function bindUI() {
         getContext().saveSettingsDebounced();
     });
 
+    $menuEnabled.on('change', function () {
+        extension_settings.twt.menuEnabled = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+        updateMenuTabVisibility();
+        applyMenuMode(extension_settings.twt.menuEnabled, extension_settings.twt);
+    });
+
+    $menuInvokeMethod.on('change', function () {
+        extension_settings.twt.menuInvokeMethod = $(this).val();
+        getContext().saveSettingsDebounced();
+        updateLongpressDelayRow();
+    });
+
+    $menuLongpressDelay.on('input', function () {
+        const val = parseInt($(this).val());
+        if (!isNaN(val)) {
+            extension_settings.twt.menuLongpressDelay = val;
+            getContext().saveSettingsDebounced();
+        }
+    });
+
+    $menuOptRegenerate.on('change', function () {
+        extension_settings.twt.menuOptRegenerate = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+    });
+
+    $menuOptSwipe.on('change', function () {
+        extension_settings.twt.menuOptSwipe = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+    });
+
+    $menuOptDelete.on('change', function () {
+        extension_settings.twt.menuOptDelete = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+    });
+
+    $menuOptHide.on('change', function () {
+        extension_settings.twt.menuOptHide = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+    });
+
+    $menuOptEdit.on('change', function () {
+        extension_settings.twt.menuOptEdit = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+    });
+
+    $menuOptExcerpt.on('change', function () {
+        extension_settings.twt.menuOptExcerpt = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+    });
+
     $visualEnabled.on('change', function () {
         extension_settings.twt.visualEnabled = $(this).prop('checked');
         getContext().saveSettingsDebounced();
@@ -677,15 +783,18 @@ jQuery(async () => {
 
     bindUI();
     updatePageTabVisibility();
+    updateMenuTabVisibility();
     updateVisualTabVisibility();
     updateMuluTabVisibility();
     updateOptimizeTabVisibility();
     
     applyPaginationMode(extension_settings.twt.enabled, extension_settings.twt);
     applyVisualMode(extension_settings.twt.visualEnabled, extension_settings.twt);
+    applyMenuMode(extension_settings.twt.menuEnabled, extension_settings.twt);
     updateInjectedStyles();
     initMulu();
     initPaginationEvent(() => extension_settings.twt);
+    initMenu(() => extension_settings.twt);
 
     // 监听聊天区域右键/长按菜单事件以禁用长按菜单
     const parentDoc = window.parent && window.parent.document ? window.parent.document : document;

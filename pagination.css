@@ -1,21 +1,25 @@
 body.twt-reading-mode #chat {
-    max-height: 100% !important; 
-    overflow-y: hidden !important; 
-    overflow-x: auto !important; 
+    max-height: 100% !important;
+    overflow-y: hidden !important;
+    overflow-x: auto !important;
     display: block !important;
     column-width: var(--twt-col-width, 100vw) !important;
-    column-gap: 0 !important; 
-    column-fill: auto !important; 
-    scroll-behavior: smooth !important;
+    column-gap: 0 !important;
+    column-fill: auto !important;
+    /* 不使用 scroll-behavior: smooth，由 JS touchmove 实时跟随 + scrollTo instant 接管 */
+    scroll-behavior: auto !important;
     scrollbar-width: none;
     padding-left: 0 !important;
     padding-right: 0 !important;
     border-left: none !important;
     border-right: none !important;
-    
-    /* 强力促进 GPU 硬件加速合成层推广，消除滑动时的排版重绘卡顿 */
-    will-change: scroll-position !important;
-    backface-visibility: hidden;
+
+    /* 不使用 CSS scroll-snap-type：column 布局无 snap-align 锚点，会导致 touchmove 时跳多页 */
+    -webkit-overflow-scrolling: touch; /* iOS 惯性滚动保留 */
+
+    /* GPU 合成层提升 */
+    will-change: scroll-position;
+    transform: translateZ(0);
 }
 
 body.twt-reading-mode #chat::-webkit-scrollbar {
@@ -37,9 +41,7 @@ body.twt-reading-mode #chat .mes_text {
 body.twt-reading-mode #chat .mes {
     margin-left: 0 !important;
     margin-right: 0 !important;
-    /* 促进消息容器的独立 GPU 渲染 */
-    will-change: transform;
-    transform: translateZ(0);
+    /* 不在每个 .mes 上单独提升合成层，避免 column layout 下合成层碎片化 */
 }
 
 body.twt-reading-mode #chat .mes .avatar {
@@ -73,7 +75,7 @@ body.twt-reading-mode #chat .thought-block {
     max-width: 100%;
 }
 
-/* 禁用滑动翻页：将横向溢出改为 hidden */
+/* 禁用滑动翻页 */
 body.twt-reading-mode.twt-swipe-disabled #chat {
     overflow-x: hidden !important;
 }

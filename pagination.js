@@ -158,8 +158,13 @@ export function initPaginationEvent(getSettings) {
 
     let scrollSnapTimeout = null;
 
+    // isTouching：手指在屏上或 touchend 后 150ms 冷却期内为 true
+    // 封锁 handleScrollSnap，防止它用中间动画位置误算目标页
+    let isTouching = false;
+
     const handleScrollSnap = () => {
         if (isProgrammaticScrolling) return;
+        if (isTouching) return; // 触摸冷却期内完全封锁
         if (!document.body.classList.contains('twt-reading-mode')) return;
 
         const cw = chatContainer.clientWidth;
@@ -167,32 +172,24 @@ export function initPaginationEvent(getSettings) {
         const currentScroll = chatContainer.scrollLeft;
         const targetPage = Math.round(currentScroll / cw);
         const expectedScroll = targetPage * cw;
-        
+
         if (Math.abs(currentScroll - expectedScroll) > 5) {
             isProgrammaticScrolling = true;
-            chatContainer.scrollTo({ left: expectedScroll, behavior: 'smooth' });
-            
-            const onScrollEnd = () => {
-                isProgrammaticScrolling = false;
-                chatContainer.removeEventListener('scrollend', onScrollEnd);
-            };
-            chatContainer.addEventListener('scrollend', onScrollEnd);
-            
-            setTimeout(() => {
-                isProgrammaticScrolling = false;
-            }, 500);
+            chatContainer.scrollTo({ left: expectedScroll, behavior: 'instant' });
+            isProgrammaticScrolling = false;
         }
         lastUserPage = targetPage;
     };
 
     chatContainer.addEventListener('scroll', () => {
         if (isProgrammaticScrolling) return;
+        if (isTouching) return;
         if (!document.body.classList.contains('twt-reading-mode')) return;
-        
+
         clearTimeout(scrollSnapTimeout);
         scrollSnapTimeout = setTimeout(() => {
             handleScrollSnap();
-        }, 200); 
+        }, 100);
     });
 
     chatContainer.addEventListener('scrollend', () => {
@@ -200,81 +197,129 @@ export function initPaginationEvent(getSettings) {
         handleScrollSnap();
     });
 
+    // ---- Touch 变量 ----
     let touchStartX = 0;
     let touchStartY = 0;
     let touchStartScrollLeft = 0;
     let touchStartTime = 0;
+    let isTouchTracking = false;   // 手指正在屏上
+    let touchIsHorizontal = null;  // null=未判断, true=横向, false=纵向
+    let touchCooldownTimer = null;
 
     chatContainer.addEventListener('touchstart', (e) => {
         if (!document.body.classList.contains('twt-reading-mode')) return;
         const settings = getSettings();
         if (!settings || !settings.enabled || !settings.swipeEnabled) return;
 
+        // 新手指落下：取消上次冷却，立刻进入触摸态，清除 snap 定时器
+        clearTimeout(touchCooldownTimer);
+        isTouching = true;
+        clearTimeout(scrollSnapTimeout);
+
         touchStartX = e.touches[0].clientX;
         touchStartY = e.touches[0].clientY;
         touchStartScrollLeft = chatContainer.scrollLeft;
         touchStartTime = Date.now();
+        isTouchTracking = true;
+        touchIsHorizontal = null;
+        isProgrammaticScrolling = false;
     }, { passive: true });
 
-    chatContainer.addEventListener('touchend', (e) => {
+    chatContainer.addEventListener('touchmove', (e) => {
+        if (!isTouchTracking) return;
         if (!document.body.classList.contains('twt-reading-mode')) return;
         const settings = getSettings();
         if (!settings || !settings.enabled || !settings.swipeEnabled) return;
 
-        const touchEndX = e.changedTouches[0].clientX;
-        const touchEndY = e.changedTouches[0].clientY;
-        
-        const deltaX = touchEndX - touchStartX;
-        const deltaY = touchEndY - touchStartY;
-        const deltaTime = Date.now() - touchStartTime;
-        
-        const cw = chatContainer.clientWidth;
-        if (cw <= 0) return;
+        const dx = e.touches[0].clientX - touchStartX;
+        const dy = e.touches[0].clientY - touchStartY;
 
-        if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 30) {
-            const currentPage = Math.round(touchStartScrollLeft / cw);
-            let targetPage = currentPage;
-            
-            const isFastSwipe = deltaTime < 250 && Math.abs(deltaX) > cw * 0.05;
-            const isLongSwipe = Math.abs(deltaX) > cw * 0.2;
-            
-            if (isFastSwipe || isLongSwipe) {
-                if (deltaX > 0) {
-                    targetPage = Math.max(0, currentPage - 1);
-                } else {
-                    const maxPage = Math.max(0, Math.ceil(chatContainer.scrollWidth / cw) - 1);
-                    targetPage = Math.min(maxPage, currentPage + 1);
-                }
+        // 首次位移 >8px 时判定方向，之后不再变更
+        if (touchIsHorizontal === null) {
+            if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+                touchIsHorizontal = Math.abs(dx) >= Math.abs(dy);
             }
-            
-            isProgrammaticScrolling = true;
-            // Lock touch scroll interaction temporarily to cancel browser native momentum
-            document.body.classList.add('twt-swipe-disabled');
-            chatContainer.scrollTo({ left: targetPage * cw, behavior: 'smooth' });
-            lastUserPage = targetPage;
-            
-            setTimeout(() => {
-                isProgrammaticScrolling = false;
-                const currentSettings = getSettings();
-                if (currentSettings && currentSettings.swipeEnabled) {
-                    document.body.classList.remove('twt-swipe-disabled');
-                }
-            }, 400);
-        } else if (Math.abs(deltaX) > Math.abs(deltaY)) {
-            const currentPage = Math.round(chatContainer.scrollLeft / cw);
-            isProgrammaticScrolling = true;
-            document.body.classList.add('twt-swipe-disabled');
-            chatContainer.scrollTo({ left: currentPage * cw, behavior: 'smooth' });
-            lastUserPage = currentPage;
-            
-            setTimeout(() => {
-                isProgrammaticScrolling = false;
-                const currentSettings = getSettings();
-                if (currentSettings && currentSettings.swipeEnabled) {
-                    document.body.classList.remove('twt-swipe-disabled');
-                }
-            }, 400);
+            return;
         }
+
+        if (!touchIsHorizontal) return; // 纵向，放行给浏览器
+
+        // 横向：实时跟随手指（直接写 scrollLeft，零延迟）
+        isProgrammaticScrolling = true;
+        chatContainer.scrollLeft = touchStartScrollLeft - dx;
+    }, { passive: true });
+
+    chatContainer.addEventListener('touchend', (e) => {
+        if (!isTouchTracking) return;
+        isTouchTracking = false;
+
+        if (!document.body.classList.contains('twt-reading-mode')) return;
+        const settings = getSettings();
+        if (!settings || !settings.enabled || !settings.swipeEnabled) return;
+
+        // 纵向或方向未定：放行，保留冷却期
+        if (touchIsHorizontal === false || touchIsHorizontal === null) {
+            isProgrammaticScrolling = false;
+            touchCooldownTimer = setTimeout(() => { isTouching = false; }, 150);
+            return;
+        }
+
+        const touchEndX = e.changedTouches[0].clientX;
+        const deltaX = touchEndX - touchStartX;
+        const deltaTime = Date.now() - touchStartTime;
+
+        const cw = chatContainer.clientWidth;
+        if (cw <= 0) {
+            isProgrammaticScrolling = false;
+            isTouching = false;
+            return;
+        }
+
+        // ---- 目标页计算：严格限制每次最多翻 1 页 ----
+        // 基准为 touchStart 时的页，防止 touchmove 跟随超出后被误判为多页
+        const startPage = Math.round(touchStartScrollLeft / cw);
+        let targetPage = startPage;
+
+        const isFastSwipe = deltaTime < 300 && Math.abs(deltaX) > 30;
+        const isLongSwipe = Math.abs(deltaX) > cw * 0.25;
+
+        if (isFastSwipe || isLongSwipe) {
+            if (deltaX > 0) {
+                // 右划 → 上一页
+                targetPage = Math.max(0, startPage - 1);
+            } else {
+                // 左划 → 下一页
+                const maxPage = Math.max(0, Math.ceil(chatContainer.scrollWidth / cw) - 1);
+                targetPage = Math.min(maxPage, startPage + 1);
+            }
+        } else {
+            // 距离不够：按当前 scrollLeft 就近吸附，但限制在 startPage ±1 内
+            const nearestPage = Math.round(chatContainer.scrollLeft / cw);
+            targetPage = Math.max(startPage - 1, Math.min(startPage + 1, nearestPage));
+            targetPage = Math.max(0, targetPage);
+        }
+
+        lastUserPage = targetPage;
+
+        // ---- 执行定位：统一 instant ----
+        // 手指已实时跟随，无需动画；
+        // 用 smooth 会导致动画中途 scrollend 触发 handleScrollSnap 用错位置退页
+        isProgrammaticScrolling = true;
+        chatContainer.scrollTo({ left: targetPage * cw, behavior: 'instant' });
+
+        // 冷却 150ms：封锁 handleScrollSnap，防止 instant 触发的 scrollend 误算
+        touchCooldownTimer = setTimeout(() => {
+            isTouching = false;
+            isProgrammaticScrolling = false;
+        }, 150);
+    }, { passive: true });
+
+    chatContainer.addEventListener('touchcancel', () => {
+        isTouchTracking = false;
+        touchIsHorizontal = null;
+        isProgrammaticScrolling = false;
+        clearTimeout(touchCooldownTimer);
+        isTouching = false;
     }, { passive: true });
 
     chatContainer.addEventListener('focusin', (e) => {

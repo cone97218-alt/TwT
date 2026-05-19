@@ -1,0 +1,50 @@
+#twt-custom-menu {
+    display: none;
+    position: absolute;
+    z-index: 10000;
+    background: var(--SmartThemeBlurTintColor);
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 4px;
+    padding: 4px 0;
+    min-width: 140px;
+    font-family: inherit;
+    color: var(--SmartThemeBodyColor);
+    user-select: none;
+    /* 不设置任何阴影 */
+    box-shadow: none !important;
+}
+
+#twt-custom-menu .twt-menu-item {
+    padding: 8px 16px;
+    cursor: pointer;
+    font-size: 0.95em;
+    display: flex;
+    align-items: center;
+    line-height: 1.2;
+    gap: 8px;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+#twt-custom-menu .twt-menu-item:hover {
+    background: var(--SmartThemeBorderColor);
+}
+
+#twt-custom-menu .twt-menu-item i {
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: 1.05em;
+    opacity: 0.85;
+}
+
+#twt-custom-menu .twt-menu-item span {
+    display: inline-flex;
+    align-items: center;
+}
+
+#twt-custom-menu .twt-menu-item.twt-menu-disabled {
+    opacity: 0.5;
+}
