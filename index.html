@@ -1,0 +1,142 @@
+<div id="twt-settings">
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <b>阅读</b>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+        </div>
+        <div class="inline-drawer-content" style="display: none;">
+            <div class="twt-tabs" style="display: flex; border-bottom: 1px solid var(--SmartThemeBorderColor); margin-bottom: 10px;">
+                <div class="twt-tab active" data-tab="twt-tab-settings" style="padding: 5px 10px; cursor: pointer; opacity: 0.6;">设置</div>
+                <div class="twt-tab" id="tab-btn-visual" data-tab="twt-tab-visual" style="padding: 5px 10px; cursor: pointer; opacity: 0.6; display: none;">视觉</div>
+                <div class="twt-tab" id="tab-btn-mulu" data-tab="twt-tab-mulu" style="padding: 5px 10px; cursor: pointer; opacity: 0.6; display: none;">目录</div>
+                <div class="twt-tab" id="tab-btn-optimize" data-tab="twt-tab-optimize" style="padding: 5px 10px; cursor: pointer; opacity: 0.6; display: none;">优化</div>
+            </div>
+
+            <style>
+                .twt-tab.active { opacity: 1; border-bottom: 2px solid var(--SmartThemeBlurTintColor); font-weight: bold; }
+            </style>
+
+            <div class="twt-tab-content active" id="twt-tab-settings">
+                <div class="twt-setting-row" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                    <label for="twt_enabled">启用阅读翻页模式</label>
+                    <input type="checkbox" id="twt_enabled" />
+                </div>
+                <div class="twt-setting-row" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                    <label for="twt_visual_enabled">启用阅读视觉设置</label>
+                    <input type="checkbox" id="twt_visual_enabled" />
+                </div>
+                <div class="twt-setting-row" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                    <label for="twt_mulu_enabled">启用目录设置</label>
+                    <input type="checkbox" id="twt_mulu_enabled" />
+                </div>
+                <div class="twt-setting-row" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                    <label for="twt_optimize_enabled">启用酒馆主题优化</label>
+                    <input type="checkbox" id="twt_optimize_enabled" />
+                </div>
+            </div>
+
+            <div class="twt-tab-content" id="twt-tab-visual" style="display: none;">
+                <!-- 预设管理 -->
+                <div style="border-bottom: 1px dashed var(--SmartThemeBorderColor); padding-bottom: 8px; margin-bottom: 8px;">
+                    <div class="twt-setting-row" style="display: flex; align-items: center; justify-content: space-between;">
+                        <select id="twt_visual_preset" style="flex: 1; margin-right: 5px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 4px;"></select>
+                        <div style="display: flex; gap: 5px; align-items: center;">
+                            <button id="twt_preset_save" class="menu_button" style="padding: 4px 8px; margin: 0;" title="保存/覆盖预设"><i class="fa-solid fa-floppy-disk"></i></button>
+                            <button id="twt_preset_rename" class="menu_button" style="padding: 4px 8px; margin: 0;" title="重命名预设"><i class="fa-solid fa-pen"></i></button>
+                            <button id="twt_preset_delete" class="menu_button" style="padding: 4px 8px; margin: 0; color: #ff4444;" title="删除预设"><i class="fa-solid fa-trash"></i></button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="twt-setting-row" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                    <label for="twt_padding_top">顶部留白 (px)</label>
+                    <input type="number" id="twt_padding_top" placeholder="0" style="width: 80px; text-align: center; box-sizing: border-box; padding: 5px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px;" />
+                </div>
+
+                <div class="twt-setting-row" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                    <label for="twt_padding_bottom">底部留白 (px)</label>
+                    <input type="number" id="twt_padding_bottom" placeholder="60" style="width: 80px; text-align: center; box-sizing: border-box; padding: 5px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px;" />
+                </div>
+
+                <div class="twt-setting-row" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                    <label for="twt_padding_left">左边距 (px)</label>
+                    <input type="number" id="twt_padding_left" placeholder="15" style="width: 80px; text-align: center; box-sizing: border-box; padding: 5px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px;" />
+                </div>
+
+                <div class="twt-setting-row" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                    <label for="twt_padding_right">右边距 (px)</label>
+                    <input type="number" id="twt_padding_right" placeholder="15" style="width: 80px; text-align: center; box-sizing: border-box; padding: 5px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px;" />
+                </div>
+
+                <div class="twt-setting-row" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                    <label for="twt_font_size">阅读字号 (px)</label>
+                    <input type="number" id="twt_font_size" placeholder="16" style="width: 80px; text-align: center; box-sizing: border-box; padding: 5px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px;" />
+                </div>
+
+                <div class="twt-setting-row" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                    <label for="twt_line_height">行高</label>
+                    <input type="number" id="twt_line_height" placeholder="1.6" step="0.1" style="width: 80px; text-align: center; box-sizing: border-box; padding: 5px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px;" />
+                </div>
+            </div>
+
+            <!-- 目录 Tab -->
+            <div class="twt-tab-content" id="twt-tab-mulu" style="display: none;">
+                <div class="twt-setting-row" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                    <label for="twt_mulu_btn_start">显示“回到开头”按钮 (左箭头)</label>
+                    <input type="checkbox" id="twt_mulu_btn_start" />
+                </div>
+                <div class="twt-setting-row" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                    <label for="twt_mulu_btn_toc">显示“阅读目录”按钮 (书本)</label>
+                    <input type="checkbox" id="twt_mulu_btn_toc" />
+                </div>
+                <div class="twt-setting-row" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;">
+                    <label for="twt_mulu_btn_end">显示“回到结尾”按钮 (右箭头)</label>
+                    <input type="checkbox" id="twt_mulu_btn_end" />
+                </div>
+
+                <!-- 正则设置段落 -->
+                <div style="border-top: 1px dashed var(--SmartThemeBorderColor); padding-top: 15px; margin-top: 15px;">
+                    <div style="font-weight: bold; margin-bottom: 10px;">目录正则设置 (自动提取章节)</div>
+                    
+                    <div class="twt-setting-row" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                        <select id="twt_mulu_regex_preset" style="flex: 1; margin-right: 5px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 4px;">
+                        </select>
+                        <div style="display: flex; gap: 5px; align-items: center;">
+                            <button id="twt_mulu_regex_save" class="menu_button" style="padding: 4px 8px; margin: 0;" title="保存/覆盖正则预设"><i class="fa-solid fa-floppy-disk"></i></button>
+                            <button id="twt_mulu_regex_rename" class="menu_button" style="padding: 4px 8px; margin: 0;" title="重命名正则预设"><i class="fa-solid fa-pen"></i></button>
+                            <button id="twt_mulu_regex_delete" class="menu_button" style="padding: 4px 8px; margin: 0; color: #ff4444;" title="删除正则预设"><i class="fa-solid fa-trash"></i></button>
+                        </div>
+                    </div>
+
+                    <div class="twt-setting-row" style="display: flex; flex-direction: column; margin-bottom: 10px;">
+                        <label for="twt_mulu_regex_input" style="margin-bottom: 5px; font-size: 0.9em; opacity: 0.8;">正则表达式匹配 (为空则显示消息前十几个字)</label>
+                        <input type="text" id="twt_mulu_regex_input" placeholder="例如：第[一二三四五六七八九十百\d]+章" style="width: 100%; box-sizing: border-box; padding: 6px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px;" />
+                    </div>
+                </div>
+            </div>
+
+            <!-- 优化 Tab -->
+            <div class="twt-tab-content" id="twt-tab-optimize" style="display: none;">
+                <!-- 头部控制栏：新建按钮 -->
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px solid var(--SmartThemeBorderColor); padding-bottom: 8px;">
+                    <span style="font-weight: bold;">自定义优化补丁</span>
+                    <button id="twt_optimize_add" class="menu_button" style="padding: 4px 10px; margin: 0; font-size: 0.85em;" title="新建CSS补丁"><i class="fa-solid fa-plus" style="margin-right: 4px;"></i>新建补丁</button>
+                </div>
+                
+                <!-- 补丁列表容器 -->
+                <div id="twt_optimize_list" style="max-height: 250px; overflow-y: auto; margin-bottom: 10px; display: flex; flex-direction: column; gap: 8px;">
+                    <!-- 动态生成列表项 -->
+                </div>
+
+                <!-- 实时 CSS 编辑框区 (默认隐藏) -->
+                <div id="twt_optimize_editor_container" style="display: none; border-top: 1px dashed var(--SmartThemeBorderColor); padding-top: 10px; margin-top: 10px; flex-direction: column;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
+                        <span id="twt_optimize_editor_title" style="font-size: 0.9em; font-weight: bold; opacity: 0.9;">正在编辑: 未知补丁</span>
+                        <button id="twt_optimize_close_editor" class="menu_button" style="padding: 2px 6px; margin: 0; font-size: 0.8em;" title="关闭编辑器"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                    <textarea id="twt_optimize_code" placeholder="输入自定义的 CSS 代码，例如：&#10;.mes_text { font-family: 'Outfit'; }" style="width: 100%; height: 160px; font-family: monospace; font-size: 0.85em; box-sizing: border-box; padding: 8px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; resize: vertical; outline: none;"></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

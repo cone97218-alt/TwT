@@ -1,0 +1,74 @@
+body.twt-reading-mode #chat {
+    max-height: 100% !important; 
+    overflow-y: hidden !important; 
+    overflow-x: auto !important; 
+    display: block !important;
+    column-width: var(--twt-col-width, 100vw) !important;
+    column-gap: 0 !important; 
+    column-fill: auto !important; 
+    scroll-behavior: smooth !important;
+    scrollbar-width: none;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    border-left: none !important;
+    border-right: none !important;
+    
+    /* 强力促进 GPU 硬件加速合成层推广，消除滑动时的排版重绘卡顿 */
+    will-change: scroll-position !important;
+    backface-visibility: hidden;
+}
+
+body.twt-reading-mode #chat::-webkit-scrollbar {
+    display: none;
+}
+
+body.twt-reading-mode #chat .mes,
+body.twt-reading-mode #chat .mes_block,
+body.twt-reading-mode #chat .mes_text {
+    width: 100% !important;
+    box-sizing: border-box;
+    display: block !important; 
+    overflow: visible !important; 
+    break-inside: auto !important; 
+    page-break-inside: auto !important;
+    -webkit-column-break-inside: auto !important;
+}
+
+body.twt-reading-mode #chat .mes {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    /* 促进消息容器的独立 GPU 渲染 */
+    will-change: transform;
+    transform: translateZ(0);
+}
+
+body.twt-reading-mode #chat .mes .avatar {
+    float: left;
+    margin-right: 15px;
+    margin-bottom: 5px;
+}
+
+body.twt-reading-mode #chat .mes::after {
+    content: "";
+    display: table;
+    clear: both;
+}
+
+/* 保护层：仅针对无法分割的原子元素使用防断页，防止渲染重组引发排版崩塌 */
+body.twt-reading-mode #chat .mes_text img,
+body.twt-reading-mode #chat .mes_text video,
+body.twt-reading-mode #chat .mes_text iframe,
+body.twt-reading-mode #chat .mes_text .markdown-table {
+    overflow-x: auto !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    -webkit-column-break-inside: avoid !important;
+    max-width: 100%;
+}
+
+/* 代码块和思维链：只控制横向溢出，绝对不能加 break-inside: avoid，必须允许垂直自然断页 */
+body.twt-reading-mode #chat .mes_text pre,
+body.twt-reading-mode #chat .thought-block {
+    overflow-x: auto !important;
+    max-width: 100%;
+}

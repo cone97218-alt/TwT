@@ -1,0 +1,16 @@
+body.twt-visual-mode #chat {
+    padding-top: var(--twt-padding-top, 0px) !important; 
+    padding-bottom: var(--twt-padding-bottom, 60px) !important; 
+}
+
+/* 覆盖 pagination 的默认左右边距 */
+body.twt-visual-mode #chat .mes {
+    padding-left: var(--twt-padding-left, 15px) !important;
+    padding-right: var(--twt-padding-right, 15px) !important;
+}
+
+body.twt-visual-mode #chat .mes_text,
+body.twt-visual-mode #chat .mes_text p {
+    font-size: var(--twt-font-size, 16px) !important;
+    line-height: var(--twt-line-height, 1.6) !important;
+}
