@@ -15,11 +15,15 @@ body.twt-reading-mode #chat {
     border-right: none !important;
 
     /* 不使用 CSS scroll-snap-type：column 布局无 snap-align 锚点，会导致 touchmove 时跳多页 */
-    -webkit-overflow-scrolling: touch; /* iOS 惯性滚动保留 */
+    /* 不使用 -webkit-overflow-scrolling: touch：对横向同样触发惯性，由 touchmove preventDefault 接管 */
 
     /* GPU 合成层提升 */
     will-change: scroll-position;
     transform: translateZ(0);
+
+    /* 关键：横向手势完全由 JS 接管，浏览器不处理横向滚动和惯性 */
+    /* 比 preventDefault 更底层，无 passive 冲突问题 */
+    touch-action: pan-y;
 }
 
 body.twt-reading-mode #chat::-webkit-scrollbar {

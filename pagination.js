@@ -223,7 +223,7 @@ export function initPaginationEvent(getSettings) {
         isTouchTracking = true;
         touchIsHorizontal = null;
         isProgrammaticScrolling = false;
-    }, { passive: true });
+    }, { passive: true }); // touch-action:pan-y 已接管横向，passive 可以为 true
 
     chatContainer.addEventListener('touchmove', (e) => {
         if (!isTouchTracking) return;
@@ -244,10 +244,13 @@ export function initPaginationEvent(getSettings) {
 
         if (!touchIsHorizontal) return; // 纵向，放行给浏览器
 
-        // 横向：实时跟随手指（直接写 scrollLeft，零延迟）
+        // touch-action:pan-y 已阻断浏览器横向惯性，无需 preventDefault
+        // 手指实时跟随，限制在有效范围内
+        const maxScrollLeft = chatContainer.scrollWidth - chatContainer.clientWidth;
+        const newScrollLeft = Math.max(0, Math.min(maxScrollLeft, touchStartScrollLeft - dx));
         isProgrammaticScrolling = true;
-        chatContainer.scrollLeft = touchStartScrollLeft - dx;
-    }, { passive: true });
+        chatContainer.scrollLeft = newScrollLeft;
+    }, { passive: true }); // touch-action:pan-y 已接管横向，passive 可以为 true
 
     chatContainer.addEventListener('touchend', (e) => {
         if (!isTouchTracking) return;
