@@ -8,6 +8,8 @@ const extensionName = 'TwT';
 
 const defaultSettings = {
     enabled: true,
+    swipeEnabled: true,
+    messagePageEnabled: false,
     visualEnabled: false, 
     muluEnabled: false,
     muluBtnStart: true,
@@ -79,6 +81,23 @@ if (!extension_settings.twt) {
     for (const [key, val] of Object.entries(defaultPatches)) {
         if (extension_settings.twt.optimizePatches[key] === undefined) {
             extension_settings.twt.optimizePatches[key] = Object.assign({}, val);
+        }
+    }
+}
+
+function updatePageTabVisibility() {
+    const $tabBtn = $('#tab-btn-page');
+    const $tabContent = $('#twt-tab-page');
+    
+    if (extension_settings.twt.enabled) {
+        $tabBtn.show();
+    } else {
+        $tabBtn.hide();
+        if ($tabBtn.hasClass('active')) {
+            $tabBtn.removeClass('active');
+            $tabContent.hide().removeClass('active');
+            $('[data-tab="twt-tab-settings"]').addClass('active');
+            $('#twt-tab-settings').show().addClass('active');
         }
     }
 }
@@ -294,6 +313,8 @@ function saveCurrentToMuluRegexPreset(name) {
 
 function bindUI() {
     const $enabled = $('#twt_enabled');
+    const $swipeEnabled = $('#twt_swipe_enabled');
+    const $messagePageEnabled = $('#twt_message_page_enabled');
     const $visualEnabled = $('#twt_visual_enabled');
     const $muluEnabled = $('#twt_mulu_enabled');
     const $optimizeEnabled = $('#twt_optimize_enabled');
@@ -311,6 +332,8 @@ function bindUI() {
 
     // UI初始化
     $enabled.prop('checked', extension_settings.twt.enabled);
+    $swipeEnabled.prop('checked', extension_settings.twt.swipeEnabled);
+    $messagePageEnabled.prop('checked', extension_settings.twt.messagePageEnabled);
     $visualEnabled.prop('checked', extension_settings.twt.visualEnabled);
     $muluEnabled.prop('checked', extension_settings.twt.muluEnabled);
     $optimizeEnabled.prop('checked', extension_settings.twt.optimizeEnabled);
@@ -544,7 +567,20 @@ function bindUI() {
     $enabled.on('change', function () {
         extension_settings.twt.enabled = $(this).prop('checked');
         getContext().saveSettingsDebounced();
-        applyPaginationMode(extension_settings.twt.enabled);
+        updatePageTabVisibility();
+        applyPaginationMode(extension_settings.twt.enabled, extension_settings.twt);
+    });
+
+    $swipeEnabled.on('change', function () {
+        extension_settings.twt.swipeEnabled = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+        applyPaginationMode(extension_settings.twt.enabled, extension_settings.twt);
+    });
+
+    $messagePageEnabled.on('change', function () {
+        extension_settings.twt.messagePageEnabled = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+        applyPaginationMode(extension_settings.twt.enabled, extension_settings.twt);
     });
 
     $visualEnabled.on('change', function () {
@@ -632,11 +668,12 @@ jQuery(async () => {
     $('#extensions_settings').append(html);
 
     bindUI();
+    updatePageTabVisibility();
     updateVisualTabVisibility();
     updateMuluTabVisibility();
     updateOptimizeTabVisibility();
     
-    applyPaginationMode(extension_settings.twt.enabled);
+    applyPaginationMode(extension_settings.twt.enabled, extension_settings.twt);
     applyVisualMode(extension_settings.twt.visualEnabled, extension_settings.twt);
     updateInjectedStyles();
     initMulu();

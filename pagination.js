@@ -3,15 +3,29 @@ let resizeObserver = null;
 let lastUserPage = 0;
 let isProgrammaticScrolling = false;
 
-export function applyPaginationMode(enabled) {
+export function applyPaginationMode(enabled, settings) {
     if (enabled) {
         document.body.classList.add('twt-reading-mode');
+        if (settings) {
+            if (settings.swipeEnabled) {
+                document.body.classList.remove('twt-swipe-disabled');
+            } else {
+                document.body.classList.add('twt-swipe-disabled');
+            }
+            if (settings.messagePageEnabled) {
+                document.body.classList.add('twt-message-page');
+            } else {
+                document.body.classList.remove('twt-message-page');
+            }
+        }
         updateColWidth();
         window.addEventListener('resize', updateColWidth);
         initResizeObserver();
         patchScrollIntoView();
     } else {
         document.body.classList.remove('twt-reading-mode');
+        document.body.classList.remove('twt-swipe-disabled');
+        document.body.classList.remove('twt-message-page');
         window.removeEventListener('resize', updateColWidth);
         if (resizeObserver) {
             resizeObserver.disconnect();
@@ -141,7 +155,18 @@ export function initPaginationEvent(getSettings) {
         const expectedScroll = targetPage * cw;
         
         if (Math.abs(currentScroll - expectedScroll) > 5) {
+            isProgrammaticScrolling = true;
             chatContainer.scrollTo({ left: expectedScroll, behavior: 'smooth' });
+            
+            const onScrollEnd = () => {
+                isProgrammaticScrolling = false;
+                chatContainer.removeEventListener('scrollend', onScrollEnd);
+            };
+            chatContainer.addEventListener('scrollend', onScrollEnd);
+            
+            setTimeout(() => {
+                isProgrammaticScrolling = false;
+            }, 500);
         }
         lastUserPage = targetPage;
     };
@@ -157,8 +182,75 @@ export function initPaginationEvent(getSettings) {
     });
 
     chatContainer.addEventListener('scrollend', () => {
+        clearTimeout(scrollSnapTimeout);
         handleScrollSnap();
     });
+
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchStartScrollLeft = 0;
+    let touchStartTime = 0;
+
+    chatContainer.addEventListener('touchstart', (e) => {
+        if (!document.body.classList.contains('twt-reading-mode')) return;
+        const settings = getSettings();
+        if (!settings || !settings.enabled || !settings.swipeEnabled) return;
+
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+        touchStartScrollLeft = chatContainer.scrollLeft;
+        touchStartTime = Date.now();
+    }, { passive: true });
+
+    chatContainer.addEventListener('touchend', (e) => {
+        if (!document.body.classList.contains('twt-reading-mode')) return;
+        const settings = getSettings();
+        if (!settings || !settings.enabled || !settings.swipeEnabled) return;
+
+        const touchEndX = e.changedTouches[0].clientX;
+        const touchEndY = e.changedTouches[0].clientY;
+        
+        const deltaX = touchEndX - touchStartX;
+        const deltaY = touchEndY - touchStartY;
+        const deltaTime = Date.now() - touchStartTime;
+        
+        const cw = chatContainer.clientWidth;
+        if (cw <= 0) return;
+
+        if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 30) {
+            const currentPage = Math.round(touchStartScrollLeft / cw);
+            let targetPage = currentPage;
+            
+            const isFastSwipe = deltaTime < 250 && Math.abs(deltaX) > cw * 0.05;
+            const isLongSwipe = Math.abs(deltaX) > cw * 0.2;
+            
+            if (isFastSwipe || isLongSwipe) {
+                if (deltaX > 0) {
+                    targetPage = Math.max(0, currentPage - 1);
+                } else {
+                    const maxPage = Math.max(0, Math.ceil(chatContainer.scrollWidth / cw) - 1);
+                    targetPage = Math.min(maxPage, currentPage + 1);
+                }
+            }
+            
+            isProgrammaticScrolling = true;
+            chatContainer.scrollTo({ left: targetPage * cw, behavior: 'smooth' });
+            lastUserPage = targetPage;
+            
+            setTimeout(() => {
+                isProgrammaticScrolling = false;
+            }, 400);
+        } else if (Math.abs(deltaX) > Math.abs(deltaY)) {
+            const currentPage = Math.round(chatContainer.scrollLeft / cw);
+            isProgrammaticScrolling = true;
+            chatContainer.scrollTo({ left: currentPage * cw, behavior: 'smooth' });
+            lastUserPage = currentPage;
+            
+            setTimeout(() => {
+                isProgrammaticScrolling = false;
+            }, 400);
+        }
+    }, { passive: true });
 
     chatContainer.addEventListener('focusin', (e) => {
         if (!document.body.classList.contains('twt-reading-mode')) return;

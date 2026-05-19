@@ -72,3 +72,15 @@ body.twt-reading-mode #chat .thought-block {
     overflow-x: auto !important;
     max-width: 100%;
 }
+
+/* 禁用滑动翻页：将横向溢出改为 hidden */
+body.twt-reading-mode.twt-swipe-disabled #chat {
+    overflow-x: hidden !important;
+}
+
+/* 启用消息分页：强制每条消息另起一列/一页 */
+body.twt-reading-mode.twt-message-page #chat .mes {
+    break-before: column !important;
+    page-break-before: always !important;
+    -webkit-column-break-before: always !important;
+}
