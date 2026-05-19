@@ -84,7 +84,21 @@ export function initPaginationEvent(getSettings) {
 
         if (chatContainer && !chatContainer.contains(target)) return;
 
-        const isInteractive = target.closest('button, a, input, textarea, select, .mes_button, .swipe-button, .ch_name, .avatar, img, .svg-icon');
+        const baseSelector = 'button, a, input, textarea, select, .mes_button, .swipe-button, .ch_name, .avatar, img, .svg-icon';
+        let isInteractive = false;
+        
+        if (settings.customWhitelist && settings.customWhitelist.trim()) {
+            try {
+                isInteractive = !!target.closest(settings.customWhitelist.trim());
+            } catch (err) {
+                console.warn('[TwT] Invalid custom whitelist selector:', settings.customWhitelist, err);
+            }
+        }
+        
+        if (!isInteractive) {
+            isInteractive = !!target.closest(baseSelector);
+        }
+        
         if (isInteractive) return;
 
         if (window.getSelection().toString().length > 0) return;
@@ -234,20 +248,31 @@ export function initPaginationEvent(getSettings) {
             }
             
             isProgrammaticScrolling = true;
+            // Lock touch scroll interaction temporarily to cancel browser native momentum
+            document.body.classList.add('twt-swipe-disabled');
             chatContainer.scrollTo({ left: targetPage * cw, behavior: 'smooth' });
             lastUserPage = targetPage;
             
             setTimeout(() => {
                 isProgrammaticScrolling = false;
+                const currentSettings = getSettings();
+                if (currentSettings && currentSettings.swipeEnabled) {
+                    document.body.classList.remove('twt-swipe-disabled');
+                }
             }, 400);
         } else if (Math.abs(deltaX) > Math.abs(deltaY)) {
             const currentPage = Math.round(chatContainer.scrollLeft / cw);
             isProgrammaticScrolling = true;
+            document.body.classList.add('twt-swipe-disabled');
             chatContainer.scrollTo({ left: currentPage * cw, behavior: 'smooth' });
             lastUserPage = currentPage;
             
             setTimeout(() => {
                 isProgrammaticScrolling = false;
+                const currentSettings = getSettings();
+                if (currentSettings && currentSettings.swipeEnabled) {
+                    document.body.classList.remove('twt-swipe-disabled');
+                }
             }, 400);
         }
     }, { passive: true });

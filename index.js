@@ -10,6 +10,7 @@ const defaultSettings = {
     enabled: true,
     swipeEnabled: true,
     messagePageEnabled: false,
+    customWhitelist: '.mes_reasoning_details, .thought-block',
     visualEnabled: false, 
     muluEnabled: false,
     muluBtnStart: true,
@@ -315,6 +316,7 @@ function bindUI() {
     const $enabled = $('#twt_enabled');
     const $swipeEnabled = $('#twt_swipe_enabled');
     const $messagePageEnabled = $('#twt_message_page_enabled');
+    const $customWhitelist = $('#twt_custom_whitelist');
     const $visualEnabled = $('#twt_visual_enabled');
     const $muluEnabled = $('#twt_mulu_enabled');
     const $optimizeEnabled = $('#twt_optimize_enabled');
@@ -334,6 +336,7 @@ function bindUI() {
     $enabled.prop('checked', extension_settings.twt.enabled);
     $swipeEnabled.prop('checked', extension_settings.twt.swipeEnabled);
     $messagePageEnabled.prop('checked', extension_settings.twt.messagePageEnabled);
+    $customWhitelist.val(extension_settings.twt.customWhitelist || '');
     $visualEnabled.prop('checked', extension_settings.twt.visualEnabled);
     $muluEnabled.prop('checked', extension_settings.twt.muluEnabled);
     $optimizeEnabled.prop('checked', extension_settings.twt.optimizeEnabled);
@@ -581,6 +584,11 @@ function bindUI() {
         extension_settings.twt.messagePageEnabled = $(this).prop('checked');
         getContext().saveSettingsDebounced();
         applyPaginationMode(extension_settings.twt.enabled, extension_settings.twt);
+    });
+
+    $customWhitelist.on('input', function () {
+        extension_settings.twt.customWhitelist = $(this).val();
+        getContext().saveSettingsDebounced();
     });
 
     $visualEnabled.on('change', function () {
