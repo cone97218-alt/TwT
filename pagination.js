@@ -163,6 +163,7 @@ export function initPaginationEvent(getSettings) {
     const handleScrollSnap = () => {
         if (isProgrammaticScrolling || isTouching) return;
         if (!document.body.classList.contains('twt-reading-mode')) return;
+        if (document.body.classList.contains('twt-paragraph-editing')) return;
         const cw = chatContainer.clientWidth;
         if (cw <= 0) return;
         const cur = chatContainer.scrollLeft;
@@ -177,12 +178,14 @@ export function initPaginationEvent(getSettings) {
 
     chatContainer.addEventListener('scroll', () => {
         if (isProgrammaticScrolling || isTouching) return;
+        if (document.body.classList.contains('twt-paragraph-editing')) return;
         clearTimeout(snapDebounce);
         snapDebounce = setTimeout(handleScrollSnap, 100);
     });
 
     chatContainer.addEventListener('scrollend', () => {
         if (isTouching) return;
+        if (document.body.classList.contains('twt-paragraph-editing')) return;
         clearTimeout(snapDebounce);
         if (!isProgrammaticScrolling) handleScrollSnap();
         isProgrammaticScrolling = false;
@@ -305,8 +308,9 @@ export function initPaginationEvent(getSettings) {
     }, { passive: true });
 
     // 焦点跳转防护：输入框获焦时回到当前页
-    chatContainer.addEventListener('focusin', () => {
+    chatContainer.addEventListener('focusin', (e) => {
         if (!document.body.classList.contains('twt-reading-mode')) return;
+        if (e.target && (e.target.classList.contains('twt-p-textarea') || e.target.closest('.twt-p-editor'))) return;
         setTimeout(() => {
             const cw = chatContainer.clientWidth;
             if (cw > 0) chatContainer.scrollTo({ left: lastUserPage * cw });

@@ -19,6 +19,8 @@ const defaultSettings = {
     menuOptHide: false,
     menuOptEdit: true,
     paragraphToolbarBottom: 15,
+    paragraphIconSize: 20,
+    paragraphXmlWhitelist: 'thought, TavernThought, reasoning, details',
     menuOptEditFiltered: false,
     menuOptExcerpt: false,
     menuInvokeMethod: 'longpress',
@@ -185,6 +187,15 @@ function updateOptimizeTabVisibility() {
             $('[data-tab="twt-tab-settings"]').addClass('active');
             $('#twt-tab-settings').show().addClass('active');
         }
+    }
+}
+
+function updateParagraphSubOptionsVisibility() {
+    const $subOptions = $('#twt_paragraph_edit_sub_options');
+    if (extension_settings.twt.menuOptEdit) {
+        $subOptions.show();
+    } else {
+        $subOptions.hide();
     }
 }
 
@@ -361,6 +372,8 @@ function bindUI() {
     const $menuOptHide = $('#twt_menu_opt_hide');
     const $menuOptEdit = $('#twt_menu_opt_edit');
     const $paragraphToolbarBottom = $('#twt_paragraph_toolbar_bottom');
+    const $paragraphIconSize = $('#twt_paragraph_icon_size');
+    const $paragraphXmlWhitelist = $('#twt_paragraph_xml_whitelist');
     const $menuOptEditFiltered = $('#twt_menu_opt_edit_filtered');
     const $menuOptExcerpt = $('#twt_menu_opt_excerpt');
     const $visualEnabled = $('#twt_visual_enabled');
@@ -393,8 +406,12 @@ function bindUI() {
     $menuOptHide.prop('checked', extension_settings.twt.menuOptHide);
     $menuOptEdit.prop('checked', extension_settings.twt.menuOptEdit);
     $paragraphToolbarBottom.val(extension_settings.twt.paragraphToolbarBottom !== undefined ? extension_settings.twt.paragraphToolbarBottom : 15);
+    $paragraphIconSize.val(extension_settings.twt.paragraphIconSize !== undefined ? extension_settings.twt.paragraphIconSize : 20);
+    $paragraphXmlWhitelist.val(extension_settings.twt.paragraphXmlWhitelist !== undefined ? extension_settings.twt.paragraphXmlWhitelist : 'thought, TavernThought, reasoning, details');
     $menuOptEditFiltered.prop('checked', extension_settings.twt.menuOptEditFiltered ?? false);
     $menuOptExcerpt.prop('checked', extension_settings.twt.menuOptExcerpt);
+    
+    updateParagraphSubOptionsVisibility();
     
     const updateLongpressDelayRow = () => {
         if ($menuInvokeMethod.val() === 'longpress') {
@@ -708,6 +725,7 @@ function bindUI() {
     $menuOptEdit.on('change', function () {
         extension_settings.twt.menuOptEdit = $(this).prop('checked');
         getContext().saveSettingsDebounced();
+        updateParagraphSubOptionsVisibility();
     });
 
     $paragraphToolbarBottom.on('input', function () {
@@ -720,6 +738,23 @@ function bindUI() {
                 $toolbar.css('bottom', val + 'px');
             }
         }
+    });
+
+    $paragraphIconSize.on('input', function () {
+        const val = parseInt($(this).val());
+        if (!isNaN(val)) {
+            extension_settings.twt.paragraphIconSize = val;
+            getContext().saveSettingsDebounced();
+            const $toolbar = $('#twt-paragraph-toolbar');
+            if ($toolbar.length) {
+                $toolbar.css('--twt-paragraph-icon-size', val + 'px');
+            }
+        }
+    });
+
+    $paragraphXmlWhitelist.on('input', function () {
+        extension_settings.twt.paragraphXmlWhitelist = $(this).val();
+        getContext().saveSettingsDebounced();
     });
 
     $menuOptEditFiltered.on('change', function () {

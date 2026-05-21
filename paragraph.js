@@ -13,11 +13,9 @@ if (!$('link[href*="paragraph.css"]').length) {
 }
 
 /**
- * 智能解析段落，按单行分段，但跳过代码块和 XML 标签内部的分段
- * @param {string} text 
- * @returns {string[]}
+ * 智能解析段落，按单行分段，但跳过代码块和 XML 标签内部
  */
-export function parseParagraphs(text) {
+export function parseParagraphs(text, whitelist = []) {
     if (!text) return [];
     const lines = text.split('\n');
     const blocks = [];
@@ -36,10 +34,13 @@ export function parseParagraphs(text) {
         const openMatch = trimmed.match(/^<([a-zA-Z0-9_-]+)>$/);
         const closeMatch = trimmed.match(/^<\/([a-zA-Z0-9_-]+)>$/);
         
-        if (openMatch && !insideCodeBlock) {
+        const isOpenTagInWhitelist = openMatch && whitelist.includes(openMatch[1].toLowerCase());
+        const isCloseTagInWhitelist = closeMatch && whitelist.includes(closeMatch[1].toLowerCase());
+        
+        if (isOpenTagInWhitelist && !insideCodeBlock) {
             openTagsStack.push(openMatch[1]);
-        } else if (closeMatch && !insideCodeBlock) {
-            if (openTagsStack.length > 0 && openTagsStack[openTagsStack.length - 1] === closeMatch[1]) {
+        } else if (isCloseTagInWhitelist && !insideCodeBlock) {
+            if (openTagsStack.length > 0 && openTagsStack[openTagsStack.length - 1].toLowerCase() === closeMatch[1].toLowerCase()) {
                 openTagsStack.pop();
             }
         }
@@ -87,21 +88,124 @@ export function openParagraphEditor(mesId) {
     const settings = extension_settings.twt || {};
     const useFiltered = settings.menuOptEditFiltered ?? false;
     const toolbarBottom = settings.paragraphToolbarBottom !== undefined ? settings.paragraphToolbarBottom : 15;
+    const iconSize = settings.paragraphIconSize !== undefined ? settings.paragraphIconSize : 20;
+
+    const whitelistStr = settings.paragraphXmlWhitelist || 'thought, TavernThought, reasoning, details';
+    const whitelist = whitelistStr.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+
+    // 锁住 #chat 的高度，防止移动端键盘弹出时布局重排/自动翻页
+    const $chat = $('#chat');
+    let originalChatStyle = '';
+    if ($chat.length) {
+        originalChatStyle = $chat.attr('style') || '';
+        const currentHeight = $chat.outerHeight();
+        $chat.css('cssText', $chat.attr('style') + `; height: ${currentHeight}px !important; max-height: none !important;`);
+    }
 
     // 保存原始消息内容（用于取消时恢复）
     const originalText = message.mes || '';
     
-    let displayText = originalText;
-    // 如果启用了正则过滤选项，在进行分段拆分前先将文本通过酒馆正则表达式过滤为用户可见的文本
-    // 注意：这只是显示用的过滤，保存时仍应保存原始消息内容
-    if (useFiltered) {
-        const placement = message.is_user ? regex_placement.USER_INPUT : regex_placement.AI_OUTPUT;
-        displayText = getRegexedString(displayText, placement, { isMarkdown: true });
-    }
-
     // 保存原始 HTML 用于取消时恢复（注意：这是渲染后的 HTML，不是原始文本）
     const originalHtml = $mesText.html();
-    let blocks = parseParagraphs(displayText);
+    
+    // 解析原始文本的段落块
+    const originalBlocks = parseParagraphs(originalText, whitelist);
+    
+    // 构建 block 状态对象
+    const placement = message.is_user ? regex_placement.USER_INPUT : regex_placement.AI_OUTPUT;
+    let blocks = [];
+    
+    if (useFiltered) {
+        // 先对整个文本应用正则过滤，保留完整的多行标签匹配
+        const filteredWholeText = getRegexedString(originalText, placement, { isMarkdown: true });
+        // 解析过滤后文本的段落块
+        const filteredBlocks = parseParagraphs(filteredWholeText, whitelist);
+        
+        // 计算两个块列表的对齐关系
+        const N = originalBlocks.length;
+        const M = filteredBlocks.length;
+        
+        const getSimilarity = (a, b) => {
+            if (a === b) return 1.0;
+            if (!a || !b) return 0.0;
+            const charsA = new Set(a);
+            const charsB = new Set(b);
+            let intersection = 0;
+            for (const c of charsA) {
+                if (charsB.has(c)) intersection++;
+            }
+            const union = charsA.size + charsB.size - intersection;
+            if (union === 0) return 0.0;
+            return intersection / union;
+        };
+        
+        // dp[i][j] 记录最大匹配得分
+        const dp = Array.from({ length: N + 1 }, () => Array(M + 1).fill(0));
+        const parent = Array.from({ length: N + 1 }, () => Array(M + 1).fill(''));
+        
+        for (let i = 1; i <= N; i++) {
+            for (let j = 1; j <= M; j++) {
+                const sim = getSimilarity(originalBlocks[i-1], filteredBlocks[j-1]);
+                let matchScore = -1;
+                if (sim > 0.15) {
+                    matchScore = dp[i-1][j-1] + sim;
+                }
+                const skipOrigScore = dp[i-1][j];
+                const skipFiltScore = dp[i][j-1];
+                
+                if (matchScore >= skipOrigScore && matchScore >= skipFiltScore) {
+                    dp[i][j] = matchScore;
+                    parent[i][j] = 'match';
+                } else if (skipOrigScore >= skipFiltScore) {
+                    dp[i][j] = skipOrigScore;
+                    parent[i][j] = 'skip_orig';
+                } else {
+                    dp[i][j] = skipFiltScore;
+                    parent[i][j] = 'skip_filt';
+                }
+            }
+        }
+        
+        let i = N, j = M;
+        const alignment = new Array(N).fill(-1);
+        while (i > 0 || j > 0) {
+            if (i > 0 && j > 0 && parent[i][j] === 'match') {
+                alignment[i-1] = j-1;
+                i--;
+                j--;
+            } else if (i > 0 && (j === 0 || parent[i][j] === 'skip_orig')) {
+                alignment[i-1] = -1;
+                i--;
+            } else {
+                j--;
+            }
+        }
+        
+        blocks = originalBlocks.map((blockText, idx) => {
+            const matchedIdx = alignment[idx];
+            const isVisible = matchedIdx !== -1;
+            const filtered = isVisible ? filteredBlocks[matchedIdx] : '';
+            return {
+                original: blockText,
+                filtered: filtered,
+                current: filtered,
+                isEdited: false,
+                isDeleted: false,
+                isVisible: isVisible
+            };
+        });
+    } else {
+        blocks = originalBlocks.map(blockText => {
+            return {
+                original: blockText,
+                filtered: blockText,
+                current: blockText,
+                isEdited: false,
+                isDeleted: false,
+                isVisible: true
+            };
+        });
+    }
 
     // ── 将工具栏添加到 #chat 的父容器中，防止它跟随 #chat 横向翻页滚动 ──
     const $chatParent = $('#chat').parent();
@@ -110,7 +214,7 @@ export function openParagraphEditor(mesId) {
     }
 
     const $toolbar = $(`
-        <div id="twt-paragraph-toolbar" class="twt-p-toolbar-wrap" style="bottom: ${toolbarBottom}px;">
+        <div id="twt-paragraph-toolbar" class="twt-p-toolbar-wrap" style="bottom: ${toolbarBottom}px; --twt-paragraph-icon-size: ${iconSize}px;">
             <div class="twt-p-toolbar-inner">
                 <button class="twt-p-btn twt-p-btn-page" id="twt-p-prev" title="上一页"><i class="fa-solid fa-chevron-left"></i></button>
                 <button class="twt-p-btn twt-p-btn-danger" id="twt-p-delete" title="删除所选段落"><i class="fa-solid fa-trash"></i></button>
@@ -133,10 +237,11 @@ export function openParagraphEditor(mesId) {
         $container.empty();
         let hasVisibleBlocks = false;
 
-        blocks.forEach((pText, index) => {
-            if (pText === null) return;
+        blocks.forEach((block, index) => {
+            if (block.isDeleted) return;
+            if (!block.isVisible) return;
 
-            if (pText.trim() === '') {
+            if (block.current.trim() === '') {
                 $container.append('<div class="twt-p-spacer"></div>');
                 return;
             }
@@ -149,9 +254,9 @@ export function openParagraphEditor(mesId) {
                 </div>
             `);
 
-            $item.find('.twt-p-text').text(pText);
+            $item.find('.twt-p-text').text(block.current);
 
-            // 当点击段落项时，切换选中状态（只保留竖线高亮，移除复选框）
+            // 当点击段落项时，切换选中状态
             $item.on('click', function(e) {
                 // 如果正在编辑当前段落（点击发生在编辑器内部），不触发选中切换
                 if ($(e.target).closest('.twt-p-editor').length) return;
@@ -173,6 +278,9 @@ export function openParagraphEditor(mesId) {
     function exitEditMode() {
         document.body.classList.remove('twt-paragraph-editing');
         $toolbar.remove();
+        if ($chat.length) {
+            $chat.attr('style', originalChatStyle);
+        }
     }
 
     // ── 左右翻页按钮动作 ─────────────────────────────────────────
@@ -208,7 +316,9 @@ export function openParagraphEditor(mesId) {
         }
 
         if (confirm(`确定要删除选中的 ${checkedIndices.length} 个段落吗？`)) {
-            checkedIndices.forEach(idx => { blocks[idx] = null; });
+            checkedIndices.forEach(idx => {
+                blocks[idx].isDeleted = true;
+            });
             renderInlineList();
         }
     });
@@ -225,7 +335,7 @@ export function openParagraphEditor(mesId) {
 
         const $item = $checked.first();
         const index = Number($item.attr('data-index'));
-        const pText = blocks[index];
+        const block = blocks[index];
 
         // 关闭可能已存在的老编辑器
         $container.find('.twt-p-editor').each(function() {
@@ -248,7 +358,7 @@ export function openParagraphEditor(mesId) {
         `);
 
         const $textarea = $editor.find('.twt-p-textarea');
-        $textarea.val(pText);
+        $textarea.val(block.current);
         $item.after($editor);
 
         // 自适应高度调整：在最高 220px 限制下动态调节高度，超出时启用滚动条
@@ -278,7 +388,8 @@ export function openParagraphEditor(mesId) {
         $editor.find('.twt-p-editor-save').on('click', (ev) => {
             ev.stopPropagation();
             const newText = $textarea.val();
-            blocks[index] = newText;
+            block.current = newText;
+            block.isEdited = true;
             $item.find('.twt-p-text').text(newText);
             $editor.remove();
             $item.show();
@@ -293,12 +404,24 @@ export function openParagraphEditor(mesId) {
         $container.find('.twt-p-editor').each(function() {
             const newText = $(this).find('.twt-p-textarea').val();
             const idx = Number($(this).data('for-index'));
-            if (!isNaN(idx)) blocks[idx] = newText;
+            if (!isNaN(idx)) {
+                blocks[idx].current = newText;
+                blocks[idx].isEdited = true;
+            }
         });
 
-        // 过滤掉被删除的段落（null），重新组合成完整文本
-        // 重要：保存的是原始文本内容，不是经过正则过滤的显示文本
-        const finalContent = blocks.filter(b => b !== null).join('\n');
+        // 重新组合成完整文本。如果段落未修改，使用 originalText (包含隐藏内容)，否则使用编辑后的 current
+        const finalBlocks = [];
+        blocks.forEach(block => {
+            if (block.isDeleted) return;
+            if (block.isEdited) {
+                finalBlocks.push(block.current);
+            } else {
+                finalBlocks.push(block.original);
+            }
+        });
+
+        const finalContent = finalBlocks.join('\n');
         
         // 更新消息对象的原始文本
         message.mes = finalContent;
@@ -307,7 +430,6 @@ export function openParagraphEditor(mesId) {
         exitEditMode();
         
         // 让酒馆重新渲染消息块（这会根据更新后的 message.mes 重新生成 HTML）
-        // 注意：不传 rerenderMessage 参数或设为 true 都会重新渲染消息内容
         await context.updateMessageBlock(mesId, message, { rerenderMessage: true });
         
         // 保存聊天到服务器

@@ -31,7 +31,7 @@
 }
 
 .twt-p-item.twt-p-selected::before {
-    background-color: var(--SmartThemePrimaryColor, #007aff);
+    background-color: var(--SmartThemeUnderlineColor, var(--SmartThemePrimaryColor, #007aff));
 }
 
 .twt-p-text {
@@ -118,9 +118,9 @@
 
 /* ── 纯图标小按钮 ────────────────────────────────────────────── */
 .twt-p-btn {
-    width: 20px;
-    height: 20px;
-    font-size: 0.72em;
+    width: var(--twt-paragraph-icon-size, 20px);
+    height: var(--twt-paragraph-icon-size, 20px);
+    font-size: calc(var(--twt-paragraph-icon-size, 20px) * 0.72);
     cursor: pointer;
     display: flex;
     align-items: center;
