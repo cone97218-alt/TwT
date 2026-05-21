@@ -27,15 +27,12 @@ export function applyPaginationMode(enabled, settings) {
 function updateColWidth() {
     const chatContainer = document.getElementById('chat');
     if (!chatContainer || !document.body.classList.contains('twt-reading-mode')) return;
+    // 分段编辑模式期间：键盘弹出会引发 resize/ResizeObserver 回调
+    // 此时跳过列宽重算，避免 scrollLeft 漂移后触发自动翻页
+    if (document.body.classList.contains('twt-paragraph-editing')) return;
     const width = chatContainer.clientWidth;
     if (width > 0) {
         chatContainer.style.setProperty('--twt-col-width', `${width}px`, 'important');
-        // 保持在当前页，防止 resize 导致页面错位或重置到第一页
-        isProgrammaticScrolling = true;
-        chatContainer.scrollTo({ left: lastUserPage * width });
-        requestAnimationFrame(() => {
-            isProgrammaticScrolling = false;
-        });
     }
 }
 
@@ -58,11 +55,26 @@ export function refreshPagination(targetPage = null) {
     });
 }
 
+/**
+ * 退出分段编辑模式后，手动补一次列宽刷新
+ * 此时 twt-paragraph-editing 已移除，updateColWidth 会正常执行
+ */
+export function updateColWidthAfterEdit() {
+    updateColWidth();
+    // 同时把当前列宽对应的页码更新回 lastUserPage，防止退出后乱跳
+    const chatContainer = document.getElementById('chat');
+    if (!chatContainer) return;
+    const cw = chatContainer.clientWidth;
+    if (cw > 0) {
+        lastUserPage = Math.round(chatContainer.scrollLeft / cw);
+    }
+}
 
 function initResizeObserver() {
     const chatContainer = document.getElementById('chat');
     if (!chatContainer || resizeObserver) return;
-    resizeObserver = new ResizeObserver(updateColWidth);
+    // 用包装函数而非直接传 updateColWidth，使 ResizeObserver 也受编辑模式保护
+    resizeObserver = new ResizeObserver(() => updateColWidth());
     resizeObserver.observe(chatContainer);
 }
 
@@ -184,20 +196,7 @@ export function initPaginationEvent(getSettings) {
 
     chatContainer.addEventListener('scroll', () => {
         if (isProgrammaticScrolling || isTouching) return;
-        if (document.body.classList.contains('twt-paragraph-editing')) {
-            const cw = chatContainer.clientWidth;
-            if (cw > 0) {
-                const targetLeft = lastUserPage * cw;
-                if (Math.abs(chatContainer.scrollLeft - targetLeft) > 1) {
-                    isProgrammaticScrolling = true;
-                    chatContainer.scrollLeft = targetLeft;
-                    requestAnimationFrame(() => {
-                        isProgrammaticScrolling = false;
-                    });
-                }
-            }
-            return;
-        }
+        if (document.body.classList.contains('twt-paragraph-editing')) return;
         clearTimeout(snapDebounce);
         snapDebounce = setTimeout(handleScrollSnap, 100);
     });
