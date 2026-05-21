@@ -323,7 +323,7 @@ export function openParagraphEditor(mesId) {
         }
     });
 
-    // ── 单个段落修改编辑 ───────────────────────────────────────────
+    // ── 弹窗消息编辑 ───────────────────────────────────────────
     $toolbar.find('#twt-p-edit').on('click', (e) => {
         e.stopPropagation();
 
@@ -337,78 +337,82 @@ export function openParagraphEditor(mesId) {
         const index = Number($item.attr('data-index'));
         const block = blocks[index];
 
-        // 关闭可能已存在的老编辑器
-        $container.find('.twt-p-editor').each(function() {
-            const otherIndex = Number($(this).data('for-index'));
-            const $otherItem = $container.find(`.twt-p-item[data-index="${otherIndex}"]`);
-            $(this).remove();
-            $otherItem.show();
-        });
-
-        $item.hide();
-
-        const $editor = $(`
-            <div class="twt-p-editor" data-for-index="${index}">
-                <textarea class="twt-p-textarea"></textarea>
-                <div class="twt-p-editor-actions">
-                    <button class="twt-p-btn twt-p-editor-cancel" title="取消"><i class="fa-solid fa-xmark"></i></button>
-                    <button class="twt-p-btn twt-p-editor-save" title="确定"><i class="fa-solid fa-check"></i></button>
+        const $modalBackdrop = $(`
+            <div class="twt-p-modal-backdrop">
+                <div class="twt-p-modal-card">
+                    <div style="font-weight: bold; font-size: 1.05em; color: var(--SmartThemeBodyColor); display: flex; align-items: center; gap: 6px;">
+                        <i class="fa-regular fa-pen-to-square"></i>
+                        <span>编辑段落</span>
+                    </div>
+                    <textarea class="twt-p-modal-textarea"></textarea>
+                    <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                        <button class="twt-p-modal-btn twt-p-modal-cancel"><i class="fa-solid fa-xmark"></i><span>取消</span></button>
+                        <button class="twt-p-modal-btn twt-p-modal-save"><i class="fa-solid fa-check"></i><span>确定</span></button>
+                    </div>
                 </div>
             </div>
-        `);
+        `).appendTo('body');
 
-        const $textarea = $editor.find('.twt-p-textarea');
-        $textarea.val(block.current);
-        $item.after($editor);
-
-        // 自适应高度调整：在最高 220px 限制下动态调节高度，超出时启用滚动条
-        const adjustHeight = () => {
-            $textarea.css('height', 'auto');
-            const scrollHeight = $textarea[0].scrollHeight;
-            const maxHeight = 220; // 对应 CSS 中设置 of max-height
-            
-            if (scrollHeight > maxHeight) {
-                $textarea.css('height', maxHeight + 'px');
-                $textarea.css('overflow-y', 'auto');
-            } else {
-                $textarea.css('height', (scrollHeight + 2) + 'px');
-                $textarea.css('overflow-y', 'hidden');
-            }
-        };
-
-        $textarea.on('input', adjustHeight);
-        requestAnimationFrame(adjustHeight); // 等元素渲染后刷新高度
-
-        $editor.find('.twt-p-editor-cancel').on('click', (ev) => {
-            ev.stopPropagation();
-            $editor.remove();
-            $item.show();
+        // 设置取消与确定的按钮样式（复用 TwT 的小按钮风格但加上文字和 padding）
+        $modalBackdrop.find('.twt-p-modal-cancel').css({
+            padding: '6px 16px',
+            borderRadius: '6px',
+            border: '1px solid var(--SmartThemeBorderColor)',
+            background: 'rgba(255,255,255,0.05)',
+            color: 'var(--SmartThemeBodyColor)',
+            cursor: 'pointer',
+            fontSize: '0.9em',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px'
         });
 
-        $editor.find('.twt-p-editor-save').on('click', (ev) => {
+        $modalBackdrop.find('.twt-p-modal-save').css({
+            padding: '6px 16px',
+            borderRadius: '6px',
+            border: 'none',
+            background: 'var(--SmartThemeUnderlineColor, var(--SmartThemePrimaryColor, #007aff))',
+            color: '#fff',
+            cursor: 'pointer',
+            fontSize: '0.9em',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px'
+        });
+
+        const $textarea = $modalBackdrop.find('.twt-p-modal-textarea');
+        $textarea.val(block.current);
+
+        // 自动聚焦
+        setTimeout(() => $textarea.focus(), 50);
+
+        $modalBackdrop.find('.twt-p-modal-cancel').on('click', (ev) => {
+            ev.stopPropagation();
+            $modalBackdrop.remove();
+            window.scrollTo(0, 0);
+        });
+
+        $modalBackdrop.find('.twt-p-modal-save').on('click', (ev) => {
             ev.stopPropagation();
             const newText = $textarea.val();
             block.current = newText;
             block.isEdited = true;
             $item.find('.twt-p-text').text(newText);
-            $editor.remove();
-            $item.show();
+            $modalBackdrop.remove();
+            window.scrollTo(0, 0);
+        });
+
+        $modalBackdrop.on('click', function(ev) {
+            if (ev.target === this) {
+                $modalBackdrop.remove();
+                window.scrollTo(0, 0);
+            }
         });
     });
 
     // ── 保存所有修改 ───────────────────────────────────────────────
     $toolbar.find('#twt-p-save').on('click', async (e) => {
         e.stopPropagation();
-
-        // 收集仍开启编辑框的段落数据
-        $container.find('.twt-p-editor').each(function() {
-            const newText = $(this).find('.twt-p-textarea').val();
-            const idx = Number($(this).data('for-index'));
-            if (!isNaN(idx)) {
-                blocks[idx].current = newText;
-                blocks[idx].isEdited = true;
-            }
-        });
 
         // 重新组合成完整文本。如果段落未修改，使用 originalText (包含隐藏内容)，否则使用编辑后的 current
         const finalBlocks = [];

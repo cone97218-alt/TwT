@@ -141,3 +141,75 @@
 .twt-p-btn:active {
     transform: scale(0.85);
 }
+
+/* ── 段落编辑状态下锁定聊天区，屏蔽任何手势和溢出滚动 ──────────────── */
+body.twt-paragraph-editing #chat {
+    overflow-x: hidden !important;
+    touch-action: none !important;
+}
+
+/* ── 弹窗式段落编辑 ────────────────────────────────────────── */
+.twt-p-modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 99999;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 10vh;
+    padding-bottom: 5vh;
+    box-sizing: border-box;
+    overflow-y: auto;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    animation: twtFadeIn 0.2s ease-out;
+}
+
+.twt-p-modal-card {
+    background: var(--SmartThemeAreaColor, #222);
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 12px;
+    padding: 16px;
+    width: 90%;
+    max-width: 500px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    animation: twtScaleIn 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.twt-p-modal-textarea {
+    width: 100%;
+    height: 150px;
+    box-sizing: border-box;
+    padding: 10px;
+    background: var(--SmartThemeDarkColor, #111);
+    color: var(--SmartThemeBodyColor, #fff);
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    font-size: 1em;
+    line-height: 1.5;
+    resize: none;
+    outline: none;
+    font-family: inherit;
+    transition: border-color 0.2s;
+}
+
+.twt-p-modal-textarea:focus {
+    border-color: var(--SmartThemeUnderlineColor, var(--SmartThemePrimaryColor, #007aff));
+}
+
+@keyframes twtFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes twtScaleIn {
+    from { transform: scale(0.9); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}

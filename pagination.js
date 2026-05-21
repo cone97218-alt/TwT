@@ -30,6 +30,12 @@ function updateColWidth() {
     const width = chatContainer.clientWidth;
     if (width > 0) {
         chatContainer.style.setProperty('--twt-col-width', `${width}px`, 'important');
+        // 保持在当前页，防止 resize 导致页面错位或重置到第一页
+        isProgrammaticScrolling = true;
+        chatContainer.scrollTo({ left: lastUserPage * width });
+        requestAnimationFrame(() => {
+            isProgrammaticScrolling = false;
+        });
     }
 }
 
@@ -178,7 +184,20 @@ export function initPaginationEvent(getSettings) {
 
     chatContainer.addEventListener('scroll', () => {
         if (isProgrammaticScrolling || isTouching) return;
-        if (document.body.classList.contains('twt-paragraph-editing')) return;
+        if (document.body.classList.contains('twt-paragraph-editing')) {
+            const cw = chatContainer.clientWidth;
+            if (cw > 0) {
+                const targetLeft = lastUserPage * cw;
+                if (Math.abs(chatContainer.scrollLeft - targetLeft) > 1) {
+                    isProgrammaticScrolling = true;
+                    chatContainer.scrollLeft = targetLeft;
+                    requestAnimationFrame(() => {
+                        isProgrammaticScrolling = false;
+                    });
+                }
+            }
+            return;
+        }
         clearTimeout(snapDebounce);
         snapDebounce = setTimeout(handleScrollSnap, 100);
     });
