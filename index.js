@@ -17,10 +17,13 @@ const defaultSettings = {
     menuOptSwipe: true,
     menuOptDelete: false,
     menuOptHide: false,
-    menuOptEdit: false,
+    menuOptEdit: true,
+    paragraphToolbarBottom: 15,
+    menuOptEditFiltered: false,
     menuOptExcerpt: false,
     menuInvokeMethod: 'longpress',
     menuLongpressDelay: 500,
+    menuDirection: 'bottom-right',
     visualEnabled: false, 
     muluEnabled: false,
     muluBtnStart: true,
@@ -67,6 +70,10 @@ const defaultPatches = {
     '收藏栏下方空隙缩小': {
         active: false,
         code: `/* 收藏栏下方空隙缩小 */\nbody #CharListButtonAndHotSwaps {\n    margin-bottom: -20px;\n}`
+    },
+    'Spreset': {
+        active: false,
+        code: `.spreset-button-container {\n  display: none;\n}`
     }
 };
 
@@ -347,11 +354,14 @@ function bindUI() {
     const $menuEnabled = $('#twt_menu_enabled');
     const $menuInvokeMethod = $('#twt_menu_invoke_method');
     const $menuLongpressDelay = $('#twt_menu_longpress_delay');
+    const $menuDirection = $('#twt_menu_direction');
     const $menuOptRegenerate = $('#twt_menu_opt_regenerate');
     const $menuOptSwipe = $('#twt_menu_opt_swipe');
     const $menuOptDelete = $('#twt_menu_opt_delete');
     const $menuOptHide = $('#twt_menu_opt_hide');
     const $menuOptEdit = $('#twt_menu_opt_edit');
+    const $paragraphToolbarBottom = $('#twt_paragraph_toolbar_bottom');
+    const $menuOptEditFiltered = $('#twt_menu_opt_edit_filtered');
     const $menuOptExcerpt = $('#twt_menu_opt_excerpt');
     const $visualEnabled = $('#twt_visual_enabled');
     const $muluEnabled = $('#twt_mulu_enabled');
@@ -376,11 +386,14 @@ function bindUI() {
     $menuEnabled.prop('checked', extension_settings.twt.menuEnabled);
     $menuInvokeMethod.val(extension_settings.twt.menuInvokeMethod || 'longpress');
     $menuLongpressDelay.val(extension_settings.twt.menuLongpressDelay || 500);
+    $menuDirection.val(extension_settings.twt.menuDirection || 'bottom-right');
     $menuOptRegenerate.prop('checked', extension_settings.twt.menuOptRegenerate);
     $menuOptSwipe.prop('checked', extension_settings.twt.menuOptSwipe);
     $menuOptDelete.prop('checked', extension_settings.twt.menuOptDelete);
     $menuOptHide.prop('checked', extension_settings.twt.menuOptHide);
     $menuOptEdit.prop('checked', extension_settings.twt.menuOptEdit);
+    $paragraphToolbarBottom.val(extension_settings.twt.paragraphToolbarBottom !== undefined ? extension_settings.twt.paragraphToolbarBottom : 15);
+    $menuOptEditFiltered.prop('checked', extension_settings.twt.menuOptEditFiltered ?? false);
     $menuOptExcerpt.prop('checked', extension_settings.twt.menuOptExcerpt);
     
     const updateLongpressDelayRow = () => {
@@ -659,6 +672,11 @@ function bindUI() {
         updateLongpressDelayRow();
     });
 
+    $menuDirection.on('change', function () {
+        extension_settings.twt.menuDirection = $(this).val();
+        getContext().saveSettingsDebounced();
+    });
+
     $menuLongpressDelay.on('input', function () {
         const val = parseInt($(this).val());
         if (!isNaN(val)) {
@@ -689,6 +707,23 @@ function bindUI() {
 
     $menuOptEdit.on('change', function () {
         extension_settings.twt.menuOptEdit = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+    });
+
+    $paragraphToolbarBottom.on('input', function () {
+        const val = parseInt($(this).val());
+        if (!isNaN(val)) {
+            extension_settings.twt.paragraphToolbarBottom = val;
+            getContext().saveSettingsDebounced();
+            const $toolbar = $('#twt-paragraph-toolbar');
+            if ($toolbar.length) {
+                $toolbar.css('bottom', val + 'px');
+            }
+        }
+    });
+
+    $menuOptEditFiltered.on('change', function () {
+        extension_settings.twt.menuOptEditFiltered = $(this).prop('checked');
         getContext().saveSettingsDebounced();
     });
 

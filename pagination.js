@@ -33,6 +33,26 @@ function updateColWidth() {
     }
 }
 
+/**
+ * 消息内容变化后（如段落编辑保存），从外部调用此函数
+ * 重新计算列宽并跳转到最后一页（或指定页）
+ */
+export function refreshPagination(targetPage = null) {
+    const chatContainer = document.getElementById('chat');
+    if (!chatContainer || !document.body.classList.contains('twt-reading-mode')) return;
+    updateColWidth();
+    const cw = chatContainer.clientWidth;
+    if (cw <= 0) return;
+    const totalPages = Math.round(chatContainer.scrollWidth / cw);
+    const page = targetPage !== null ? Math.max(0, Math.min(targetPage, totalPages - 1)) : totalPages - 1;
+    // 用 requestAnimationFrame 确保 DOM 已经刷新完毕
+    requestAnimationFrame(() => {
+        chatContainer.scrollTo({ left: page * cw, behavior: 'smooth' });
+        lastUserPage = page;
+    });
+}
+
+
 function initResizeObserver() {
     const chatContainer = document.getElementById('chat');
     if (!chatContainer || resizeObserver) return;
@@ -58,6 +78,26 @@ function scrollToPage(chatContainer, targetPage, cw) {
     chatContainer.scrollTo({ left: targetPage * cw, behavior: 'smooth' });
 }
 
+// 供段落编辑器工具栏按钮调用的翻页函数
+export function scrollPageLeft() {
+    const chatContainer = document.getElementById('chat');
+    if (!chatContainer) return;
+    const cw = chatContainer.clientWidth;
+    if (cw <= 0) return;
+    const currentPage = Math.round(chatContainer.scrollLeft / cw);
+    scrollToPage(chatContainer, Math.max(0, currentPage - 1), cw);
+}
+
+export function scrollPageRight() {
+    const chatContainer = document.getElementById('chat');
+    if (!chatContainer) return;
+    const cw = chatContainer.clientWidth;
+    if (cw <= 0) return;
+    const currentPage = Math.round(chatContainer.scrollLeft / cw);
+    const maxPage = Math.max(0, Math.ceil(chatContainer.scrollWidth / cw) - 1);
+    scrollToPage(chatContainer, Math.min(maxPage, currentPage + 1), cw);
+}
+
 let isScrollEventsBound = false;
 
 export function initPaginationEvent(getSettings) {
@@ -65,6 +105,17 @@ export function initPaginationEvent(getSettings) {
     document.addEventListener('click', function(e) {
         const settings = getSettings();
         if (!settings?.enabled) return;
+
+        // 如果界面上存在自定义消息操作菜单且处于可见状态，点击时不触发翻页（该点击会仅用于隐藏菜单）
+        const customMenu = document.getElementById('twt-custom-menu');
+        if (customMenu && window.getComputedStyle(customMenu).display !== 'none') {
+            return;
+        }
+
+        // 段落编辑模式激活时，屏蔽所有翻页，让点按专门用于段落勾选
+        if (document.body.classList.contains('twt-paragraph-editing')) {
+            return;
+        }
 
         const chatContainer = document.getElementById('chat');
         if (!chatContainer?.contains(e.target)) return;
@@ -148,6 +199,7 @@ export function initPaginationEvent(getSettings) {
 
     chatContainer.addEventListener('touchstart', (e) => {
         if (!document.body.classList.contains('twt-reading-mode')) return;
+        if (document.body.classList.contains('twt-paragraph-editing')) return;
         const settings = getSettings();
         if (!settings?.enabled || !settings.swipeEnabled) return;
 
@@ -192,6 +244,7 @@ export function initPaginationEvent(getSettings) {
         isTouchTracking = false;
 
         if (!document.body.classList.contains('twt-reading-mode')) return;
+        if (document.body.classList.contains('twt-paragraph-editing')) return;
         const settings = getSettings();
         if (!settings?.enabled || !settings.swipeEnabled) return;
 

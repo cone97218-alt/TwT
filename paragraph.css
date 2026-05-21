@@ -1,0 +1,143 @@
+/* paragraph.css - 段落编辑器 (极简竖线选中版) */
+
+/* ── 段落列表容器 ──────────────────────────────────────────────── */
+.twt-p-container {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+/* ── 每行段落 (0位移，左侧悬浮竖线指示器) ────────────────────────── */
+.twt-p-item {
+    position: relative;
+    padding: 3px 0; /* 完全为0的 padding-left，文字位置 100% 不动 */
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    line-height: 1.6;
+}
+
+/* 选中左侧竖线：绝对定位悬浮在最左侧边缘（气泡内边距区域），不占空间，不导致位移 */
+.twt-p-item::before {
+    content: "";
+    position: absolute;
+    left: -8px; /* 悬浮在消息气泡的左边距 padding 区域内，完全不占文本宽度 */
+    top: 3px;
+    bottom: 3px;
+    width: 3px;
+    background: transparent;
+    transition: background-color 0.15s;
+    z-index: 1;
+}
+
+.twt-p-item.twt-p-selected::before {
+    background-color: var(--SmartThemePrimaryColor, #007aff);
+}
+
+.twt-p-text {
+    color: var(--SmartThemeBodyColor, #e0e0e0);
+    font-size: inherit;
+    line-height: inherit;
+    word-break: break-all;
+    white-space: pre-wrap;
+}
+
+.twt-p-spacer {
+    height: 8px;
+}
+
+.twt-p-empty {
+    text-align: center;
+    color: var(--SmartThemeBodyColor);
+    opacity: 0.5;
+    padding: 12px;
+    font-size: 0.9em;
+}
+
+/* ── 内联段落编辑框 (无位移，自适应高度 + 限高滚动) ────────────────── */
+.twt-p-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 2px 0;
+}
+
+.twt-p-textarea {
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--SmartThemeDarkColor, rgba(0,0,0,0.15));
+    color: var(--SmartThemeBodyColor, #ffffff);
+    border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.15));
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-family: inherit;
+    font-size: 0.9em !important; /* 文字相较于正文略小 */
+    line-height: 1.6;
+    max-height: 220px !important; /* 限制最高高度 */
+    overflow-y: auto !important; /* 文本过多时显示滚动条 */
+    resize: none; /* 依靠 JS 自动伸缩，禁用手动拖拽 */
+}
+
+.twt-p-textarea:focus {
+    outline: none;
+    border-color: var(--SmartThemePrimaryColor, #007aff);
+}
+
+.twt-p-editor-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding-right: 4px;
+}
+
+/* ── 工具栏：浮动在文字之上，透明，纯图标 ────────────────────────── */
+.twt-p-toolbar-wrap {
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 99999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    pointer-events: none; /* 穿透点击 */
+}
+
+/* 内部按钮排：透明 */
+.twt-p-toolbar-inner {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 2px 6px;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    pointer-events: none;
+}
+
+/* ── 纯图标小按钮 ────────────────────────────────────────────── */
+.twt-p-btn {
+    width: 20px;
+    height: 20px;
+    font-size: 0.72em;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: var(--SmartThemeBodyColor, #ffffff) !important;
+    opacity: 0.65;
+    transition: opacity 0.2s, transform 0.1s;
+    pointer-events: auto; /* 响应点击 */
+}
+
+.twt-p-btn:hover {
+    opacity: 1;
+}
+
+.twt-p-btn:active {
+    transform: scale(0.85);
+}

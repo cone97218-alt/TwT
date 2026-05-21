@@ -90,12 +90,22 @@
             <!-- 菜单 Tab -->
             <div class="twt-tab-content" id="twt-tab-menu" style="display: none;">
                 <div class="twt-setting-row"
-                    style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
-                    <label for="twt_menu_invoke_method">召出方式</label>
+                    style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; flex-wrap: nowrap;">
+                    <label for="twt_menu_invoke_method" style="white-space: nowrap; margin-right: 10px; flex-shrink: 0;">召出方式</label>
                     <select id="twt_menu_invoke_method"
-                        style="background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 4px;">
+                        style="background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 4px; flex-shrink: 1;">
                         <option value="longpress">长按</option>
-                        <option value="dblclick">双击</option>
+                    </select>
+                </div>
+                <div class="twt-setting-row"
+                    style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; flex-wrap: nowrap;">
+                    <label for="twt_menu_direction" style="white-space: nowrap; margin-right: 10px; flex-shrink: 0;">弹出方向</label>
+                    <select id="twt_menu_direction"
+                        style="background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 4px; flex-shrink: 1;">
+                        <option value="top-left">左上</option>
+                        <option value="top-right">右上</option>
+                        <option value="bottom-left">左下</option>
+                        <option value="bottom-right">右下</option>
                     </select>
                 </div>
                 <div class="twt-setting-row" id="twt_menu_longpress_delay_row"
@@ -131,8 +141,19 @@
                 </div>
                 <div class="twt-setting-row"
                     style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                    <label for="twt_menu_opt_edit">编辑 (暂未实现)</label>
+                    <label for="twt_menu_opt_edit">分段编辑</label>
                     <input type="checkbox" id="twt_menu_opt_edit" />
+                </div>
+                <div class="twt-setting-row" id="twt_paragraph_toolbar_bottom_row"
+                    style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                    <label for="twt_paragraph_toolbar_bottom">分段工具栏距底部高度 (px)</label>
+                    <input type="number" id="twt_paragraph_toolbar_bottom" min="0" max="600" step="5"
+                        style="width: 80px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 4px; text-align: center;" />
+                </div>
+                <div class="twt-setting-row"
+                    style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                    <label for="twt_menu_opt_edit_filtered">分段编辑应用正则过滤 (只显示用户可见文本)</label>
+                    <input type="checkbox" id="twt_menu_opt_edit_filtered" />
                 </div>
                 <div class="twt-setting-row"
                     style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
@@ -259,7 +280,7 @@
                     <span style="font-weight: bold;">自定义优化补丁</span>
                     <button id="twt_optimize_add" class="menu_button"
                         style="padding: 4px 10px; margin: 0; font-size: 0.85em;" title="新建CSS补丁"><i
-                            class="fa-solid fa-plus" style="margin-right: 4px;"></i>新建补丁</button>
+                            class="fa-solid fa-plus"></i></button>
                 </div>
 
                 <!-- 补丁列表容器 -->

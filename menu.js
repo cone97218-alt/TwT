@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { openParagraphEditor } from './paragraph.js';
 
 let longpressTimeout = null;
 let touchStartX = 0;
@@ -89,23 +90,14 @@ export function initMenu(getSettings) {
         handleEnd();
     });
 
-    // Bind double click
-    chatContainer.on('dblclick', '.mes', function(e) {
-        const settings = getSettings();
-        if (!settings || !settings.menuEnabled || settings.menuInvokeMethod !== 'dblclick') return;
-
-        const target = e.target;
-        if ($(target).closest('button, a, input, textarea, select, .mes_button, .swipe-button, .ch_name, .avatar, img, .svg-icon').length) {
-            return;
-        }
-
-        const $mes = $(this);
-        showContextMenu(e, $mes, e.clientX, e.clientY, settings);
-    });
-
     // Close menu when clicking outside
     $(document).on('click.twt-menu touchstart.twt-menu', function() {
-        $('#twt-custom-menu').hide();
+        const $menu = $('#twt-custom-menu');
+        if ($menu.is(':visible')) {
+            setTimeout(() => {
+                $menu.hide();
+            }, 0);
+        }
     });
 }
 
@@ -149,9 +141,20 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
         hasItems = true;
     }
 
+    // Add Paragraph Edit (分段编辑)
+    if (settings.menuOptEdit) {
+        const $item = $('<div class="twt-menu-item"><i class="fa-regular fa-pen-to-square"></i><span>分段编辑</span></div>');
+        $item.on('click', (evt) => {
+            evt.stopPropagation();
+            $menu.hide();
+            openParagraphEditor(mesId);
+        });
+        $menu.append($item);
+        hasItems = true;
+    }
+
     // Add placeholders
     const placeholders = [
-        { key: 'menuOptEdit', label: '编辑', icon: 'fa-regular fa-pen-to-square' },
         { key: 'menuOptHide', label: '隐藏', icon: 'fa-regular fa-eye-slash' },
         { key: 'menuOptExcerpt', label: '摘抄', icon: 'fa-regular fa-bookmark' },
         { key: 'menuOptDelete', label: '删除', icon: 'fa-regular fa-trash-can' }
@@ -184,19 +187,27 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
     const screenWidth = window.innerWidth;
     const screenHeight = window.innerHeight;
 
-    let posX = clientX + window.scrollX;
-    let posY = clientY + window.scrollY;
+    const direction = settings.menuDirection || 'bottom-right';
+    let posX = clientX;
+    let posY = clientY;
 
-    // Adjust position so it doesn't overflow screen boundaries
-    if (clientX + menuWidth > screenWidth) {
-        posX = screenWidth - menuWidth - 10 + window.scrollX;
-    }
-    if (clientY + menuHeight > screenHeight) {
-        posY = screenHeight - menuHeight - 10 + window.scrollY;
+    if (direction === 'top-left') {
+        posX = clientX - menuWidth;
+        posY = clientY - menuHeight;
+    } else if (direction === 'top-right') {
+        posX = clientX;
+        posY = clientY - menuHeight;
+    } else if (direction === 'bottom-left') {
+        posX = clientX - menuWidth;
+        posY = clientY;
+    } else { // 'bottom-right'
+        posX = clientX;
+        posY = clientY;
     }
 
-    posX = Math.max(0, posX);
-    posY = Math.max(0, posY);
+    // Clamp to screen boundaries (with scroll offset)
+    posX = Math.max(10, Math.min(posX, screenWidth - menuWidth - 10)) + window.scrollX;
+    posY = Math.max(10, Math.min(posY, screenHeight - menuHeight - 10)) + window.scrollY;
 
     $menu.css({
         left: posX + 'px',
