@@ -54,43 +54,111 @@
     font-size: 0.9em;
 }
 
-/* ── 内联段落编辑框 (无位移，自适应高度 + 限高滚动) ────────────────── */
-.twt-p-editor {
+/* ── 段落编辑弹窗（响应式，不影响页面布局，支持滚动） ──────────── */
+.twt-p-modal-overlay {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    z-index: 999999;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+}
+
+.twt-p-modal-box {
+    position: absolute;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: calc(100% - 32px);
+    max-width: 600px;
+    background: var(--SmartThemeBlurTintColor, #1e1e2e);
+    border-radius: 14px;
+    border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.15));
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+    padding: 20px;
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    width: 100%;
-    box-sizing: border-box;
-    padding: 2px 0;
+    gap: 12px;
 }
 
-.twt-p-textarea {
+.twt-p-modal-header {
+    font-size: 0.95em;
+    font-weight: bold;
+    opacity: 0.75;
+    color: var(--SmartThemeBodyColor, #e0e0e0);
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.12));
+}
+
+.twt-p-modal-textarea {
     width: 100%;
     box-sizing: border-box;
-    background: var(--SmartThemeDarkColor, rgba(0,0,0,0.15));
+    background: var(--SmartThemeDarkColor, rgba(0,0,0,0.25));
     color: var(--SmartThemeBodyColor, #ffffff);
     border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.15));
-    border-radius: 4px;
-    padding: 4px 6px;
+    border-radius: 8px;
+    padding: 10px 12px;
     font-family: inherit;
-    font-size: 0.9em !important; /* 文字相较于正文略小 */
+    font-size: 1em;
     line-height: 1.6;
-    max-height: 220px !important; /* 限制最高高度 */
-    overflow-y: auto !important; /* 文本过多时显示滚动条 */
-    resize: none; /* 依靠 JS 自动伸缩，禁用手动拖拽 */
-}
-
-.twt-p-textarea:focus {
+    resize: none;
+    overflow-y: auto;
+    min-height: 80px;
+    /* 最高不超过屏幕高度的 45%，留出键盘空间 */
+    max-height: 45vh;
     outline: none;
-    border-color: var(--SmartThemePrimaryColor, #007aff);
 }
 
-.twt-p-editor-actions {
+.twt-p-modal-textarea:focus {
+    border-color: var(--SmartThemeUnderlineColor, var(--SmartThemePrimaryColor, #007aff));
+}
+
+.twt-p-modal-actions {
     display: flex;
     justify-content: flex-end;
     gap: 10px;
-    padding-right: 4px;
 }
+
+.twt-p-modal-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 18px;
+    border-radius: 8px;
+    font-size: 0.9em;
+    cursor: pointer;
+    border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.2));
+    background: var(--SmartThemeDarkColor, rgba(255,255,255,0.08));
+    color: var(--SmartThemeBodyColor, #ffffff);
+    transition: background-color 0.15s, border-color 0.15s, opacity 0.15s, transform 0.1s;
+    outline: none;
+}
+
+.twt-p-modal-btn:hover {
+    background: var(--SmartThemeDarkColor, rgba(255,255,255,0.18));
+    border-color: var(--SmartThemeBorderColor, rgba(255,255,255,0.35));
+}
+
+.twt-p-modal-btn:active {
+    opacity: 0.8;
+    transform: scale(0.96);
+}
+
+.twt-p-modal-confirm {
+    background: var(--SmartThemeUnderlineColor, var(--SmartThemePrimaryColor, #007aff)) !important;
+    border-color: transparent !important;
+    color: #fff !important;
+    font-weight: bold;
+}
+
+.twt-p-modal-confirm:hover {
+    opacity: 0.9;
+    background: var(--SmartThemeUnderlineColor, var(--SmartThemePrimaryColor, #007aff)) !important;
+    filter: brightness(1.1);
+}
+
 
 /* ── 工具栏：浮动在文字之上，透明，纯图标 ────────────────────────── */
 .twt-p-toolbar-wrap {
@@ -113,7 +181,7 @@
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
-    pointer-events: none;
+    pointer-events: auto;
 }
 
 /* ── 纯图标小按钮 ────────────────────────────────────────────── */

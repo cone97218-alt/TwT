@@ -1,16 +1,103 @@
 // @ts-nocheck
 import { extension_settings, getContext } from '../../../extensions.js';
-import { scrollPageLeft, scrollPageRight, updateColWidthAfterEdit } from './pagination.js';
+import { scrollPageLeft, scrollPageRight } from './pagination.js';
 import { getRegexedString, regex_placement } from '../../regex/engine.js';
 
-// 动态加载 CSS
-if (!$('link[href*="paragraph.css"]').length) {
-    $('<link>', {
-        rel: 'stylesheet',
-        type: 'text/css',
-        href: 'scripts/extensions/third-party/TwT/paragraph.css'
-    }).appendTo('head');
+// 使用本地 document 作为 modal 的挂载目标，防止跨文档/跨域限制或弹窗被 iframe 遮挡
+const parentDoc = document;
+
+// 获取当前可见视口的几何中心及高度（兼容宿主 iframe 与带 transforms 容器的定位）
+function getVisibleCenter() {
+    let top = 0;
+    let height = window.innerHeight;
+    let isIframeCentering = false;
+
+    try {
+        if (window.parent && window.parent !== window && window.parent.document) {
+            const iframe = window.frameElement;
+            if (iframe) {
+                const rect = iframe.getBoundingClientRect();
+                const parentHeight = window.parent.innerHeight;
+                
+                const visibleTop = Math.max(0, -rect.top);
+                const visibleBottom = Math.min(rect.height || document.documentElement.scrollHeight, parentHeight - rect.top);
+                
+                top = visibleTop;
+                height = visibleBottom - visibleTop;
+                isIframeCentering = true;
+            }
+        }
+    } catch (e) {
+        console.warn("TwT: Cannot access parent window geometry, falling back to local positioning.", e);
+    }
+
+    if (!isIframeCentering) {
+        // 后备本地窗口定位，支持带有 CSS transform 的外部滚动定位
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop;
+        top = scrollTop;
+        height = window.innerHeight || document.documentElement.clientHeight;
+    }
+
+    return {
+        centerY: top + height / 2,
+        visibleTop: top,
+        visibleHeight: height
+    };
 }
+
+// 同步宿主页面主题样式到 iframe
+try {
+    if (window.parent) {
+        const pDoc = window.parent.document;
+        if (pDoc && pDoc !== document) {
+            const parentStyle = pDoc.documentElement.getAttribute('style');
+            if (parentStyle) {
+                document.documentElement.setAttribute('style', parentStyle);
+            }
+        }
+    }
+} catch (e) {
+    console.warn("TwT: Cannot sync theme style from parent.", e);
+}
+
+// 动态加载 CSS 到当前 iframe 及宿主 parent 页面（使用基于模块地址的绝对 URL 以防相对路径 404）
+function injectStyles() {
+    const cssUrl = new URL('./paragraph.css', import.meta.url).href;
+    console.log("TwT: Injecting stylesheet from absolute URL:", cssUrl);
+    
+    // 清理可能已存在的、非绝对路径的、可能导致 404 的旧 paragraph.css link 标签
+    $('link[href*="paragraph.css"]').not(`[href="${cssUrl}"]`).remove();
+    
+    if (!$(`link[href="${cssUrl}"]`).length) {
+        $('<link>', {
+            rel: 'stylesheet',
+            type: 'text/css',
+            href: cssUrl
+        }).appendTo('head');
+    }
+    try {
+        if (window.parent) {
+            const pDoc = window.parent.document;
+            if (pDoc && pDoc !== document) {
+                // 在宿主页面中也清理旧的/相对路径的 paragraph.css link
+                pDoc.querySelectorAll('link[href*="paragraph.css"]').forEach(el => {
+                    if (el.getAttribute('href') !== cssUrl) el.remove();
+                });
+                
+                if (!pDoc.querySelector(`link[href="${cssUrl}"]`)) {
+                    const link = pDoc.createElement('link');
+                    link.rel = 'stylesheet';
+                    link.type = 'text/css';
+                    link.href = cssUrl;
+                    pDoc.head.appendChild(link);
+                }
+            }
+        }
+    } catch (e) {
+        console.error("TwT: Failed to inject styles into parent document", e);
+    }
+}
+injectStyles();
 
 /**
  * 智能解析段落，按单行分段，但跳过代码块和 XML 标签内部
@@ -84,6 +171,18 @@ export function openParagraphEditor(mesId) {
     // 防止重复触发
     if (document.body.classList.contains('twt-paragraph-editing')) return;
 
+    // 再次同步一次宿主页面的 CSS 变量，确保主题颜色最新
+    try {
+        if (window.parent && window.parent.document && window.parent.document !== document) {
+            const parentStyle = window.parent.document.documentElement.getAttribute('style');
+            if (parentStyle) {
+                document.documentElement.setAttribute('style', parentStyle);
+            }
+        }
+    } catch (e) {
+        console.warn("TwT: Cannot sync theme style from parent on editor open.", e);
+    }
+
     // 读取自定义设置与正则过滤标志
     const settings = extension_settings.twt || {};
     const useFiltered = settings.menuOptEditFiltered ?? false;
@@ -92,6 +191,15 @@ export function openParagraphEditor(mesId) {
 
     const whitelistStr = settings.paragraphXmlWhitelist || 'thought, TavernThought, reasoning, details';
     const whitelist = whitelistStr.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+
+    // 锁住 #chat 的高度，防止移动端键盘弹出时布局重排/自动翻页
+    const $chat = $('#chat');
+    let originalChatStyle = '';
+    if ($chat.length) {
+        originalChatStyle = $chat.attr('style') || '';
+        const currentHeight = $chat.outerHeight();
+        $chat.css('cssText', $chat.attr('style') + `; height: ${currentHeight}px !important; max-height: none !important;`);
+    }
 
     // 保存原始消息内容（用于取消时恢复）
     const originalText = message.mes || '';
@@ -252,6 +360,8 @@ export function openParagraphEditor(mesId) {
                 // 如果正在编辑当前段落（点击发生在编辑器内部），不触发选中切换
                 if ($(e.target).closest('.twt-p-editor').length) return;
                 $(this).toggleClass('twt-p-selected');
+                const isSelected = $(this).hasClass('twt-p-selected');
+                console.log(`TwT: Paragraph item ${index} clicked. Selected status: ${isSelected}`);
             });
 
             $container.append($item);
@@ -269,10 +379,13 @@ export function openParagraphEditor(mesId) {
     function exitEditMode() {
         document.body.classList.remove('twt-paragraph-editing');
         $toolbar.remove();
-        // 键盘收起后浏览器会还原视口高度，触发 resize；
-        // 此时编辑模式已关闭，updateColWidth 会正常执行，列宽自动恢复。
-        // 手动补调一次以防 ResizeObserver 没有在恰好的时机触发
-        requestAnimationFrame(() => updateColWidthAfterEdit());
+        const oldModal = parentDoc.getElementById('twt-p-modal');
+        if (oldModal) {
+            oldModal.remove();
+        }
+        if ($chat.length) {
+            $chat.attr('style', originalChatStyle);
+        }
     }
 
     // ── 左右翻页按钮动作 ─────────────────────────────────────────
@@ -308,99 +421,232 @@ export function openParagraphEditor(mesId) {
         }
 
         if (confirm(`确定要删除选中的 ${checkedIndices.length} 个段落吗？`)) {
-            checkedIndices.forEach(idx => {
-                blocks[idx].isDeleted = true;
-            });
+            checkedIndices.sort((a, b) => a - b);
+            const targetIdx = checkedIndices[0];
+            const lastIdx = checkedIndices[checkedIndices.length - 1];
+            for (let i = targetIdx; i <= lastIdx; i++) {
+                if (checkedIndices.includes(i) || blocks[i].current.trim() === '') {
+                    blocks[i].isDeleted = true;
+                }
+            }
             renderInlineList();
         }
     });
 
-    // ── 单个段落修改编辑 ───────────────────────────────────────────
+    // ── 段落修改编辑（支持单段落或相邻多段落合并编辑） ─────────────────
     $toolbar.find('#twt-p-edit').on('click', (e) => {
         e.stopPropagation();
+        console.log("TwT: Edit button (#twt-p-edit) clicked.");
 
-        const $checked = $container.find('.twt-p-item.twt-p-selected');
-        if ($checked.length !== 1) {
-            alert('请选择单项段落进行编辑！');
-            return;
-        }
-
-        const $item = $checked.first();
-        const index = Number($item.attr('data-index'));
-        const block = blocks[index];
-
-        // 关闭可能已存在的老编辑器
-        $container.find('.twt-p-editor').each(function() {
-            const otherIndex = Number($(this).data('for-index'));
-            const $otherItem = $container.find(`.twt-p-item[data-index="${otherIndex}"]`);
-            $(this).remove();
-            $otherItem.show();
-        });
-
-        $item.hide();
-
-        const $editor = $(`
-            <div class="twt-p-editor" data-for-index="${index}">
-                <textarea class="twt-p-textarea"></textarea>
-                <div class="twt-p-editor-actions">
-                    <button class="twt-p-btn twt-p-editor-cancel" title="取消"><i class="fa-solid fa-xmark"></i></button>
-                    <button class="twt-p-btn twt-p-editor-save" title="确定"><i class="fa-solid fa-check"></i></button>
-                </div>
-            </div>
-        `);
-
-        const $textarea = $editor.find('.twt-p-textarea');
-        $textarea.val(block.current);
-        $item.after($editor);
-
-        // 自适应高度调整：在最高 220px 限制下动态调节高度，超出时启用滚动条
-        const adjustHeight = () => {
-            $textarea.css('height', 'auto');
-            const scrollHeight = $textarea[0].scrollHeight;
-            const maxHeight = 220; // 对应 CSS 中设置 of max-height
-            
-            if (scrollHeight > maxHeight) {
-                $textarea.css('height', maxHeight + 'px');
-                $textarea.css('overflow-y', 'auto');
-            } else {
-                $textarea.css('height', (scrollHeight + 2) + 'px');
-                $textarea.css('overflow-y', 'hidden');
+        try {
+            const $checked = $container.find('.twt-p-item.twt-p-selected');
+            console.log("TwT: Number of selected paragraphs:", $checked.length);
+            if ($checked.length === 0) {
+                alert('请先选择需要编辑的段落！');
+                return;
             }
-        };
 
-        $textarea.on('input', adjustHeight);
-        requestAnimationFrame(adjustHeight); // 等元素渲染后刷新高度
+            // 检查选中的段落是否在 DOM 中相邻（连续）
+            const $allItems = $container.find('.twt-p-item');
+            const selectedDomIndices = [];
+            $allItems.each(function(idx) {
+                if ($(this).hasClass('twt-p-selected')) {
+                    selectedDomIndices.push(idx);
+                }
+            });
 
-        $editor.find('.twt-p-editor-cancel').on('click', (ev) => {
-            ev.stopPropagation();
-            $editor.remove();
-            $item.show();
-        });
+            let isContiguous = true;
+            for (let i = 1; i < selectedDomIndices.length; i++) {
+                if (selectedDomIndices[i] !== selectedDomIndices[i - 1] + 1) {
+                    isContiguous = false;
+                    break;
+                }
+            }
 
-        $editor.find('.twt-p-editor-save').on('click', (ev) => {
-            ev.stopPropagation();
-            const newText = $textarea.val();
-            block.current = newText;
-            block.isEdited = true;
-            $item.find('.twt-p-text').text(newText);
-            $editor.remove();
-            $item.show();
-        });
+            if (!isContiguous) {
+                alert('仅支持合并编辑相邻的段落！');
+                return;
+            }
+
+            // 收集选中段落的 blocks 索引并排序
+            const sortedBlockIndices = [];
+            $checked.each(function() {
+                sortedBlockIndices.push(Number($(this).attr('data-index')));
+            });
+            sortedBlockIndices.sort((a, b) => a - b);
+
+            // 合并选中段落的内容
+            const mergedText = sortedBlockIndices.map(idx => blocks[idx].current).join('\n');
+            console.log(`TwT: Editing ${sortedBlockIndices.length} adjacent paragraphs, merged length: ${mergedText.length}`);
+
+            // 移除可能已存在的旧弹窗
+            const oldModal = parentDoc.getElementById('twt-p-modal');
+            if (oldModal) {
+                console.log("TwT: Removing existing old modal");
+                oldModal.remove();
+            }
+
+            console.log("TwT: Creating new modal element");
+            // 使用 parentDoc 纯原生方式创建元素，避免 WRONG_DOCUMENT_ERR 或者是 jQuery 找不到的问题
+            const modalEl = parentDoc.createElement('div');
+            modalEl.id = 'twt-p-modal';
+            modalEl.className = 'twt-p-modal-overlay';
+            modalEl.style.cssText = 'position: absolute; left: 0; top: 0; width: 100%; z-index: 999999; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);';
+            modalEl.innerHTML = `
+                <div class="twt-p-modal-box" style="position: absolute; left: 50%; transform: translate(-50%, -50%); width: calc(100% - 32px); max-width: 600px; padding: 20px; border-radius: 14px; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; background: var(--SmartThemeBlurTintColor, #1e1e2e); border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.15)); box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);">
+                    <div class="twt-p-modal-header" style="font-size: 0.95em; font-weight: bold; opacity: 0.75; color: var(--SmartThemeBodyColor, #e0e0e0); padding-bottom: 6px; border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.12));">编辑段落</div>
+                    <textarea class="twt-p-modal-textarea" style="width: 100%; box-sizing: border-box; background: var(--SmartThemeDarkColor, rgba(0,0,0,0.25)); color: var(--SmartThemeBodyColor, #ffffff); border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.15)); border-radius: 8px; padding: 10px 12px; font-family: inherit; font-size: 1em; line-height: 1.6; resize: none; overflow-y: auto; min-height: 100px; outline: none;"></textarea>
+                    <div class="twt-p-modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px;">
+                        <button class="twt-p-modal-btn twt-p-modal-cancel" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px; border-radius: 8px; font-size: 0.9em; cursor: pointer; border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.2)); background: var(--SmartThemeDarkColor, rgba(255,255,255,0.08)); color: var(--SmartThemeBodyColor, #ffffff); outline: none;"><i class="fa-solid fa-xmark"></i> 取消</button>
+                        <button class="twt-p-modal-btn twt-p-modal-confirm" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px; border-radius: 8px; font-size: 0.9em; cursor: pointer; border: none; background: var(--SmartThemeUnderlineColor, var(--SmartThemePrimaryColor, #007aff)); color: #ffffff; font-weight: bold; outline: none;"><i class="fa-solid fa-check"></i> 确定</button>
+                    </div>
+                </div>
+            `;
+            parentDoc.body.appendChild(modalEl);
+            console.log("TwT: Modal element appended to parentDoc body");
+
+            const $modal = $(modalEl);
+            const $textarea = $modal.find('.twt-p-modal-textarea');
+            $textarea.val(mergedText);
+
+            // 动态定位弹窗，使其完美垂直居中在用户的可见视口内
+            const repositionModal = () => {
+                const { centerY, visibleHeight } = getVisibleCenter();
+                
+                // 覆盖 overlay 高度以覆盖整个文档
+                const docHeight = Math.max(
+                    document.documentElement.scrollHeight,
+                    document.body.scrollHeight,
+                    window.innerHeight
+                );
+                modalEl.style.height = docHeight + 'px';
+                
+                // 定位对话框
+                const $box = $modal.find('.twt-p-modal-box');
+                $box.css({
+                    position: 'absolute',
+                    top: centerY + 'px',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)'
+                });
+                
+                // 限制 textarea 最大高度，防止长段落编辑时框体超出可视范围
+                $textarea.css('height', 'auto');
+                const sh = $textarea[0].scrollHeight;
+                const maxTaHeight = Math.max(100, Math.min(sh + 2, visibleHeight * 0.4, 300));
+                $textarea.css('height', maxTaHeight + 'px');
+            };
+
+            // 监听 textarea 内容输入、窗口大小与滚动变化，实时更新位置与自适应高度
+            $textarea.on('input', repositionModal);
+
+            const handleScrollResize = () => {
+                requestAnimationFrame(repositionModal);
+            };
+
+            window.addEventListener('resize', handleScrollResize);
+            window.addEventListener('scroll', handleScrollResize);
+            try {
+                if (window.parent && window.parent !== window) {
+                    window.parent.addEventListener('resize', handleScrollResize);
+                    window.parent.addEventListener('scroll', handleScrollResize);
+                }
+            } catch (e) {
+                console.warn("TwT: Cannot bind listener to window.parent", e);
+            }
+            
+            // 支持 Ctrl+Enter 确认提交
+            $textarea.on('keydown', (ev) => {
+                if ((ev.ctrlKey || ev.metaKey) && ev.key === 'Enter') {
+                    ev.preventDefault();
+                    $modal.find('.twt-p-modal-confirm').trigger('click');
+                }
+            });
+
+            requestAnimationFrame(() => {
+                repositionModal();
+                $textarea[0].focus();
+                // 光标移到末尾
+                const len = $textarea.val().length;
+                $textarea[0].setSelectionRange(len, len);
+            });
+
+            const closeModal = () => {
+                console.log("TwT: Closing modal");
+                window.removeEventListener('resize', handleScrollResize);
+                window.removeEventListener('scroll', handleScrollResize);
+                try {
+                    if (window.parent && window.parent !== window) {
+                        window.parent.removeEventListener('resize', handleScrollResize);
+                        window.parent.removeEventListener('scroll', handleScrollResize);
+                    }
+                } catch (e) {}
+                $modal.remove();
+            };
+
+            // 点击遮罩层关闭
+            $modal.on('click', function(ev) {
+                if (ev.target === this) closeModal();
+            });
+
+            $modal.find('.twt-p-modal-cancel').on('click', (ev) => {
+                ev.stopPropagation();
+                closeModal();
+            });
+
+            $modal.find('.twt-p-modal-confirm').on('click', (ev) => {
+                ev.stopPropagation();
+                const newText = $textarea.val();
+                
+                // 将编辑后的合并文本写入第一个选中块中
+                const targetIdx = sortedBlockIndices[0];
+                blocks[targetIdx].current = newText;
+                blocks[targetIdx].isEdited = true;
+                
+                // 将其余被合并编辑的块以及中间的空白/空白行段落标记为删除，防止保存后产生多余空行
+                const lastIdx = sortedBlockIndices[sortedBlockIndices.length - 1];
+                for (let i = targetIdx + 1; i <= lastIdx; i++) {
+                    if (sortedBlockIndices.includes(i) || blocks[i].current.trim() === '') {
+                        blocks[i].isDeleted = true;
+                    }
+                }
+
+                // 重新渲染内联列表以反映合并后的效果
+                renderInlineList();
+                closeModal();
+            });
+        } catch (err) {
+            console.error("TwT: Error opening paragraph editor:", err);
+            if (typeof toastr !== 'undefined') {
+                toastr.error(`打开编辑器失败: ${err.message}`);
+            } else {
+                alert(`打开编辑器失败: ${err.message}`);
+            }
+        }
     });
 
     // ── 保存所有修改 ───────────────────────────────────────────────
     $toolbar.find('#twt-p-save').on('click', async (e) => {
         e.stopPropagation();
 
-        // 收集仍开启编辑框的段落数据
-        $container.find('.twt-p-editor').each(function() {
-            const newText = $(this).find('.twt-p-textarea').val();
-            const idx = Number($(this).data('for-index'));
-            if (!isNaN(idx)) {
-                blocks[idx].current = newText;
-                blocks[idx].isEdited = true;
+        // 如果弹窗还开着，先关掉（以弹窗当前内容为准提交）
+        const openModalEl = parentDoc.getElementById('twt-p-modal');
+        if (openModalEl) {
+            const $openModal = $(openModalEl);
+            const $ta = $openModal.find('.twt-p-modal-textarea');
+            // 找到对应的段落——通过当前选中项
+            const $sel = $container.find('.twt-p-item.twt-p-selected');
+            if ($sel.length === 1) {
+                const idx = Number($sel.attr('data-index'));
+                if (!isNaN(idx)) {
+                    blocks[idx].current = $ta.val();
+                    blocks[idx].isEdited = true;
+                    $sel.find('.twt-p-text').text($ta.val());
+                    $sel.removeClass('twt-p-selected');
+                }
             }
-        });
+            openModalEl.remove();
+        }
 
         // 重新组合成完整文本。如果段落未修改，使用 originalText (包含隐藏内容)，否则使用编辑后的 current
         const finalBlocks = [];

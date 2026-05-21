@@ -257,7 +257,14 @@ function closeOptimizeEditor() {
 }
 
 export function updateInjectedStyles() {
-    const doc = window.parent && window.parent.document ? window.parent.document : document;
+    let doc = document;
+    try {
+        if (window.parent && window.parent.document) {
+            doc = window.parent.document;
+        }
+    } catch (e) {
+        console.warn("TwT: Cannot access window.parent.document in updateInjectedStyles.", e);
+    }
     let style = doc.getElementById('twt-optimize-styles');
     if (!style) {
         style = doc.createElement('style');
@@ -867,7 +874,14 @@ jQuery(async () => {
     initMenu(() => extension_settings.twt);
 
     // 监听聊天区域右键/长按菜单事件以禁用长按菜单
-    const parentDoc = window.parent && window.parent.document ? window.parent.document : document;
+    let parentDoc = document;
+    try {
+        if (window.parent && window.parent.document) {
+            parentDoc = window.parent.document;
+        }
+    } catch (e) {
+        console.warn("TwT: Cannot access window.parent.document for contextmenu event listener.", e);
+    }
     parentDoc.addEventListener('contextmenu', (e) => {
         const patches = extension_settings.twt.optimizePatches || {};
         const isEnabled = extension_settings.twt.optimizeEnabled && patches['禁用聊天区域长按菜单']?.active;

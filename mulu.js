@@ -7,15 +7,23 @@ const BTN_END_ID = 'twt-mulu-end-btn';
 const BTN_TOC_ID = 'twt-mulu-toc-btn';
 
 function getDoc() {
-    if (window.parent && window.parent.document) {
-        return window.parent.document;
+    try {
+        if (window.parent && window.parent.document) {
+            return window.parent.document;
+        }
+    } catch (e) {
+        console.warn("TwT: Cannot access window.parent.document in mulu.js", e);
     }
     return document;
 }
 
 function getWin() {
-    if (window.parent) {
-        return window.parent;
+    try {
+        if (window.parent && window.parent.document) {
+            return window.parent;
+        }
+    } catch (e) {
+        console.warn("TwT: Cannot access window.parent in mulu.js", e);
     }
     return window;
 }
