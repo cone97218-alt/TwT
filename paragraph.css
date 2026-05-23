@@ -43,13 +43,12 @@
 }
 
 .twt-p-spacer {
-    line-height: inherit; /* 继承消息文本行高 */
+    display: block;
+    height: var(--twt-paragraph-spacing, 0.8em);
 }
 
-/* 用不可见字符撑出一个行高，与正常空行高度完全一致 */
 .twt-p-spacer::after {
-    content: "\200b"; /* zero-width space */
-    display: inline;
+    content: none;
 }
 
 .twt-p-empty {
