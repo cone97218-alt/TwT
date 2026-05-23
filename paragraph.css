@@ -14,7 +14,11 @@
     cursor: pointer;
     user-select: none;
     -webkit-user-select: none;
-    line-height: inherit; /* 继承消息文本的行高 */
+    font-size: var(--twt-detected-p-font-size, inherit);
+    line-height: var(--twt-detected-p-line-height, inherit);
+    text-align: var(--twt-detected-p-text-align, inherit);
+    letter-spacing: var(--twt-detected-p-letter-spacing, inherit);
+    color: var(--twt-detected-p-color, inherit);
 }
 
 /* 选中左侧竖线：绝对定位悬浮在最左侧边缘（气泡内边距区域），不占空间，不导致位移 */
@@ -35,16 +39,16 @@
 }
 
 .twt-p-text {
-    color: var(--SmartThemeBodyColor, #e0e0e0);
     font-size: inherit;
     line-height: inherit;
     word-break: break-all;
     white-space: pre-wrap;
+    text-indent: var(--twt-text-indent, var(--twt-detected-p-text-indent, 0em));
 }
 
 .twt-p-spacer {
     display: block;
-    height: var(--twt-paragraph-spacing, 0.8em);
+    height: var(--twt-paragraph-spacing, var(--twt-detected-p-spacing, 0.8em));
 }
 
 .twt-p-spacer::after {

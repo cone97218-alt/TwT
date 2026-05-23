@@ -328,6 +328,34 @@ export function openParagraphEditor(mesId) {
     // ── 内联列表容器放在消息文本中 ──────────────────────────────
     const $container = $('<div class="twt-p-container"></div>');
 
+    // 检测当前主题/CSS美化的 <p> 标签样式
+    try {
+        const firstP = $('#chat .mes_text p').get(0);
+        if (firstP) {
+            const computed = window.getComputedStyle(firstP);
+            const mb = parseFloat(computed.marginBottom) || 0;
+            const pb = parseFloat(computed.paddingBottom) || 0;
+            const mt = parseFloat(computed.marginTop) || 0;
+            
+            let spacing = '0.8em';
+            if (mb > 0) spacing = computed.marginBottom;
+            else if (pb > 0) spacing = computed.paddingBottom;
+            else if (mt > 0) spacing = computed.marginTop;
+            
+            $container.css({
+                '--twt-detected-p-spacing': spacing,
+                '--twt-detected-p-font-size': computed.fontSize,
+                '--twt-detected-p-line-height': computed.lineHeight,
+                '--twt-detected-p-text-align': computed.textAlign,
+                '--twt-detected-p-letter-spacing': computed.letterSpacing,
+                '--twt-detected-p-text-indent': computed.textIndent,
+                '--twt-detected-p-color': computed.color
+            });
+        }
+    } catch (e) {
+        console.warn("TwT: Failed to detect theme paragraph styles", e);
+    }
+
     // ── 进入编辑模式，屏蔽点击翻页 and 手势滑动翻页 ─────────────────
     document.body.classList.add('twt-paragraph-editing');
 
