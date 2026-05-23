@@ -2,216 +2,217 @@
 
 /* ── 段落列表容器 ──────────────────────────────────────────────── */
 .twt-p-container {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0 !important;
 }
 
 /* ── 每行段落 (0位移，左侧悬浮竖线指示器) ────────────────────────── */
 .twt-p-item {
-    position: relative;
-    padding: 0; /* 完全不增加额外间距，保持与正常渲染一致 */
-    cursor: pointer;
-    user-select: none;
-    -webkit-user-select: none;
-    line-height: inherit; /* 继承消息文本的行高 */
+    position: relative !important;
+    padding: 0 !important; /* 完全不增加额外间距，保持与正常渲染一致 */
+    cursor: pointer !important;
+    user-select: none !important;
+    -webkit-user-select: none !important;
+    line-height: inherit !important; /* 继承消息文本的行高 */
 }
 
 /* 选中左侧竖线：绝对定位悬浮在最左侧边缘（气泡内边距区域），不占空间，不导致位移 */
 .twt-p-item::before {
-    content: "";
-    position: absolute;
-    left: -8px; /* 悬浮在消息气泡的左边距 padding 区域内，完全不占文本宽度 */
-    top: 0;
-    bottom: 0;
-    width: 3px;
-    background: transparent;
-    transition: background-color 0.15s;
-    z-index: 1;
+    content: "" !important;
+    position: absolute !important;
+    left: -8px !important; /* 悬浮在消息气泡的左边距 padding 区域内，完全不占文本宽度 */
+    top: 0 !important;
+    bottom: 0 !important;
+    width: 3px !important;
+    background: transparent !important;
+    transition: background-color 0.15s !important;
+    z-index: 1 !important;
 }
 
 .twt-p-item.twt-p-selected::before {
-    background-color: var(--SmartThemeUnderlineColor, var(--SmartThemePrimaryColor, #007aff));
+    background-color: var(--SmartThemeUnderlineColor, var(--SmartThemePrimaryColor, #007aff)) !important;
 }
 
 .twt-p-text {
-    color: var(--SmartThemeBodyColor, #e0e0e0);
-    font-size: inherit;
-    line-height: inherit;
-    word-break: break-all;
-    white-space: pre-wrap;
+    color: var(--SmartThemeBodyColor, #e0e0e0) !important;
+    font-size: inherit !important;
+    line-height: inherit !important;
+    word-break: break-all !important;
+    white-space: pre-wrap !important;
 }
 
 .twt-p-spacer {
-    line-height: inherit; /* 继承消息文本行高 */
+    line-height: inherit !important; /* 继承消息文本行高 */
 }
 
 /* 用不可见字符撑出一个行高，与正常空行高度完全一致 */
 .twt-p-spacer::after {
-    content: "\200b"; /* zero-width space */
-    display: inline;
+    content: "\200b" !important; /* zero-width space */
+    display: inline !important;
 }
 
 .twt-p-empty {
-    text-align: center;
-    color: var(--SmartThemeBodyColor);
-    opacity: 0.5;
-    padding: 12px;
-    font-size: 0.9em;
+    text-align: center !important;
+    color: var(--SmartThemeBodyColor) !important;
+    opacity: 0.5 !important;
+    padding: 12px !important;
+    font-size: 0.9em !important;
 }
 
 /* ── 段落编辑弹窗（响应式，不影响页面布局，支持滚动） ──────────── */
 .twt-p-modal-overlay {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    z-index: 999999;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(2px);
-    -webkit-backdrop-filter: blur(2px);
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    z-index: 999999 !important;
+    background: rgba(0, 0, 0, 0.6) !important;
+    backdrop-filter: blur(2px) !important;
+    -webkit-backdrop-filter: blur(2px) !important;
 }
 
 .twt-p-modal-box {
-    position: absolute;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: calc(100% - 32px);
-    max-width: 600px;
-    background: var(--SmartThemeBlurTintColor, #1e1e2e);
-    border-radius: 14px;
-    border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.15));
-    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
-    padding: 20px;
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
+    position: absolute !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    width: calc(100% - 32px) !important;
+    max-width: 600px !important;
+    background: var(--SmartThemeBlurTintColor, #1e1e2e) !important;
+    border-radius: 14px !important;
+    border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.15)) !important;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5) !important;
+    padding: 20px !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
 }
 
 .twt-p-modal-header {
-    font-size: 0.95em;
-    font-weight: bold;
-    opacity: 0.75;
-    color: var(--SmartThemeBodyColor, #e0e0e0);
-    padding-bottom: 4px;
-    border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.12));
+    font-size: 0.95em !important;
+    font-weight: bold !important;
+    opacity: 0.75 !important;
+    color: var(--SmartThemeBodyColor, #e0e0e0) !important;
+    padding-bottom: 4px !important;
+    border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.12)) !important;
 }
 
 .twt-p-modal-textarea {
-    width: 100%;
-    box-sizing: border-box;
-    background: var(--SmartThemeDarkColor, rgba(0,0,0,0.25));
-    color: var(--SmartThemeBodyColor, #ffffff);
-    border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.15));
-    border-radius: 8px;
-    padding: 10px 12px;
-    font-family: inherit;
-    font-size: 1em;
-    line-height: 1.6;
-    resize: none;
-    overflow-y: auto;
-    min-height: 80px;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    background: var(--SmartThemeDarkColor, rgba(0,0,0,0.25)) !important;
+    color: var(--SmartThemeBodyColor, #ffffff) !important;
+    border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.15)) !important;
+    border-radius: 8px !important;
+    padding: 10px 12px !important;
+    font-family: inherit !important;
+    font-size: 1em !important;
+    line-height: 1.6 !important;
+    resize: none !important;
+    overflow-y: auto !important;
+    min-height: 80px !important;
     /* 最高不超过屏幕高度的 45%，留出键盘空间 */
-    max-height: 45vh;
-    outline: none;
+    max-height: 45vh !important;
+    outline: none !important;
 }
 
 .twt-p-modal-textarea:focus {
-    border-color: var(--SmartThemeUnderlineColor, var(--SmartThemePrimaryColor, #007aff));
+    border-color: var(--SmartThemeUnderlineColor, var(--SmartThemePrimaryColor, #007aff)) !important;
 }
 
 .twt-p-modal-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
+    display: flex !important;
+    justify-content: flex-end !important;
+    gap: 10px !important;
 }
 
 .twt-p-modal-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 18px;
-    border-radius: 8px;
-    font-size: 0.9em;
-    cursor: pointer;
-    border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.2));
-    background: var(--SmartThemeDarkColor, rgba(255,255,255,0.08));
-    color: var(--SmartThemeBodyColor, #ffffff);
-    transition: background-color 0.15s, border-color 0.15s, opacity 0.15s, transform 0.1s;
-    outline: none;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    padding: 8px 18px !important;
+    border-radius: 8px !important;
+    font-size: 0.9em !important;
+    cursor: pointer !important;
+    border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.2)) !important;
+    background: var(--SmartThemeDarkColor, rgba(255,255,255,0.08)) !important;
+    color: var(--SmartThemeBodyColor, #ffffff) !important;
+    transition: background-color 0.15s, border-color 0.15s, opacity 0.15s, transform 0.1s !important;
+    outline: none !important;
 }
 
 .twt-p-modal-btn:hover {
-    background: var(--SmartThemeDarkColor, rgba(255,255,255,0.18));
-    border-color: var(--SmartThemeBorderColor, rgba(255,255,255,0.35));
+    background: var(--SmartThemeDarkColor, rgba(255,255,255,0.18)) !important;
+    border-color: var(--SmartThemeBorderColor, rgba(255,255,255,0.35)) !important;
 }
 
 .twt-p-modal-btn:active {
-    opacity: 0.8;
-    transform: scale(0.96);
+    opacity: 0.8 !important;
+    transform: scale(0.96) !important;
 }
 
 .twt-p-modal-confirm {
     background: var(--SmartThemeUnderlineColor, var(--SmartThemePrimaryColor, #007aff)) !important;
     border-color: transparent !important;
     color: #fff !important;
-    font-weight: bold;
+    font-weight: bold !important;
 }
 
 .twt-p-modal-confirm:hover {
-    opacity: 0.9;
+    opacity: 0.9 !important;
     background: var(--SmartThemeUnderlineColor, var(--SmartThemePrimaryColor, #007aff)) !important;
-    filter: brightness(1.1);
+    filter: brightness(1.1) !important;
 }
 
 
 /* ── 工具栏：浮动在文字之上，透明，纯图标 ────────────────────────── */
 .twt-p-toolbar-wrap {
-    position: absolute;
-    left: 0;
-    right: 0;
-    z-index: 99999;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    pointer-events: none; /* 穿透点击 */
+    position: absolute !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: var(--twt-paragraph-toolbar-bottom, 15px) !important;
+    z-index: 99999 !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    pointer-events: none !important; /* 穿透点击 */
 }
 
 /* 内部按钮排：透明 */
 .twt-p-toolbar-inner {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 2px 6px;
+    display: flex !important;
+    align-items: center !important;
+    gap: 14px !important;
+    padding: 2px 6px !important;
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
-    pointer-events: auto;
+    pointer-events: auto !important;
 }
 
 /* ── 纯图标小按钮 ────────────────────────────────────────────── */
 .twt-p-btn {
-    width: var(--twt-paragraph-icon-size, 20px);
-    height: var(--twt-paragraph-icon-size, 20px);
-    font-size: calc(var(--twt-paragraph-icon-size, 20px) * 0.72);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    width: var(--twt-paragraph-icon-size, 20px) !important;
+    height: var(--twt-paragraph-icon-size, 20px) !important;
+    font-size: calc(var(--twt-paragraph-icon-size, 20px) * 0.72) !important;
+    cursor: pointer !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
     color: var(--SmartThemeBodyColor, #ffffff) !important;
-    opacity: 0.65;
-    transition: opacity 0.2s, transform 0.1s;
-    pointer-events: auto; /* 响应点击 */
+    opacity: 0.65 !important;
+    transition: opacity 0.2s, transform 0.1s !important;
+    pointer-events: auto !important; /* 响应点击 */
 }
 
 .twt-p-btn:hover {
-    opacity: 1;
+    opacity: 1 !important;
 }
 
 .twt-p-btn:active {
-    transform: scale(0.85);
+    transform: scale(0.85) !important;
 }

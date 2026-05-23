@@ -309,11 +309,11 @@ export function openParagraphEditor(mesId) {
     // ── 将工具栏添加到 #chat 的父容器中，防止它跟随 #chat 横向翻页滚动 ──
     const $chatParent = $('#chat').parent();
     if ($chatParent.length && $chatParent.css('position') === 'static') {
-        $chatParent.css('position', 'relative');
+        $chatParent.css('cssText', ($chatParent.attr('style') || '') + '; position: relative !important;');
     }
 
     const $toolbar = $(`
-        <div id="twt-paragraph-toolbar" class="twt-p-toolbar-wrap" style="bottom: ${toolbarBottom}px; --twt-paragraph-icon-size: ${iconSize}px;">
+        <div id="twt-paragraph-toolbar" class="twt-p-toolbar-wrap" style="--twt-paragraph-toolbar-bottom: ${toolbarBottom}px !important; --twt-paragraph-icon-size: ${iconSize}px !important;">
             <div class="twt-p-toolbar-inner">
                 <button class="twt-p-btn twt-p-btn-page" id="twt-p-prev" title="上一页"><i class="fa-solid fa-chevron-left"></i></button>
                 <button class="twt-p-btn twt-p-btn-danger" id="twt-p-delete" title="删除所选段落"><i class="fa-solid fa-trash"></i></button>
@@ -491,14 +491,14 @@ export function openParagraphEditor(mesId) {
             const modalEl = parentDoc.createElement('div');
             modalEl.id = 'twt-p-modal';
             modalEl.className = 'twt-p-modal-overlay';
-            modalEl.style.cssText = 'position: absolute; left: 0; top: 0; width: 100%; z-index: 999999; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);';
+            modalEl.style.cssText = 'position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; z-index: 999999 !important; background: rgba(0, 0, 0, 0.6) !important; backdrop-filter: blur(2px) !important; -webkit-backdrop-filter: blur(2px) !important;';
             modalEl.innerHTML = `
-                <div class="twt-p-modal-box" style="position: absolute; left: 50%; transform: translate(-50%, -50%); width: calc(100% - 32px); max-width: 600px; padding: 20px; border-radius: 14px; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; background: var(--SmartThemeBlurTintColor, #1e1e2e); border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.15)); box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);">
-                    <div class="twt-p-modal-header" style="font-size: 0.95em; font-weight: bold; opacity: 0.75; color: var(--SmartThemeBodyColor, #e0e0e0); padding-bottom: 6px; border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.12));">编辑段落</div>
-                    <textarea class="twt-p-modal-textarea" style="width: 100%; box-sizing: border-box; background: var(--SmartThemeDarkColor, rgba(0,0,0,0.25)); color: var(--SmartThemeBodyColor, #ffffff); border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.15)); border-radius: 8px; padding: 10px 12px; font-family: inherit; font-size: 1em; line-height: 1.6; resize: none; overflow-y: auto; min-height: 100px; outline: none;"></textarea>
-                    <div class="twt-p-modal-actions" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px;">
-                        <button class="twt-p-modal-btn twt-p-modal-cancel" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px; border-radius: 8px; font-size: 0.9em; cursor: pointer; border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.2)); background: var(--SmartThemeDarkColor, rgba(255,255,255,0.08)); color: var(--SmartThemeBodyColor, #ffffff); outline: none;"><i class="fa-solid fa-xmark"></i> 取消</button>
-                        <button class="twt-p-modal-btn twt-p-modal-confirm" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px; border-radius: 8px; font-size: 0.9em; cursor: pointer; border: none; background: var(--SmartThemeUnderlineColor, var(--SmartThemePrimaryColor, #007aff)); color: #ffffff; font-weight: bold; outline: none;"><i class="fa-solid fa-check"></i> 确定</button>
+                <div class="twt-p-modal-box" style="position: absolute !important; left: 50% !important; transform: translate(-50%, -50%) !important; width: calc(100% - 32px) !important; max-width: 600px !important; padding: 20px !important; border-radius: 14px !important; box-sizing: border-box !important; display: flex !important; flex-direction: column !important; gap: 12px !important; background: var(--SmartThemeBlurTintColor, #1e1e2e) !important; border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.15)) !important; box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5) !important;">
+                    <div class="twt-p-modal-header" style="font-size: 0.95em !important; font-weight: bold !important; opacity: 0.75 !important; color: var(--SmartThemeBodyColor, #e0e0e0) !important; padding-bottom: 6px !important; border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.12)) !important;">编辑段落</div>
+                    <textarea class="twt-p-modal-textarea" style="width: 100% !important; box-sizing: border-box !important; background: var(--SmartThemeDarkColor, rgba(0,0,0,0.25)) !important; color: var(--SmartThemeBodyColor, #ffffff) !important; border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.15)) !important; border-radius: 8px !important; padding: 10px 12px !important; font-family: inherit !important; font-size: 1em !important; line-height: 1.6 !important; resize: none !important; overflow-y: auto !important; min-height: 100px !important; outline: none !important;"></textarea>
+                    <div class="twt-p-modal-actions" style="display: flex !important; justify-content: flex-end !important; gap: 10px !important; margin-top: 4px !important;">
+                        <button class="twt-p-modal-btn twt-p-modal-cancel" style="display: inline-flex !important; align-items: center !important; gap: 6px !important; padding: 8px 18px !important; border-radius: 8px !important; font-size: 0.9em !important; cursor: pointer !important; border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.2)) !important; background: var(--SmartThemeDarkColor, rgba(255,255,255,0.08)) !important; color: var(--SmartThemeBodyColor, #ffffff) !important; outline: none !important;"><i class="fa-solid fa-xmark"></i> 取消</button>
+                        <button class="twt-p-modal-btn twt-p-modal-confirm" style="display: inline-flex !important; align-items: center !important; gap: 6px !important; padding: 8px 18px !important; border-radius: 8px !important; font-size: 0.9em !important; cursor: pointer !important; border: none !important; background: var(--SmartThemeUnderlineColor, var(--SmartThemePrimaryColor, #007aff)) !important; color: #ffffff !important; font-weight: bold !important; outline: none !important;"><i class="fa-solid fa-check"></i> 确定</button>
                     </div>
                 </div>
             `;
@@ -519,22 +519,16 @@ export function openParagraphEditor(mesId) {
                     document.body.scrollHeight,
                     window.innerHeight
                 );
-                modalEl.style.height = docHeight + 'px';
+                modalEl.style.setProperty('height', docHeight + 'px', 'important');
                 
                 // 定位对话框
                 const $box = $modal.find('.twt-p-modal-box');
-                $box.css({
-                    position: 'absolute',
-                    top: centerY + 'px',
-                    left: '50%',
-                    transform: 'translate(-50%, -50%)'
-                });
+                $box.css('cssText', `position: absolute !important; left: 50% !important; transform: translate(-50%, -50%) !important; width: calc(100% - 32px) !important; max-width: 600px !important; padding: 20px !important; border-radius: 14px !important; box-sizing: border-box !important; display: flex !important; flex-direction: column !important; gap: 12px !important; background: var(--SmartThemeBlurTintColor, #1e1e2e) !important; border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.15)) !important; box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5) !important; top: ${centerY}px !important;`);
                 
                 // 限制 textarea 最大高度，防止长段落编辑时框体超出可视范围
-                $textarea.css('height', 'auto');
                 const sh = $textarea[0].scrollHeight;
                 const maxTaHeight = Math.max(100, Math.min(sh + 2, visibleHeight * 0.4, 300));
-                $textarea.css('height', maxTaHeight + 'px');
+                $textarea.css('cssText', `width: 100% !important; box-sizing: border-box !important; background: var(--SmartThemeDarkColor, rgba(0,0,0,0.25)) !important; color: var(--SmartThemeBodyColor, #ffffff) !important; border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.15)) !important; border-radius: 8px !important; padding: 10px 12px !important; font-family: inherit !important; font-size: 1em !important; line-height: 1.6 !important; resize: none !important; overflow-y: auto !important; min-height: 100px !important; outline: none !important; height: ${maxTaHeight}px !important;`);
             };
 
             // 监听 textarea 内容输入、窗口大小与滚动变化，实时更新位置与自适应高度
