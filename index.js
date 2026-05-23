@@ -765,8 +765,8 @@ function bindUI() {
             extension_settings.twt.paragraphToolbarBottom = val;
             getContext().saveSettingsDebounced();
             const $toolbar = $('#twt-paragraph-toolbar');
-            if ($toolbar.length && $toolbar[0]) {
-                $toolbar[0].style.setProperty('--twt-paragraph-toolbar-bottom', val + 'px', 'important');
+            if ($toolbar.length) {
+                $toolbar.css('bottom', val + 'px');
             }
         }
     });
@@ -777,8 +777,8 @@ function bindUI() {
             extension_settings.twt.paragraphIconSize = val;
             getContext().saveSettingsDebounced();
             const $toolbar = $('#twt-paragraph-toolbar');
-            if ($toolbar.length && $toolbar[0]) {
-                $toolbar[0].style.setProperty('--twt-paragraph-icon-size', val + 'px', 'important');
+            if ($toolbar.length) {
+                $toolbar.css('--twt-paragraph-icon-size', val + 'px');
             }
         }
     });
