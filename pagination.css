@@ -5,6 +5,9 @@ body.twt-reading-mode #chat {
     display: block !important;
     column-width: var(--twt-col-width, 100vw) !important;
     column-gap: 0 !important;
+    -webkit-column-gap: 0 !important;
+    gap: 0 !important;
+    row-gap: 0 !important;
     column-fill: auto !important;
     /* 不使用 scroll-behavior: smooth，由 JS touchmove 实时跟随 + scrollTo instant 接管 */
     scroll-behavior: auto !important;
@@ -30,6 +33,18 @@ body.twt-reading-mode #chat::-webkit-scrollbar {
     display: none;
 }
 
+/* 对 #chat 的所有直接子元素进行宽度和边距归一化，防止系统消息、输入指示器等其他元素破坏列对齐，同时消除 margin 在 WebKit 多列布局下的断页偏移 Bug */
+body.twt-reading-mode #chat > * {
+    width: 100% !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+    break-inside: auto !important; 
+    page-break-inside: auto !important;
+    -webkit-column-break-inside: auto !important;
+}
+
 body.twt-reading-mode #chat .mes,
 body.twt-reading-mode #chat .mes_block,
 body.twt-reading-mode #chat .mes_text {
@@ -43,8 +58,6 @@ body.twt-reading-mode #chat .mes_text {
 }
 
 body.twt-reading-mode #chat .mes {
-    margin-left: 0 !important;
-    margin-right: 0 !important;
     /* 不在每个 .mes 上单独提升合成层，避免 column layout 下合成层碎片化 */
 }
 

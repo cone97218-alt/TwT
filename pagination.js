@@ -27,7 +27,7 @@ export function applyPaginationMode(enabled, settings) {
 function updateColWidth() {
     const chatContainer = document.getElementById('chat');
     if (!chatContainer || !document.body.classList.contains('twt-reading-mode')) return;
-    const width = chatContainer.clientWidth;
+    const width = chatContainer.getBoundingClientRect().width;
     if (width > 0) {
         chatContainer.style.setProperty('--twt-col-width', `${width}px`, 'important');
     }
@@ -41,7 +41,7 @@ export function refreshPagination(targetPage = null) {
     const chatContainer = document.getElementById('chat');
     if (!chatContainer || !document.body.classList.contains('twt-reading-mode')) return;
     updateColWidth();
-    const cw = chatContainer.clientWidth;
+    const cw = chatContainer.getBoundingClientRect().width;
     if (cw <= 0) return;
     const totalPages = Math.round(chatContainer.scrollWidth / cw);
     const page = targetPage !== null ? Math.max(0, Math.min(targetPage, totalPages - 1)) : totalPages - 1;
@@ -82,7 +82,7 @@ function scrollToPage(chatContainer, targetPage, cw) {
 export function scrollPageLeft() {
     const chatContainer = document.getElementById('chat');
     if (!chatContainer) return;
-    const cw = chatContainer.clientWidth;
+    const cw = chatContainer.getBoundingClientRect().width;
     if (cw <= 0) return;
     const currentPage = Math.round(chatContainer.scrollLeft / cw);
     scrollToPage(chatContainer, Math.max(0, currentPage - 1), cw);
@@ -91,7 +91,7 @@ export function scrollPageLeft() {
 export function scrollPageRight() {
     const chatContainer = document.getElementById('chat');
     if (!chatContainer) return;
-    const cw = chatContainer.clientWidth;
+    const cw = chatContainer.getBoundingClientRect().width;
     if (cw <= 0) return;
     const currentPage = Math.round(chatContainer.scrollLeft / cw);
     const maxPage = Math.max(0, Math.ceil(chatContainer.scrollWidth / cw) - 1);
@@ -130,7 +130,7 @@ export function initPaginationEvent(getSettings) {
         if (isInteractive) return;
         if (window.getSelection().toString().length > 0) return;
 
-        const cw = chatContainer.clientWidth;
+        const cw = chatContainer.getBoundingClientRect().width;
         if (cw <= 0) return;
 
         const currentPage = Math.round(chatContainer.scrollLeft / cw);
@@ -164,11 +164,11 @@ export function initPaginationEvent(getSettings) {
         if (isProgrammaticScrolling || isTouching) return;
         if (!document.body.classList.contains('twt-reading-mode')) return;
         if (document.body.classList.contains('twt-paragraph-editing')) return;
-        const cw = chatContainer.clientWidth;
+        const cw = chatContainer.getBoundingClientRect().width;
         if (cw <= 0) return;
         const cur = chatContainer.scrollLeft;
         const expected = Math.round(cur / cw) * cw;
-        if (Math.abs(cur - expected) > 5) {
+        if (Math.abs(cur - expected) > 2) {
             isProgrammaticScrolling = true;
             chatContainer.scrollTo({ left: expected, behavior: 'instant' });
             isProgrammaticScrolling = false;
@@ -237,7 +237,7 @@ export function initPaginationEvent(getSettings) {
         if (!touchIsHorizontal) return;
 
         // touch-action:pan-y 已阻断浏览器横向惯性，无需 preventDefault
-        const max = chatContainer.scrollWidth - chatContainer.clientWidth;
+        const max = chatContainer.scrollWidth - chatContainer.getBoundingClientRect().width;
         isProgrammaticScrolling = true;
         chatContainer.scrollLeft = Math.max(0, Math.min(max, touchStartScrollLeft - dx));
     }, { passive: true });
@@ -260,7 +260,7 @@ export function initPaginationEvent(getSettings) {
 
         const deltaX = e.changedTouches[0].clientX - touchStartX;
         const deltaTime = Date.now() - touchStartTime;
-        const cw = chatContainer.clientWidth;
+        const cw = chatContainer.getBoundingClientRect().width;
         if (cw <= 0) { isProgrammaticScrolling = false; isTouching = false; return; }
 
         // 目标页：基于 touchStart 时的页，严格限制 ±1 页
@@ -312,7 +312,7 @@ export function initPaginationEvent(getSettings) {
         if (!document.body.classList.contains('twt-reading-mode')) return;
         if (e.target && (e.target.classList.contains('twt-p-textarea') || e.target.closest('.twt-p-editor'))) return;
         setTimeout(() => {
-            const cw = chatContainer.clientWidth;
+            const cw = chatContainer.getBoundingClientRect().width;
             if (cw > 0) chatContainer.scrollTo({ left: lastUserPage * cw });
         }, 10);
     });
