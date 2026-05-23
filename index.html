@@ -196,6 +196,9 @@
                     </div>
                 </div>
 
+                <!-- ── 页面边距 ── -->
+                <div style="font-weight: bold; font-size: 0.9em; opacity: 0.7; margin-bottom: 8px;">页面边距</div>
+
                 <div class="twt-setting-row"
                     style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
                     <label for="twt_padding_top">顶部留白 (px)</label>
@@ -224,6 +227,9 @@
                         style="width: 80px; text-align: center; box-sizing: border-box; padding: 5px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px;" />
                 </div>
 
+                <!-- ── 文本排版 ── -->
+                <div style="border-top: 1px dashed var(--SmartThemeBorderColor); padding-top: 10px; margin-top: 4px; margin-bottom: 8px; font-weight: bold; font-size: 0.9em; opacity: 0.7;">文本排版</div>
+
                 <div class="twt-setting-row"
                     style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
                     <label for="twt_font_size">阅读字号 (px)</label>
@@ -235,6 +241,39 @@
                     style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
                     <label for="twt_line_height">行高</label>
                     <input type="number" id="twt_line_height" placeholder="1.6" step="0.1"
+                        style="width: 80px; text-align: center; box-sizing: border-box; padding: 5px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px;" />
+                </div>
+
+                <div class="twt-setting-row"
+                    style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                    <label for="twt_text_indent">首行缩进 (字符数)</label>
+                    <input type="number" id="twt_text_indent" placeholder="0" min="0" step="1"
+                        style="width: 80px; text-align: center; box-sizing: border-box; padding: 5px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px;" />
+                </div>
+
+                <div class="twt-setting-row"
+                    style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                    <label for="twt_text_align">对齐方式</label>
+                    <select id="twt_text_align"
+                        style="width: 100px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 5px;">
+                        <option value="left">左对齐</option>
+                        <option value="justify">两端对齐</option>
+                        <option value="center">居中</option>
+                        <option value="right">右对齐</option>
+                    </select>
+                </div>
+
+                <div class="twt-setting-row"
+                    style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                    <label for="twt_paragraph_spacing">段落间距 (px)</label>
+                    <input type="number" id="twt_paragraph_spacing" placeholder="0" min="0" step="1"
+                        style="width: 80px; text-align: center; box-sizing: border-box; padding: 5px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px;" />
+                </div>
+
+                <div class="twt-setting-row"
+                    style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                    <label for="twt_letter_spacing">字间距 (px)</label>
+                    <input type="number" id="twt_letter_spacing" placeholder="0" step="0.5"
                         style="width: 80px; text-align: center; box-sizing: border-box; padding: 5px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px;" />
                 </div>
             </div>

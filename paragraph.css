@@ -4,17 +4,17 @@
 .twt-p-container {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 0;
 }
 
 /* ── 每行段落 (0位移，左侧悬浮竖线指示器) ────────────────────────── */
 .twt-p-item {
     position: relative;
-    padding: 3px 0; /* 完全为0的 padding-left，文字位置 100% 不动 */
+    padding: 0; /* 完全不增加额外间距，保持与正常渲染一致 */
     cursor: pointer;
     user-select: none;
     -webkit-user-select: none;
-    line-height: 1.6;
+    line-height: inherit; /* 继承消息文本的行高 */
 }
 
 /* 选中左侧竖线：绝对定位悬浮在最左侧边缘（气泡内边距区域），不占空间，不导致位移 */
@@ -22,8 +22,8 @@
     content: "";
     position: absolute;
     left: -8px; /* 悬浮在消息气泡的左边距 padding 区域内，完全不占文本宽度 */
-    top: 3px;
-    bottom: 3px;
+    top: 0;
+    bottom: 0;
     width: 3px;
     background: transparent;
     transition: background-color 0.15s;
@@ -43,7 +43,13 @@
 }
 
 .twt-p-spacer {
-    height: 8px;
+    line-height: inherit; /* 继承消息文本行高 */
+}
+
+/* 用不可见字符撑出一个行高，与正常空行高度完全一致 */
+.twt-p-spacer::after {
+    content: "\200b"; /* zero-width space */
+    display: inline;
 }
 
 .twt-p-empty {

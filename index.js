@@ -37,6 +37,10 @@ const defaultSettings = {
     paddingRight: 15,
     fontSize: 16,
     lineHeight: 1.6,
+    textIndent: 0,           // 首行缩进字符数（0 = 不缩进）
+    textAlign: 'left',       // 对齐方式：left | justify | center | right
+    paragraphSpacing: 0,     // 段落间距 px
+    letterSpacing: 0,        // 字间距 px
     visualPresets: {}, 
     currentPreset: 'custom',
     
@@ -309,6 +313,10 @@ function applyPreset(presetName) {
         extension_settings.twt.paddingRight = preset.paddingRight;
         extension_settings.twt.fontSize = preset.fontSize;
         extension_settings.twt.lineHeight = preset.lineHeight;
+        extension_settings.twt.textIndent = preset.textIndent ?? 0;
+        extension_settings.twt.textAlign = preset.textAlign ?? 'left';
+        extension_settings.twt.paragraphSpacing = preset.paragraphSpacing ?? 0;
+        extension_settings.twt.letterSpacing = preset.letterSpacing ?? 0;
         
         $('#twt_padding_top').val(preset.paddingTop);
         $('#twt_padding_bottom').val(preset.paddingBottom);
@@ -316,6 +324,10 @@ function applyPreset(presetName) {
         $('#twt_padding_right').val(preset.paddingRight);
         $('#twt_font_size').val(preset.fontSize);
         $('#twt_line_height').val(preset.lineHeight);
+        $('#twt_text_indent').val(preset.textIndent ?? 0);
+        $('#twt_text_align').val(preset.textAlign ?? 'left');
+        $('#twt_paragraph_spacing').val(preset.paragraphSpacing ?? 0);
+        $('#twt_letter_spacing').val(preset.letterSpacing ?? 0);
         
         getContext().saveSettingsDebounced();
         applyVisualMode(extension_settings.twt.visualEnabled, extension_settings.twt);
@@ -329,7 +341,11 @@ function saveCurrentToPreset(name) {
         paddingLeft: extension_settings.twt.paddingLeft,
         paddingRight: extension_settings.twt.paddingRight,
         fontSize: extension_settings.twt.fontSize,
-        lineHeight: extension_settings.twt.lineHeight
+        lineHeight: extension_settings.twt.lineHeight,
+        textIndent: extension_settings.twt.textIndent,
+        textAlign: extension_settings.twt.textAlign,
+        paragraphSpacing: extension_settings.twt.paragraphSpacing,
+        letterSpacing: extension_settings.twt.letterSpacing
     };
     extension_settings.twt.currentPreset = name;
     getContext().saveSettingsDebounced();
@@ -393,6 +409,10 @@ function bindUI() {
     const $paddingRight = $('#twt_padding_right');
     const $fontSize = $('#twt_font_size');
     const $lineHeight = $('#twt_line_height');
+    const $textIndent = $('#twt_text_indent');
+    const $textAlign = $('#twt_text_align');
+    const $paragraphSpacing = $('#twt_paragraph_spacing');
+    const $letterSpacing = $('#twt_letter_spacing');
 
     const $muluBtnStart = $('#twt_mulu_btn_start');
     const $muluBtnToc = $('#twt_mulu_btn_toc');
@@ -439,6 +459,10 @@ function bindUI() {
     $paddingRight.val(extension_settings.twt.paddingRight);
     $fontSize.val(extension_settings.twt.fontSize);
     $lineHeight.val(extension_settings.twt.lineHeight);
+    $textIndent.val(extension_settings.twt.textIndent ?? 0);
+    $textAlign.val(extension_settings.twt.textAlign ?? 'left');
+    $paragraphSpacing.val(extension_settings.twt.paragraphSpacing ?? 0);
+    $letterSpacing.val(extension_settings.twt.letterSpacing ?? 0);
 
     $muluBtnStart.prop('checked', extension_settings.twt.muluBtnStart);
     $muluBtnToc.prop('checked', extension_settings.twt.muluBtnToc);
@@ -842,6 +866,26 @@ function bindUI() {
     $lineHeight.on('input', function () {
         const val = parseFloat($lineHeight.val());
         if (!isNaN(val)) { extension_settings.twt.lineHeight = val; handleVisualChange(); }
+    });
+
+    $textIndent.on('input', function () {
+        const val = parseFloat($textIndent.val());
+        if (!isNaN(val)) { extension_settings.twt.textIndent = val; handleVisualChange(); }
+    });
+
+    $textAlign.on('change', function () {
+        extension_settings.twt.textAlign = $(this).val();
+        handleVisualChange();
+    });
+
+    $paragraphSpacing.on('input', function () {
+        const val = parseFloat($paragraphSpacing.val());
+        if (!isNaN(val)) { extension_settings.twt.paragraphSpacing = val; handleVisualChange(); }
+    });
+
+    $letterSpacing.on('input', function () {
+        const val = parseFloat($letterSpacing.val());
+        if (!isNaN(val)) { extension_settings.twt.letterSpacing = val; handleVisualChange(); }
     });
 
     $('#twt-settings').on('click', '.twt-tab', function() {
