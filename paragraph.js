@@ -60,37 +60,33 @@ try {
     console.warn("TwT: Cannot sync theme style from parent.", e);
 }
 
-// 动态加载 CSS 到当前 iframe 及宿主 parent 页面（使用基于模块地址的绝对 URL 以防相对路径 404）
+// 动态加载 CSS 到当前 iframe 及宿主 parent 页面（使用基于模块地址的绝对 URL 并追加时间戳以防缓存）
 function injectStyles() {
-    const cssUrl = new URL('./paragraph.css', import.meta.url).href;
-    console.log("TwT: Injecting stylesheet from absolute URL:", cssUrl);
+    const baseCssUrl = new URL('./paragraph.css', import.meta.url).href;
+    const cssUrl = `${baseCssUrl}?v=${Date.now()}`;
+    console.log("TwT: Injecting stylesheet from URL:", cssUrl);
     
-    // 清理可能已存在的、非绝对路径的、可能导致 404 的旧 paragraph.css link 标签
-    $('link[href*="paragraph.css"]').not(`[href="${cssUrl}"]`).remove();
+    // 清理所有旧的 paragraph.css link 标签
+    $('link[href*="paragraph.css"]').remove();
     
-    if (!$(`link[href="${cssUrl}"]`).length) {
-        $('<link>', {
-            rel: 'stylesheet',
-            type: 'text/css',
-            href: cssUrl
-        }).appendTo('head');
-    }
+    $('<link>', {
+        rel: 'stylesheet',
+        type: 'text/css',
+        href: cssUrl
+    }).appendTo('head');
+    
     try {
         if (window.parent) {
             const pDoc = window.parent.document;
             if (pDoc && pDoc !== document) {
-                // 在宿主页面中也清理旧的/相对路径的 paragraph.css link
-                pDoc.querySelectorAll('link[href*="paragraph.css"]').forEach(el => {
-                    if (el.getAttribute('href') !== cssUrl) el.remove();
-                });
+                // 在宿主页面中也清理旧的 paragraph.css link
+                pDoc.querySelectorAll('link[href*="paragraph.css"]').forEach(el => el.remove());
                 
-                if (!pDoc.querySelector(`link[href="${cssUrl}"]`)) {
-                    const link = pDoc.createElement('link');
-                    link.rel = 'stylesheet';
-                    link.type = 'text/css';
-                    link.href = cssUrl;
-                    pDoc.head.appendChild(link);
-                }
+                const link = pDoc.createElement('link');
+                link.rel = 'stylesheet';
+                link.type = 'text/css';
+                link.href = cssUrl;
+                pDoc.head.appendChild(link);
             }
         }
     } catch (e) {
@@ -328,58 +324,30 @@ export function openParagraphEditor(mesId) {
     // ── 内联列表容器放在消息文本中 ──────────────────────────────
     const $container = $('<div class="twt-p-container"></div>');
 
-    // 检测当前主题/CSS美化的 <p> 标签样式
-    try {
-        const firstP = $('#chat .mes_text p').get(0);
-        if (firstP) {
-            const computed = window.getComputedStyle(firstP);
-            const mb = parseFloat(computed.marginBottom) || 0;
-            const pb = parseFloat(computed.paddingBottom) || 0;
-            const mt = parseFloat(computed.marginTop) || 0;
-            
-            let spacing = '0.8em';
-            if (mb > 0) spacing = computed.marginBottom;
-            else if (pb > 0) spacing = computed.paddingBottom;
-            else if (mt > 0) spacing = computed.marginTop;
-            
-            $container.css({
-                '--twt-detected-p-spacing': spacing,
-                '--twt-detected-p-font-size': computed.fontSize,
-                '--twt-detected-p-line-height': computed.lineHeight,
-                '--twt-detected-p-text-align': computed.textAlign,
-                '--twt-detected-p-letter-spacing': computed.letterSpacing,
-                '--twt-detected-p-text-indent': computed.textIndent,
-                '--twt-detected-p-color': computed.color
-            });
-        }
-    } catch (e) {
-        console.warn("TwT: Failed to detect theme paragraph styles", e);
-    }
-
     // ── 进入编辑模式，屏蔽点击翻页 and 手势滑动翻页 ─────────────────
     document.body.classList.add('twt-paragraph-editing');
 
     // 渲染段落列表
     function renderInlineList() {
+        console.log("TwT: renderInlineList blocks:", blocks.map((b, i) => ({
+            index: i,
+            text: b.current,
+            trimmedEmpty: b.current.trim() === '',
+            isVisible: b.isVisible,
+            isDeleted: b.isDeleted
+        })));
         $container.empty();
         let hasVisibleBlocks = false;
+        let $lastItem = null;
 
         blocks.forEach((block, index) => {
             if (block.isDeleted) return;
             if (!block.isVisible) return;
 
-            if (block.current.trim() === '') {
-                $container.append('<div class="twt-p-spacer"></div>');
-                return;
-            }
-
+            const isEmpty = block.current.trim() === '';
             hasVisibleBlocks = true;
 
-            const $item = $(`
-                <div class="twt-p-item" data-index="${index}">
-                    <div class="twt-p-text"></div>
-                </div>
-            `);
+            const $item = $(`<div class="twt-p-item${isEmpty ? ' twt-p-spacer' : ''}" data-index="${index}"><div class="twt-p-text"></div></div>`);
 
             $item.find('.twt-p-text').text(block.current);
 
@@ -393,7 +361,64 @@ export function openParagraphEditor(mesId) {
             });
 
             $container.append($item);
+            $lastItem = $item;
         });
+
+        console.log("TwT: renderInlineList container HTML:", $container.html());
+
+        setTimeout(() => {
+            const firstItem = $container.find('.twt-p-item').first()[0];
+            if (firstItem) {
+                const computed = window.getComputedStyle(firstItem);
+                console.log("TwT: First item computed styles:", {
+                    display: computed.display,
+                    height: computed.height,
+                    paddingTop: computed.paddingTop,
+                    paddingBottom: computed.paddingBottom,
+                    marginTop: computed.marginTop,
+                    marginBottom: computed.marginBottom,
+                    position: computed.position
+                });
+
+                // 诊断：查找所有应用于该元素的 CSS 规则
+                const matchedRules = [];
+                try {
+                    const sheets = document.styleSheets;
+                    for (const sheet of sheets) {
+                        try {
+                            const cssRules = sheet.cssRules || sheet.rules;
+                            if (!cssRules) continue;
+                            for (const rule of cssRules) {
+                                if (rule.selectorText && firstItem.matches(rule.selectorText)) {
+                                    matchedRules.push(rule.cssText);
+                                }
+                            }
+                        } catch (e) {}
+                    }
+                } catch (e) {}
+                console.log("TwT: CSS rules matching first item:\n" + matchedRules.join('\n'));
+            }
+            const chatContainer = document.getElementById('chat');
+            if (chatContainer) {
+                console.log("TwT: --twt-paragraph-spacing value on #chat:", window.getComputedStyle(chatContainer).getPropertyValue('--twt-paragraph-spacing'));
+            }
+
+            const rules = [];
+            try {
+                for (const sheet of document.styleSheets) {
+                    try {
+                        const cssRules = sheet.cssRules || sheet.rules;
+                        if (!cssRules) continue;
+                        for (const rule of cssRules) {
+                            if (rule.selectorText && rule.selectorText.includes('twt-p')) {
+                                rules.push({ selector: rule.selectorText, css: rule.cssText });
+                            }
+                        }
+                    } catch (e) {}
+                }
+            } catch (e) {}
+            console.log("TwT: Style rules containing 'twt-p' in document:\n" + rules.map(r => r.css).join('\n'));
+        }, 50);
 
         if (!hasVisibleBlocks) {
             $container.append('<div class="twt-p-empty">段落已被清空</div>');

@@ -16,18 +16,5 @@ export function applyVisualMode(enabled, settings) {
         }
     } else {
         document.body.classList.remove('twt-visual-mode');
-        const chatContainer = document.getElementById('chat');
-        if (chatContainer) {
-            chatContainer.style.removeProperty('--twt-padding-top');
-            chatContainer.style.removeProperty('--twt-padding-bottom');
-            chatContainer.style.removeProperty('--twt-padding-left');
-            chatContainer.style.removeProperty('--twt-padding-right');
-            chatContainer.style.removeProperty('--twt-font-size');
-            chatContainer.style.removeProperty('--twt-line-height');
-            chatContainer.style.removeProperty('--twt-text-indent');
-            chatContainer.style.removeProperty('--twt-text-align');
-            chatContainer.style.removeProperty('--twt-paragraph-spacing');
-            chatContainer.style.removeProperty('--twt-letter-spacing');
-        }
     }
 }

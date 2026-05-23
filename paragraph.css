@@ -2,23 +2,23 @@
 
 /* ── 段落列表容器 ──────────────────────────────────────────────── */
 .twt-p-container {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
+    display: block;
+    white-space: normal !important;
 }
 
 /* ── 每行段落 (0位移，左侧悬浮竖线指示器) ────────────────────────── */
 .twt-p-item {
     position: relative;
-    padding: 0; /* 完全不增加额外间距，保持与正常渲染一致 */
+    padding: 0 !important;
+    margin: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
     cursor: pointer;
     user-select: none;
     -webkit-user-select: none;
-    font-size: var(--twt-detected-p-font-size, inherit);
-    line-height: var(--twt-detected-p-line-height, inherit);
-    text-align: var(--twt-detected-p-text-align, inherit);
-    letter-spacing: var(--twt-detected-p-letter-spacing, inherit);
-    color: var(--twt-detected-p-color, inherit);
+    line-height: inherit !important; /* 继承消息文本的行高 */
+    white-space: normal !important;
 }
 
 /* 选中左侧竖线：绝对定位悬浮在最左侧边缘（气泡内边距区域），不占空间，不导致位移 */
@@ -39,20 +39,30 @@
 }
 
 .twt-p-text {
+    color: var(--SmartThemeBodyColor, #e0e0e0);
     font-size: inherit;
-    line-height: inherit;
+    line-height: inherit !important;
     word-break: break-all;
-    white-space: pre-wrap;
-    text-indent: var(--twt-text-indent, var(--twt-detected-p-text-indent, 0em));
+    white-space: pre-wrap !important;
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
 }
 
 .twt-p-spacer {
-    display: block;
-    height: var(--twt-paragraph-spacing, var(--twt-detected-p-spacing, 0.8em));
+    line-height: inherit; /* 继承消息文本行高 */
 }
 
+/* 用不可见字符撑出一个行高，与正常空行高度完全一致 */
 .twt-p-spacer::after {
-    content: none;
+    content: "\200b"; /* zero-width space */
+    display: inline;
+}
+
+/* 当段落在原始文本中有空行相隔时，不显示空行，而是以段落间距变量作为下边距，确保和正常视觉效果保持一致。使用 margin-bottom 还能避免选中状态下的竖线（绝对定位 ::before）延伸盖住空白区域。 */
+.twt-p-item.twt-p-has-spacer-after {
+    margin-bottom: var(--twt-paragraph-spacing, 1em) !important;
 }
 
 .twt-p-empty {
