@@ -540,45 +540,28 @@ export function openParagraphEditor(mesId, clickX = null, clickY = null) {
     
     let blockIdx = 0;
     let elementIdx = 0;
+    const visibleBlocks = blocks.filter(b => b.isVisible);
     
-    while (blockIdx < blocks.length && elementIdx < $elements.length) {
-        const block = blocks[blockIdx];
+    while (blockIdx < visibleBlocks.length && elementIdx < $elements.length) {
+        const block = visibleBlocks[blockIdx];
         const $el = $elements[elementIdx];
         
-        if (!block.isVisible) {
+        // 检测 DOM 元素是否属于思考链块
+        const isDomThought = $el.hasClass('thought-block') || $el.closest('.thought-block').length > 0 || $el.is('blockquote');
+        
+        // 如果是 XML（比如 <thought>）块，但当前 DOM 元素不是思考链/引用容器，说明它是非渲染的隐藏块，跳过该块
+        if (block.type === 'xml' && !isDomThought) {
             blockIdx++;
             continue;
         }
         
-        if (!$el.is(':visible')) {
-            // 如果 DOM 元素是隐藏的（例如折叠的思考链），让它们对应并各自前进一步
-            $el.addClass('twt-p-selectable');
-            $el.attr('data-twt-block-idx', blockIdx);
-            blockIdx++;
-            elementIdx++;
-            continue;
-        }
+        $el.addClass('twt-p-selectable');
+        // 将可见块对应的原始 blocks 索引赋值给 data-twt-block-idx
+        const originalIdx = blocks.indexOf(block);
+        $el.attr('data-twt-block-idx', originalIdx);
         
-        const blockText = block.current.replace(/[#*`>_\-\+]/g, '').trim().toLowerCase();
-        const elText = $el.text().trim().toLowerCase();
-        
-        // 智能匹配文本重叠度（支持 Markdown 语法过滤和图片/分割线等空文本降级匹配）
-        const hasOverlap = !blockText || !elText || 
-                           blockText.includes(elText) || 
-                           elText.includes(blockText) || 
-                           (blockText.indexOf(elText.substring(0, Math.min(8, elText.length))) !== -1) ||
-                           block.type === 'hr';
-                           
-        if (hasOverlap) {
-            $el.addClass('twt-p-selectable');
-            $el.attr('data-twt-block-idx', blockIdx);
-            blockIdx++;
-            elementIdx++;
-        } else {
-            // 如果文本完全没有交集，说明该 block 没有被渲染在 DOM 中（如被隐藏折叠的思考链），跳过该 block
-            console.log(`TwT: Alignment mismatch. Skipping block ${blockIdx} ("${block.current.substring(0, 20)}...") against element "${elText.substring(0, 20)}..."`);
-            blockIdx++;
-        }
+        blockIdx++;
+        elementIdx++;
     }
 
     // 如果传入了点击坐标，根据屏幕物理坐标计算并默认选中物理位置最近的段落块
