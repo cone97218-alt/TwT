@@ -228,3 +228,58 @@
 .twt-p-btn:active {
     transform: scale(0.85);
 }
+
+/* ── 原生段落选择模式样式 (左侧小竖线指示器，避免 Layout Shift) ── */
+.twt-p-selectable {
+    position: relative !important;
+    cursor: pointer !important;
+}
+
+/* 用 ::before 在段落左侧绘制指示竖线，绝对定位不改变任何文字排版 */
+.twt-p-selectable::before {
+    content: "";
+    position: absolute;
+    left: -12px; /* 悬浮在左侧，不占用任何宽度 */
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: transparent;
+    transition: background-color 0.15s;
+    z-index: 5;
+}
+
+.twt-p-selectable.twt-p-selected::before {
+    background-color: var(--SmartThemeUnderlineColor, var(--SmartThemePrimaryColor, #007aff)) !important;
+}
+
+.twt-p-selectable.twt-p-deleted {
+    text-decoration: line-through !important;
+    text-decoration-color: rgba(255, 59, 48, 0.6) !important;
+    opacity: 0.45 !important;
+}
+
+.twt-p-selectable.twt-p-deleted::before {
+    background-color: rgba(255, 59, 48, 0.8) !important;
+}
+
+/* 用绝对定位的伪元素标注已修改状态，完全不占文本空间，防止排版宽度抖动 */
+.twt-p-selectable.twt-p-edited::after {
+    content: "已修改";
+    position: absolute;
+    top: 2px;
+    right: 6px;
+    background: var(--SmartThemeUnderlineColor, var(--SmartThemePrimaryColor, #007aff)) !important;
+    color: #ffffff !important;
+    font-size: 10px !important;
+    font-weight: bold !important;
+    padding: 1px 5px !important;
+    border-radius: 3px !important;
+    opacity: 0.9 !important;
+    pointer-events: none !important;
+    z-index: 10 !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3) !important;
+    line-height: 1.2 !important;
+}
+
+
+

@@ -147,7 +147,7 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
         $item.on('click', (evt) => {
             evt.stopPropagation();
             $menu.hide();
-            openParagraphEditor(mesId);
+            openParagraphEditor(mesId, clientX, clientY);
         });
         $menu.append($item);
         hasItems = true;
