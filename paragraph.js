@@ -130,33 +130,41 @@ function splitParagraphsByBr($mesText) {
 }
 
 /**
- * 获取可选择的 DOM 叶子块级元素
+ * 获取可选择的 DOM 叶子块级元素（使用高效的自顶向下递归，避免大规模 closest 调用，极大地提升手机端响应速度）
  */
 function getSelectableElements($mesText) {
-    const list = [];
-    
     // 首先根据 <br> 进行换行切分
     splitParagraphsByBr($mesText);
     
-    $mesText.find('p, span.twt-p-line-wrapper, li, pre, blockquote, h1, h2, h3, h4, h5, h6, hr, .thought-block').each(function() {
-        const $el = $(this);
+    const list = [];
+    
+    function traverse(node) {
+        const $node = $(node);
         
-        // 如果是 p 且包含子 span.twt-p-line-wrapper，则不单独点选 p 本身
-        if ($el.is('p') && $el.find('span.twt-p-line-wrapper').length > 0) {
+        // 匹配块级或行级可选元素
+        if ($node.is('p, span.twt-p-line-wrapper, li, pre, blockquote, h1, h2, h3, h4, h5, h6, hr, .thought-block')) {
+            if ($node.is('p') && $node.find('span.twt-p-line-wrapper').length > 0) {
+                // 如果是 p 且内部有换行切分包装，则深层遍历它的直接子节点
+                $node.children().each(function() {
+                    traverse(this);
+                });
+            } else {
+                // 否则直接作为独立的叶子可选块收集，停止向内深层递归，提高效率
+                list.push($node);
+            }
             return;
         }
         
-        const parentBlock = $el.parent().closest('p, span.twt-p-line-wrapper, li, pre, blockquote, h1, h2, h3, h4, h5, h6, hr, .thought-block');
-        if (parentBlock.length > 0) {
-            // 特殊允许：p 标签内的 span.twt-p-line-wrapper
-            if ($el.is('span.twt-p-line-wrapper') && parentBlock.is('p')) {
-                // 放行
-            } else {
-                return;
-            }
-        }
-        list.push($el);
+        // 对于非目标容器节点（如 div, ul, ol），继续向下递归遍历其子节点
+        $node.children().each(function() {
+            traverse(this);
+        });
+    }
+    
+    $mesText.children().each(function() {
+        traverse(this);
     });
+    
     return list;
 }
 
@@ -376,18 +384,6 @@ export function openParagraphEditor(mesId, clickX = null, clickY = null) {
 
     // 防止重复触发
     if (document.body.classList.contains('twt-paragraph-editing')) return;
-
-    // 同步宿主页面的 CSS 变量，确保主题颜色最新
-    try {
-        if (window.parent && window.parent.document && window.parent.document !== document) {
-            const parentStyle = window.parent.document.documentElement.getAttribute('style');
-            if (parentStyle) {
-                document.documentElement.setAttribute('style', parentStyle);
-            }
-        }
-    } catch (e) {
-        console.warn("TwT: Cannot sync theme style from parent on editor open.", e);
-    }
 
     // 读取自定义设置与正则过滤标志
     const settings = extension_settings.twt || {};
