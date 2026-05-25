@@ -162,6 +162,26 @@ function getTargetMessage() {
 async function scrollToMessageEdge(edge) {
     let mes = getTargetMessage();
     if (!mes) {
+        // If no active AI message can be found, just scroll to absolute start or end!
+        const doc = getDoc();
+        const chatContainer = doc.getElementById('chat');
+        if (chatContainer) {
+            if (doc.body.classList.contains('twt-reading-mode')) {
+                const cw = chatContainer.clientWidth;
+                if (edge === 'start') {
+                    chatContainer.scrollTo({ left: 0, behavior: 'smooth' });
+                } else {
+                    chatContainer.scrollTo({ left: chatContainer.scrollWidth, behavior: 'smooth' });
+                }
+            } else {
+                if (edge === 'start') {
+                    chatContainer.scrollTo({ top: 0, behavior: 'smooth' });
+                } else {
+                    chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
+                }
+            }
+            return;
+        }
         toastr.info('未找到AI消息', '提示');
         return;
     }
@@ -213,7 +233,12 @@ async function scrollToMessageEdge(edge) {
         }
         
         if (targetPage === currentPage) {
-            toastr.info(edge === 'start' ? '已经是最前面的 AI 消息了' : '已经是最后面的 AI 消息了', '提示');
+            // Sibling not found or already at edge -> jump to absolute start or end!
+            if (edge === 'start') {
+                chatContainer.scrollTo({ left: 0, behavior: 'smooth' });
+            } else {
+                chatContainer.scrollTo({ left: chatContainer.scrollWidth, behavior: 'smooth' });
+            }
         } else {
             chatContainer.scrollTo({ left: targetPage * cw, behavior: 'smooth' });
         }
@@ -242,7 +267,6 @@ async function scrollToMessageEdge(edge) {
                 const loadedMes = await ensureMessageLoaded(targetId);
                 if (loadedMes) {
                     mes = loadedMes;
-                    // Recompute offset for the sibling message
                     const newRect = mes.getBoundingClientRect();
                     const targetScrollTop = edge === 'start'
                         ? newRect.top - chatRect.top + currentScrollTop
@@ -251,7 +275,12 @@ async function scrollToMessageEdge(edge) {
                     return;
                 }
             }
-            toastr.info(edge === 'start' ? '已经是最前面的 AI 消息了' : '已经是最后面的 AI 消息了', '提示');
+            // Sibling not found or already at edge -> jump to absolute start or end!
+            if (edge === 'start') {
+                chatContainer.scrollTo({ top: 0, behavior: 'smooth' });
+            } else {
+                chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
+            }
             return;
         }
         
@@ -369,7 +398,7 @@ function showMuluModal() {
 
     for (let i = 0; i < chatArray.length; i++) {
         const msg = chatArray[i];
-        if (msg.is_user || msg.is_system || msg.system) continue;
+        if (msg.is_user || msg.system) continue;
 
         let rawText = '';
         const mesEl = doc.querySelector(`#chat .mes[mesid="${i}"]`);
@@ -549,15 +578,32 @@ function showMuluModal() {
         `;
 
         const leftSpan = doc.createElement('span');
-        leftSpan.innerText = item.title;
-        leftSpan.style.cssText = `
-            flex: 0 1 auto;
-            min-width: 0;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            text-align: left;
-        `;
+        const msgObj = chatArray[item.mesId];
+        const isHidden = msgObj ? (msgObj.is_system || msgObj.extra?.is_system) : false;
+        
+        if (isHidden) {
+            leftSpan.innerText = item.title + ' [已隐藏]';
+            leftSpan.style.cssText = `
+                flex: 0 1 auto;
+                min-width: 0;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                text-align: left;
+                opacity: 0.55;
+                text-decoration: line-through;
+            `;
+        } else {
+            leftSpan.innerText = item.title;
+            leftSpan.style.cssText = `
+                flex: 0 1 auto;
+                min-width: 0;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                text-align: left;
+            `;
+        }
 
         const rightSpan = doc.createElement('span');
         rightSpan.innerText = `#${item.mesId}`;
@@ -582,12 +628,7 @@ function showMuluModal() {
 
         row.addEventListener('click', async () => {
             closeMuluModal();
-            const targetMes = await ensureMessageLoaded(item.mesId);
-            if (targetMes) {
-                scrollToMessage(targetMes);
-            } else {
-                toastr.error('无法定位消息元素');
-            }
+            await scrollToMessageOrNearest(item.mesId);
         });
 
         listContainer.appendChild(row);
@@ -661,6 +702,48 @@ function scrollToMessage(mes) {
     } else {
         mes.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
+}
+
+async function scrollToMessageOrNearest(mesId) {
+    const doc = getDoc();
+    const chatContainer = doc.getElementById('chat');
+    if (!chatContainer) return;
+
+    let targetMes = await ensureMessageLoaded(mesId);
+    // Check if element exists and is visible (height > 0)
+    if (targetMes && targetMes.getBoundingClientRect().height > 0) {
+        scrollToMessage(targetMes);
+        return;
+    }
+
+    // Find the nearest visible message element in DOM
+    const context = typeof getContext === 'function' ? getContext() : null;
+    const chatArray = context ? context.chat : window.chat;
+    if (!chatArray) return;
+
+    let nearestMesId = -1;
+    let minDiff = Infinity;
+
+    for (let i = 0; i < chatArray.length; i++) {
+        const mesEl = doc.querySelector(`#chat .mes[mesid="${i}"]`);
+        if (mesEl && mesEl.getBoundingClientRect().height > 0) {
+            const diff = Math.abs(i - mesId);
+            if (diff < minDiff) {
+                minDiff = diff;
+                nearestMesId = i;
+            }
+        }
+    }
+
+    if (nearestMesId !== -1) {
+        const nearestMes = doc.querySelector(`#chat .mes[mesid="${nearestMesId}"]`);
+        if (nearestMes) {
+            scrollToMessage(nearestMes);
+            toastr.info(`该消息已隐藏，已为您定位到邻近的第 ${nearestMesId} 条消息`, '提示');
+            return;
+        }
+    }
+    toastr.error('无法定位消息元素');
 }
 
 export function applyMuluSettings() {
