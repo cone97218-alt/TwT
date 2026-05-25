@@ -3,7 +3,7 @@ import { extension_settings, getContext, renderExtensionTemplateAsync } from '..
 import { applyPaginationMode, initPaginationEvent } from './pagination.js';
 import { applyVisualMode } from './visual.js';
 import { initMulu, applyMuluSettings } from './mulu.js';
-import { initMenu, applyMenuMode } from './menu.js';
+import { initMenu, applyMenuMode, applyFullscreenMode } from './menu.js';
 
 const extensionName = 'TwT';
 
@@ -15,14 +15,15 @@ const defaultSettings = {
     menuEnabled: false,
     menuOptRegenerate: true,
     menuOptSwipe: true,
-    menuOptDelete: false,
-    menuOptHide: false,
+    menuOptManage: true,
     menuOptEdit: true,
     paragraphToolbarBottom: 15,
     paragraphIconSize: 20,
     paragraphXmlWhitelist: 'thought, TavernThought, reasoning, details',
     menuOptEditFiltered: false,
     menuOptExcerpt: false,
+    menuOptFullscreen: true,
+    isFullscreen: false,
     menuInvokeMethod: 'longpress',
     menuLongpressDelay: 500,
     menuDirection: 'bottom-right',
@@ -391,14 +392,14 @@ function bindUI() {
     const $menuDirection = $('#twt_menu_direction');
     const $menuOptRegenerate = $('#twt_menu_opt_regenerate');
     const $menuOptSwipe = $('#twt_menu_opt_swipe');
-    const $menuOptDelete = $('#twt_menu_opt_delete');
-    const $menuOptHide = $('#twt_menu_opt_hide');
+    const $menuOptManage = $('#twt_menu_opt_manage');
     const $menuOptEdit = $('#twt_menu_opt_edit');
     const $paragraphToolbarBottom = $('#twt_paragraph_toolbar_bottom');
     const $paragraphIconSize = $('#twt_paragraph_icon_size');
     const $paragraphXmlWhitelist = $('#twt_paragraph_xml_whitelist');
     const $menuOptEditFiltered = $('#twt_menu_opt_edit_filtered');
     const $menuOptExcerpt = $('#twt_menu_opt_excerpt');
+    const $menuOptFullscreen = $('#twt_menu_opt_fullscreen');
     const $visualEnabled = $('#twt_visual_enabled');
     const $muluEnabled = $('#twt_mulu_enabled');
     const $optimizeEnabled = $('#twt_optimize_enabled');
@@ -429,14 +430,14 @@ function bindUI() {
     $menuDirection.val(extension_settings.twt.menuDirection || 'bottom-right');
     $menuOptRegenerate.prop('checked', extension_settings.twt.menuOptRegenerate);
     $menuOptSwipe.prop('checked', extension_settings.twt.menuOptSwipe);
-    $menuOptDelete.prop('checked', extension_settings.twt.menuOptDelete);
-    $menuOptHide.prop('checked', extension_settings.twt.menuOptHide);
+    $menuOptManage.prop('checked', extension_settings.twt.menuOptManage);
     $menuOptEdit.prop('checked', extension_settings.twt.menuOptEdit);
     $paragraphToolbarBottom.val(extension_settings.twt.paragraphToolbarBottom !== undefined ? extension_settings.twt.paragraphToolbarBottom : 15);
     $paragraphIconSize.val(extension_settings.twt.paragraphIconSize !== undefined ? extension_settings.twt.paragraphIconSize : 20);
     $paragraphXmlWhitelist.val(extension_settings.twt.paragraphXmlWhitelist !== undefined ? extension_settings.twt.paragraphXmlWhitelist : 'thought, TavernThought, reasoning, details');
     $menuOptEditFiltered.prop('checked', extension_settings.twt.menuOptEditFiltered ?? false);
     $menuOptExcerpt.prop('checked', extension_settings.twt.menuOptExcerpt);
+    $menuOptFullscreen.prop('checked', extension_settings.twt.menuOptFullscreen);
     
     updateParagraphSubOptionsVisibility();
     
@@ -743,13 +744,8 @@ function bindUI() {
         getContext().saveSettingsDebounced();
     });
 
-    $menuOptDelete.on('change', function () {
-        extension_settings.twt.menuOptDelete = $(this).prop('checked');
-        getContext().saveSettingsDebounced();
-    });
-
-    $menuOptHide.on('change', function () {
-        extension_settings.twt.menuOptHide = $(this).prop('checked');
+    $menuOptManage.on('change', function () {
+        extension_settings.twt.menuOptManage = $(this).prop('checked');
         getContext().saveSettingsDebounced();
     });
 
@@ -795,6 +791,13 @@ function bindUI() {
 
     $menuOptExcerpt.on('change', function () {
         extension_settings.twt.menuOptExcerpt = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+    });
+
+
+
+    $menuOptFullscreen.on('change', function () {
+        extension_settings.twt.menuOptFullscreen = $(this).prop('checked');
         getContext().saveSettingsDebounced();
     });
 
@@ -912,6 +915,7 @@ jQuery(async () => {
     applyPaginationMode(extension_settings.twt.enabled, extension_settings.twt);
     applyVisualMode(extension_settings.twt.visualEnabled, extension_settings.twt);
     applyMenuMode(extension_settings.twt.menuEnabled, extension_settings.twt);
+    applyFullscreenMode(extension_settings.twt.isFullscreen);
     updateInjectedStyles();
     initMulu();
     initPaginationEvent(() => extension_settings.twt);
