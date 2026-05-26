@@ -6,6 +6,17 @@ const BTN_START_ID = 'twt-mulu-start-btn';
 const BTN_END_ID = 'twt-mulu-end-btn';
 const BTN_TOC_ID = 'twt-mulu-toc-btn';
 
+const escapeHtml = (str) => (str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
+// 模块级全局变量，保证目录模态框关闭后重新打开时日志和生成状态依然存在
+let globalBatchLogs = [];
+let globalGenerationStatus = 'idle'; // 'idle', 'generating', 'done'
+
 function getDoc() {
     try {
         if (window.parent && window.parent.document) {
@@ -620,7 +631,236 @@ function showMuluModal() {
     btnGenerate.className = 'menu_button';
     btnGenerate.style.cssText = 'padding: 2px 4px !important; margin: 0 !important; font-size: 0.8em !important; min-height: 24px !important; white-space: nowrap !important; background: var(--SmartThemeUnderlineColor, #007aff) !important; color: #fff !important; font-weight: bold !important; border: none !important; border-radius: 4px !important; display: inline-flex !important; align-items: center !important; gap: 2px !important; flex-shrink: 0 !important;';
     btnGenerate.innerHTML = '<i class="fa-regular fa-comment-dots"></i> 生成';
+
+    // 日志图标按钮：生成前显示普通日志图标，生成中显示转圈圈，生成后显示勾号并可点击查看日志
+    const btnLog = doc.createElement('button');
+    btnLog.className = 'menu_button';
+    btnLog.style.cssText = 'padding: 2px !important; margin: 0 !important; font-size: 0.8em !important; min-height: 24px !important; min-width: 24px !important; height: 24px !important; width: 24px !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; flex-shrink: 0 !important; border-radius: 4px !important;';
     
+    // 根据全局状态初始化图标
+    if (globalGenerationStatus === 'generating') {
+        btnLog.title = '正在生成...';
+        btnLog.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+        btnLog.disabled = true;
+    } else if (globalGenerationStatus === 'done') {
+        btnLog.title = `查看生成日志 (共${globalBatchLogs.length}条)`;
+        btnLog.innerHTML = '<i class="fa-solid fa-circle-check" style="color:#4caf50;"></i>';
+        btnLog.disabled = false;
+    } else {
+        btnLog.title = '查看生成日志 (暂无日志)';
+        btnLog.innerHTML = '<i class="fa-solid fa-list" style="opacity: 0.5;"></i>';
+        btnLog.disabled = false;
+    }
+
+    // 日志面板（浮层弹出，使用和目录类似的遮罩居中机制）
+    const showLogPanel = () => {
+        const existingOverlay = doc.getElementById('twt-batch-log-overlay');
+        if (existingOverlay) { existingOverlay.remove(); return; }
+
+        // 注入日志面板专用样式（避免被宿主 CSS 覆盖）
+        if (!doc.getElementById('twt-log-panel-styles')) {
+            const s = doc.createElement('style');
+            s.id = 'twt-log-panel-styles';
+            s.textContent = `
+                #twt-batch-log-overlay {
+                    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+                    background: rgba(0,0,0,0.6); z-index: 10005;
+                    backdrop-filter: blur(3px);
+                    display: flex; align-items: center; justify-content: center;
+                }
+                #twt-batch-log-panel {
+                    position: relative; width: 90%; max-width: 600px;
+                    height: 80vh;
+                    background: var(--twt-comments-bg-solid, var(--SmartThemeBlurTintColor, #1e1e2e));
+                    border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.15));
+                    border-radius: 12px;
+                    box-shadow: 0 10px 30px var(--SmartThemeShadowColor, rgba(0,0,0,0.5));
+                    display: flex; flex-direction: column;
+                    overflow: hidden;
+                    font-size: 0.85em; color: var(--SmartThemeBodyColor, #e0e0e0);
+                    z-index: 10006; box-sizing: border-box;
+                    font-family: var(--SmartThemeFontFamily, sans-serif);
+                }
+                #twt-batch-log-panel-header {
+                    display: flex; align-items: center; justify-content: space-between;
+                    padding: 10px 14px; flex-shrink: 0;
+                    border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.1));
+                }
+                #twt-batch-log-panel-body {
+                    flex: 1; overflow-y: scroll; overflow-x: hidden;
+                    min-height: 0;
+                    padding: 10px 14px;
+                    box-sizing: border-box;
+                }
+                #twt-batch-log-panel-body::-webkit-scrollbar { width: 6px; }
+                #twt-batch-log-panel-body::-webkit-scrollbar-track { background: transparent; }
+                #twt-batch-log-panel-body::-webkit-scrollbar-thumb {
+                    background: var(--SmartThemeBorderColor, rgba(255,255,255,0.2));
+                    border-radius: 3px;
+                }
+                .twt-log-card { 
+                    border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.1));
+                    border-radius: 6px; overflow: hidden; margin-bottom: 10px;
+                }
+                .twt-log-card:last-child { margin-bottom: 0; }
+                .twt-log-card-head {
+                    display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+                    cursor: pointer; background: rgba(255,255,255,0.03); user-select: none;
+                }
+                .twt-log-card-body {
+                    display: none; padding: 8px 10px;
+                    border-top: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.08));
+                }
+                .twt-log-card-body.open { display: block; }
+                .twt-log-msg-block {
+                    border-radius: 4px; overflow: hidden;
+                    border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.08));
+                    margin-bottom: 6px;
+                }
+                .twt-log-msg-block:last-child { margin-bottom: 0; }
+                .twt-log-pre {
+                    margin: 0; padding: 6px 8px; white-space: pre-wrap;
+                    word-break: break-all; font-family: inherit; font-size: 0.88em;
+                    line-height: 1.5; max-height: 180px; overflow-y: auto;
+                    overscroll-behavior: contain;
+                }
+                .twt-log-pre::-webkit-scrollbar { width: 4px; }
+                .twt-log-pre::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius:2px; }
+            `;
+            doc.head.appendChild(s);
+        }
+
+        const overlay = doc.createElement('div');
+        overlay.id = 'twt-batch-log-overlay';
+        overlay.addEventListener('click', () => overlay.remove());
+
+        const panel = doc.createElement('div');
+        panel.id = 'twt-batch-log-panel';
+        panel.addEventListener('click', (e) => e.stopPropagation());
+
+        // 头部
+        const panelHeader = doc.createElement('div');
+        panelHeader.id = 'twt-batch-log-panel-header';
+        panelHeader.innerHTML = `<span style="font-weight:bold;font-size:1em;"><i class="fa-solid fa-clipboard-list" style="margin-right:6px;"></i>生成日志 (${globalBatchLogs.length}条)</span>`;
+        const panelClose = doc.createElement('button');
+        panelClose.className = 'menu_button';
+        panelClose.style.cssText = 'padding:2px 6px !important; font-size:0.9em !important; margin:0 !important;';
+        panelClose.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+        panelClose.addEventListener('click', () => overlay.remove());
+        panelHeader.appendChild(panelClose);
+        panel.appendChild(panelHeader);
+
+        // 内容区（纯 block，不用 flex，让 overflow-y:scroll 真正生效）
+        const panelBody = doc.createElement('div');
+        panelBody.id = 'twt-batch-log-panel-body';
+
+        if (globalBatchLogs.length === 0) {
+            panelBody.innerHTML = '<div style="opacity:0.5;text-align:center;padding:20px;">暂无日志</div>';
+        } else {
+            globalBatchLogs.forEach(entry => {
+                const context = getContext ? getContext() : null;
+                const msgPreview = context && context.chat && context.chat[entry.mesId]
+                    ? (context.chat[entry.mesId].mes || '').substring(0, 40) + '...'
+                    : `消息 #${entry.mesId}`;
+
+                const statusColor = entry.status === 'ok' ? '#4caf50' : entry.status === 'empty' ? '#ff9800' : entry.status === 'skip' ? '#9e9e9e' : '#f44336';
+                const statusIcon = entry.status === 'ok' ? 'fa-circle-check' : entry.status === 'empty' ? 'fa-circle-exclamation' : entry.status === 'skip' ? 'fa-circle-minus' : 'fa-circle-xmark';
+                const statusLabel = entry.status === 'ok' ? `成功 (生成${entry.commentsCount}条段评)` : entry.status === 'empty' ? 'AI未返回段评' : entry.status === 'skip' ? '已跳过' : '失败';
+
+                const card = doc.createElement('div');
+                card.className = 'twt-log-card';
+
+                const cardHead = doc.createElement('div');
+                cardHead.className = 'twt-log-card-head';
+                cardHead.innerHTML = `
+                    <i class="fa-solid ${statusIcon}" style="color:${statusColor};flex-shrink:0;"></i>
+                    <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">#${entry.mesId} ${escapeHtml(msgPreview)}</span>
+                    <span style="color:${statusColor};white-space:nowrap;font-size:0.9em;">${statusLabel}</span>
+                    <i class="fa-solid fa-chevron-down" style="font-size:0.8em;opacity:0.5;flex-shrink:0;"></i>
+                `;
+
+                const cardBody = doc.createElement('div');
+                cardBody.className = 'twt-log-card-body';
+
+                // 错误信息
+                if (entry.error) {
+                    const errDiv = doc.createElement('div');
+                    errDiv.style.cssText = 'background:rgba(244,67,54,0.1);border:1px solid rgba(244,67,54,0.3);border-radius:4px;padding:6px 8px;color:#f44336;white-space:pre-wrap;word-break:break-all;margin-bottom:6px;';
+                    errDiv.textContent = '错误：' + entry.error;
+                    cardBody.appendChild(errDiv);
+                }
+
+                // 发送的提示词
+                if (entry.sentMessages && entry.sentMessages.length > 0) {
+                    const promptLabel = doc.createElement('div');
+                    promptLabel.style.cssText = 'font-weight:bold;opacity:0.7;font-size:0.9em;margin-bottom:4px;';
+                    promptLabel.textContent = '发送的提示词：';
+                    cardBody.appendChild(promptLabel);
+
+                    entry.sentMessages.forEach((msg) => {
+                        const msgBlock = doc.createElement('div');
+                        msgBlock.className = 'twt-log-msg-block';
+                        const roleTag = msg.role === 'system' ? '系统' : msg.role === 'user' ? '用户' : '助手';
+                        const roleColor = msg.role === 'system' ? '#9c27b0' : msg.role === 'user' ? '#2196f3' : '#4caf50';
+                        const msgHead = doc.createElement('div');
+                        msgHead.style.cssText = `background:rgba(${msg.role === 'system' ? '156,39,176' : msg.role === 'user' ? '33,150,243' : '76,175,80'},0.15);padding:3px 8px;font-size:0.85em;font-weight:bold;color:${roleColor};`;
+                        msgHead.textContent = `[${roleTag}]`;
+                        const msgContent = doc.createElement('pre');
+                        msgContent.className = 'twt-log-pre';
+                        msgContent.textContent = msg.content || '';
+                        msgBlock.appendChild(msgHead);
+                        msgBlock.appendChild(msgContent);
+                        cardBody.appendChild(msgBlock);
+                    });
+                }
+
+                // AI 原始回复
+                if (entry.rawResponse) {
+                    const respLabel = doc.createElement('div');
+                    respLabel.style.cssText = 'font-weight:bold;opacity:0.7;font-size:0.9em;margin-top:6px;margin-bottom:4px;';
+                    respLabel.textContent = 'AI 原始回复：';
+                    cardBody.appendChild(respLabel);
+                    const respBlock = doc.createElement('pre');
+                    respBlock.className = 'twt-log-pre';
+                    respBlock.style.cssText += 'background:rgba(255,255,255,0.04);border:1px solid var(--SmartThemeBorderColor,rgba(255,255,255,0.08));border-radius:4px;';
+                    respBlock.textContent = entry.rawResponse;
+                    cardBody.appendChild(respBlock);
+                }
+
+                // 展开/折叠切换
+                let expanded = entry.status !== 'ok';
+                if (expanded) {
+                    cardBody.classList.add('open');
+                    const chevron = cardHead.querySelector('.fa-chevron-down');
+                    if (chevron) chevron.className = 'fa-solid fa-chevron-up';
+                }
+                cardHead.addEventListener('click', () => {
+                    expanded = !expanded;
+                    cardBody.classList.toggle('open', expanded);
+                    const chevron = cardHead.querySelector('.fa-chevron-down, .fa-chevron-up');
+                    if (chevron) chevron.className = `fa-solid fa-chevron-${expanded ? 'up' : 'down'}`;
+                });
+
+                card.appendChild(cardHead);
+                card.appendChild(cardBody);
+                panelBody.appendChild(card);
+            });
+        }
+
+        panel.appendChild(panelBody);
+        overlay.appendChild(panel);
+        doc.body.appendChild(overlay);
+    };
+
+    btnLog.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (globalBatchLogs.length === 0) {
+            toastr.info('暂无日志，请先开始生成段评', '提示');
+            return;
+        }
+        showLogPanel();
+    });
+
     const progressSpan = doc.createElement('span');
     progressSpan.style.cssText = 'font-size: 0.8em; opacity: 0.8; white-space: nowrap; display: none; margin-left: 3px;';
     progressSpan.innerText = '';
@@ -634,6 +874,15 @@ function showMuluModal() {
             return;
         }
 
+        // 重置全局日志和全局状态
+        globalBatchLogs = [];
+        globalGenerationStatus = 'generating';
+
+        // 进入旋转状态
+        btnLog.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+        btnLog.title = '正在生成...';
+        btnLog.disabled = true;
+
         // Disable batch buttons during generation
         btnSelectAll.disabled = true;
         btnReverseSelect.disabled = true;
@@ -646,14 +895,22 @@ function showMuluModal() {
 
         try {
             const { triggerBatchCommentsForMessages } = await import('./paragraph.js');
-            // Sequentially generate with progress callback!
-            await triggerBatchCommentsForMessages(selectedIds, (current, total) => {
-                progressSpan.innerText = `${current}/${total}`;
-            });
+            // Sequentially generate with progress callback and log callback
+            await triggerBatchCommentsForMessages(
+                selectedIds,
+                (current, total) => {
+                    progressSpan.innerText = `${current}/${total}`;
+                },
+                (mesId, logEntry) => {
+                    globalBatchLogs.push(logEntry);
+                }
+            );
             toastr.success('批量生成段评完成！', '成功');
+            globalGenerationStatus = 'done';
         } catch (err) {
             console.error('Batch comments generation failed:', err);
             toastr.error(`生成失败: ${err.message || err}`, '错误');
+            globalGenerationStatus = 'done';
         } finally {
             // Re-enable
             btnSelectAll.disabled = false;
@@ -662,6 +919,11 @@ function showMuluModal() {
             btnClearAll.disabled = false;
             btnGenerate.disabled = false;
             progressSpan.style.display = 'none';
+
+            // 日志按钮切换为勾号状态
+            btnLog.innerHTML = '<i class="fa-solid fa-circle-check" style="color:#4caf50;"></i>';
+            btnLog.title = `查看生成日志 (共${globalBatchLogs.length}条)`;
+            btnLog.disabled = false;
 
             // Exit batch mode
             exitBatchSelectMode();
@@ -724,7 +986,9 @@ function showMuluModal() {
     closeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
     closeBtn.addEventListener('click', closeMuluModal);
 
+    // 将日志按钮(btnLog)常态化放置在“批量生成段评”按钮的前面(左侧)
     if (settings.commentsEnabled) {
+        headerActions.appendChild(btnLog);
         headerActions.appendChild(batchSelectBtn);
     }
     headerActions.appendChild(sortBtn);

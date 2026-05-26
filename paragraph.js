@@ -1253,7 +1253,8 @@ async function requestAICommentsForParagraphs(paragraphs, presetName) {
         responseText = json.choices?.[0]?.message?.content || '';
     }
 
-    return parseJsonComments(responseText);
+    // 返回解析结果和实际发送的提示词消息列表（供日志记录用）
+    return { comments: parseJsonComments(responseText), sentMessages: messages, rawResponse: responseText };
 }
 
 function parseJsonComments(text) {
@@ -1368,27 +1369,40 @@ export async function triggerBatchCommentsForMessage(mesId) {
     }
 }
 
-export async function triggerBatchCommentsForMessages(selectedIds, onProgress) {
+export async function triggerBatchCommentsForMessages(selectedIds, onProgress, onLog) {
     const total = selectedIds.length;
     for (let i = 0; i < total; i++) {
         const mesId = selectedIds[i];
         if (typeof onProgress === 'function') {
             onProgress(i + 1, total);
         }
-        await triggerBatchCommentsForMessageSilently(mesId);
+        const logEntry = await triggerBatchCommentsForMessageSilently(mesId);
+        if (typeof onLog === 'function') {
+            onLog(mesId, logEntry);
+        }
     }
 }
 
 async function triggerBatchCommentsForMessageSilently(mesId) {
     const context = getContext();
     const message = context.chat[mesId];
-    if (!message) return;
+    // 日志条目
+    const logEntry = { mesId, status: 'ok', sentMessages: [], rawResponse: '', commentsCount: 0, error: null };
+    if (!message) {
+        logEntry.status = 'skip';
+        logEntry.error = '消息不存在';
+        return logEntry;
+    }
 
     try {
         const settings = extension_settings.twt || {};
         const visibleBlocks = getMessageVisibleBlocks(message, settings);
 
-        if (visibleBlocks.length === 0) return;
+        if (visibleBlocks.length === 0) {
+            logEntry.status = 'skip';
+            logEntry.error = '没有可见段落';
+            return logEntry;
+        }
 
         const paragraphs = visibleBlocks.map((b, idx) => ({
             id: idx,
@@ -1396,9 +1410,16 @@ async function triggerBatchCommentsForMessageSilently(mesId) {
         }));
 
         const presetName = settings.commentsCurrentPreset || '网络读者弹幕吐槽';
-        const aiComments = await requestAICommentsForParagraphs(paragraphs, presetName);
+        const result = await requestAICommentsForParagraphs(paragraphs, presetName);
+        logEntry.sentMessages = result.sentMessages || [];
+        logEntry.rawResponse = result.rawResponse || '';
+        const aiComments = result.comments || [];
 
-        if (aiComments.length === 0) return;
+        if (aiComments.length === 0) {
+            logEntry.status = 'empty';
+            logEntry.error = 'AI 未返回任何有效段评';
+            return logEntry;
+        }
 
         if (!message.extra) message.extra = {};
         if (!message.extra.twt_comments) message.extra.twt_comments = [];
@@ -1427,6 +1448,7 @@ async function triggerBatchCommentsForMessageSilently(mesId) {
                 timestamp: Date.now(),
                 type: 'ai'
             });
+            logEntry.commentsCount++;
         });
 
         await context.updateMessageBlock(mesId, message, { rerenderMessage: false });
@@ -1434,7 +1456,10 @@ async function triggerBatchCommentsForMessageSilently(mesId) {
         renderCommentsForMessage(mesId);
     } catch (err) {
         console.error(`Failed to generate comments for message #${mesId}:`, err);
+        logEntry.status = 'error';
+        logEntry.error = err.message || String(err);
     }
+    return logEntry;
 }
 
 export function openCommentDrawer(mesId, paragraphIdx) {

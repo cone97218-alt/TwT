@@ -5,6 +5,18 @@ import { applyVisualMode } from './visual.js';
 import { initMulu, applyMuluSettings } from './mulu.js';
 import { initMenu, applyMenuMode, applyFullscreenMode } from './menu.js';
 
+let parentDoc = document;
+try {
+    if (window.parent && window.parent.document) {
+        parentDoc = window.parent.document;
+    }
+} catch (e) {
+    console.warn("TwT: Cannot access window.parent.document", e);
+}
+
+function getEl(selector) {
+    return $(parentDoc).find(selector);
+}
 
 const escapeHtml = (str) => (str || '')
     .replace(/&/g, '&amp;')
@@ -1030,8 +1042,8 @@ function bindUI() {
 }
 
 function initCommentsEditor() {
-    const $overlay = $('#twt-comments-editor-overlay');
-    const $closeBtn = $('#twt_comments_editor_close');
+    const $overlay = getEl('#twt-comments-editor-overlay');
+    const $closeBtn = getEl('#twt_comments_editor_close');
     
     updateCommentsBgSolid();
     $overlay.fadeIn(200);
@@ -1301,6 +1313,73 @@ function initCommentsEditor() {
         }
     });
 
+    // 导出预设
+    $('#twt_comments_preset_export_btn').off('click').on('click', () => {
+        saveCurrentPromptItemsToMemory();
+        const presetData = {
+            name: currentPresetName,
+            messages: localPresets[currentPresetName] || []
+        };
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(presetData, null, 4));
+        const downloadAnchor = document.createElement('a');
+        downloadAnchor.setAttribute("href",     dataStr);
+        downloadAnchor.setAttribute("download", `twt_preset_${currentPresetName}.json`);
+        document.body.appendChild(downloadAnchor);
+        downloadAnchor.click();
+        downloadAnchor.remove();
+        toastr.success(`预设 "${currentPresetName}" 已成功导出！`, '导出成功');
+    });
+
+    // 导入预设
+    $('#twt_comments_preset_import_btn').off('click').on('click', () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const imported = JSON.parse(event.target.result);
+                    if (!imported || typeof imported.name !== 'string' || !Array.isArray(imported.messages)) {
+                        throw new Error('JSON 格式不正确。必须包含 name 和 messages 属性。');
+                    }
+                    
+                    let importName = imported.name.trim();
+                    if (!importName) {
+                        importName = '未命名导入预设';
+                    }
+                    
+                    // 如果重名，重命名
+                    let finalName = importName;
+                    let counter = 1;
+                    while (localPresets[finalName]) {
+                        finalName = `${importName}_${counter}`;
+                        counter++;
+                    }
+                    
+                    localPresets[finalName] = imported.messages;
+                    currentPresetName = finalName;
+                    
+                    // 保存到酒馆设置中并重新渲染
+                    saveCurrentPromptItemsToMemory();
+                    extension_settings.twt.commentsPromptPresets = JSON.parse(JSON.stringify(localPresets));
+                    extension_settings.twt.commentsCurrentPreset = currentPresetName;
+                    getContext().saveSettingsDebounced();
+
+                    renderPromptsTab();
+                    toastr.success(`成功导入预设 "${finalName}"！`, '导入成功');
+                } catch (err) {
+                    console.error('导入预设失败:', err);
+                    toastr.error(`导入失败：${err.message || '文件解析错误'}`, '错误');
+                }
+            };
+            reader.readAsText(file);
+        };
+        input.click();
+    });
+
     function saveCurrentPromptItemsToMemory() {
         const items = [];
         $('#twt-comments-prompt-items-container .twt-prompt-item-card').each(function() {
@@ -1397,20 +1476,20 @@ function initCommentsEditor() {
                 const $textarea = card.find('.twt-prompt-item-textarea');
                 const currentContent = $textarea.val();
                 
-                const $fsOverlay = $('#twt-comments-text-fullscreen-overlay');
-                const $fsTextarea = $('#twt_comments_fullscreen_textarea');
+                const $fsOverlay = getEl('#twt-comments-text-fullscreen-overlay');
+                const $fsTextarea = getEl('#twt_comments_fullscreen_textarea');
                 
                 $fsTextarea.val(currentContent);
                 $fsOverlay.fadeIn(200);
                 
-                $('#twt_comments_fullscreen_save').off('click').on('click', () => {
+                getEl('#twt_comments_fullscreen_save').off('click').on('click', () => {
                     const editedContent = $fsTextarea.val();
                     $textarea.val(editedContent);
                     saveCurrentPromptItemsToMemory();
                     $fsOverlay.fadeOut(200);
                 });
                 
-                $('#twt_comments_fullscreen_cancel').off('click').on('click', () => {
+                getEl('#twt_comments_fullscreen_cancel').off('click').on('click', () => {
                     $fsOverlay.fadeOut(200);
                 });
             });
@@ -1467,6 +1546,10 @@ function initCommentsEditor() {
     // ==========================================
     $('#twt_comments_prompt_preview_btn').off('click').on('click', () => {
         saveCurrentPromptItemsToMemory();
+        const mockParagraphsInput = JSON.stringify([
+            { id: 0, text: "这是小说中被选中进行点评的第一个段落，用来测试 AI 是否能在此处生成有趣的网络读者吐槽。" },
+            { id: 1, text: "这是紧接着的第二个段落，通常 AI 需要同时分析这两个段落的上下文来进行对比点评。" }
+        ], null, 4);
         const activePreset = localPresets[currentPresetName] || [];
         const enabledMessages = activePreset.filter(m => m.enabled !== false);
         
@@ -1551,11 +1634,11 @@ function initCommentsEditor() {
             }
         }
 
-        $('#twt_comments_preview_url').text(endpointUrl);
-        $('#twt_comments_preview_headers').text(headersStr);
-        $('#twt_comments_preview_model').text(modelStr);
+        getEl('#twt_comments_preview_url').text(endpointUrl);
+        getEl('#twt_comments_preview_headers').text(headersStr);
+        getEl('#twt_comments_preview_model').text(modelStr);
 
-        const $payloadContainer = $('#twt_comments_preview_payload_container');
+        const $payloadContainer = getEl('#twt_comments_preview_payload_container');
         $payloadContainer.empty();
 
         finalMessages.forEach(msg => {
@@ -1569,11 +1652,11 @@ function initCommentsEditor() {
             $payloadContainer.append($msgDiv);
         });
 
-        $('#twt-comments-preview-modal').fadeIn(200);
+        getEl('#twt-comments-preview-modal').fadeIn(200);
     });
 
-    $('#twt_comments_preview_close').off('click').on('click', () => {
-        $('#twt-comments-preview-modal').fadeOut(200);
+    getEl('#twt_comments_preview_close').off('click').on('click', () => {
+        getEl('#twt-comments-preview-modal').fadeOut(200);
     });
 
     // ==========================================
@@ -1682,6 +1765,84 @@ function initCommentsEditor() {
         toastr.success('界面布局设置保存成功！', '成功');
     });
 
+    // ==========================================
+    // Help Tutorials Modals Logic
+    // ==========================================
+    const showHelpModal = (title, content) => {
+        getEl('#twt_help_modal_title').text(title);
+        getEl('#twt_help_modal_content').html(content);
+        getEl('#twt-comments-help-modal').fadeIn(200);
+    };
+
+    const closeHelpModal = () => {
+        getEl('#twt-comments-help-modal').fadeOut(200);
+    };
+
+    getEl('#twt_help_modal_close').off('click').on('click', closeHelpModal);
+    getEl('#twt-comments-help-modal').off('click').on('click', function(e) {
+        if (e.target === this) {
+            closeHelpModal();
+        }
+    });
+
+    // 提示词帮助教程文本
+    const promptHelpText = `
+<div style="font-weight: bold; font-size: 1.1em; margin-bottom: 10px; color: var(--SmartThemeUnderlineColor, #007aff);">提示词编写指南</div>
+您可以通过添加多条“系统 (system)”和“用户 (user)”消息来构建发送给 AI 的提示词预设。
+
+<div style="font-weight: bold; margin-top: 15px; margin-bottom: 5px;">【支持的占位符】</div>
+在发送请求给 AI 时，系统会自动将消息中的以下占位符替换为实际内容：
+• <code style="background: rgba(255,255,255,0.08); padding: 2px 4px; border-radius: 4px; color: #ff7b72;">{{paragraphs_input}}</code>
+  <span style="opacity: 0.85;"><b>(必填)</b> 代表当前选中的需要进行点评的小说段落数据，为 JSON 格式。</span>
+• <code style="background: rgba(255,255,255,0.08); padding: 2px 4px; border-radius: 4px; color: #ff7b72;">{{context_history}}</code>
+  <span style="opacity: 0.85;">代表当前场景的<b>前文聊天历史</b>（默认取最近 5 条消息）。该内容会自动经过您的“正则过滤规则”处理，清除无关的杂质。</span>
+• <code style="background: rgba(255,255,255,0.08); padding: 2px 4px; border-radius: 4px; color: #ff7b72;">{{char}}</code>
+  <span style="opacity: 0.85;">自动替换为酒馆当前 AI 角色名称。</span>
+• <code style="background: rgba(255,255,255,0.08); padding: 2px 4px; border-radius: 4px; color: #ff7b72;">{{user}}</code>
+  <span style="opacity: 0.85;">自动替换为您的用户名称。</span>
+
+<div style="font-weight: bold; margin-top: 15px; margin-bottom: 5px;">【编写建议】</div>
+建议在提示词中明确要求 AI 输出包含作者（author）和点评（comment）字段的 JSON 数组。
+例如：
+<pre style="background: rgba(0,0,0,0.25); border: 1px solid var(--SmartThemeBorderColor); padding: 10px; border-radius: 6px; font-family: monospace; font-size: 0.9em; white-space: pre-wrap; margin-top: 5px; color: #a6e22e;">
+[
+  {
+    "author": "热心书友",
+    "comment": "这段写得真好！"
+  }
+]
+</pre>
+`;
+
+    // 正则过滤帮助教程文本
+    const regexHelpText = `
+<div style="font-weight: bold; font-size: 1.1em; margin-bottom: 10px; color: var(--SmartThemeUnderlineColor, #007aff);">正则过滤配置指南</div>
+当您在提示词中使用 <code style="background: rgba(255,255,255,0.08); padding: 2px 4px; border-radius: 4px; color: #ff7b72;">{{context_history}}</code> 引入上下文剧情时，前文通常会带有很多无助于 AI 进行段评生成的杂质数据（例如思考过程、系统设定提示等）。
+
+您可以使用正则过滤规则在发送给 API 之前，对前文进行一轮自动清洗和简化。
+
+<div style="font-weight: bold; margin-top: 15px; margin-bottom: 5px;">【规则参数说明】</div>
+• <b>正则表达式</b>：标准的 JavaScript 正则语法。
+• <b>动作 (Action)</b>：
+  - <b>排除/清除 (remove)</b>：将正则表达式所匹配到的所有文本，从前文故事文本中直接擦除。
+• <b>启用开关</b>：可随时启用或禁用单条规则。
+• <b>规则顺序</b>：规则将按照从上至下的顺序依次应用。
+
+<div style="font-weight: bold; margin-top: 15px; margin-bottom: 5px;">【常见正则表达式示例】</div>
+• <b>过滤 AI 的思考过程</b>（即清除 &lt;thought&gt; 标签及其包裹的内容）：
+  <code style="display: block; background: rgba(0,0,0,0.25); padding: 6px 10px; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-family: monospace; margin: 5px 0; color: #66d9ef;">&lt;thought&gt;([\\s\\S]*?)&lt;\\/thought&gt;</code>
+• <b>过滤括弧内的动作旁白描述</b>：
+  <code style="display: block; background: rgba(0,0,0,0.25); padding: 6px 10px; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-family: monospace; margin: 5px 0; color: #66d9ef;">\\([^)]*\\) 或 \\*[^*]*\\*</code>
+`;
+
+    $('#twt_prompt_help_icon').off('click').on('click', () => {
+        showHelpModal('提示词预设编写教程', promptHelpText);
+    });
+
+    $('#twt_regex_help_icon').off('click').on('click', () => {
+        showHelpModal('正则过滤规则教程', regexHelpText);
+    });
+
     // Render tabs initially
     renderApisTab();
     renderPromptsTab();
@@ -1716,6 +1877,12 @@ jQuery(async () => {
     const html = await renderExtensionTemplateAsync('third-party/TwT', 'index');
     $('#extensions_settings').append(html);
 
+    // Teleport editor, text editing, preview, and help overlays to parentDoc.body to escape transform containment
+    $('#twt-comments-editor-overlay').appendTo(parentDoc.body);
+    $('#twt-comments-text-fullscreen-overlay').appendTo(parentDoc.body);
+    $('#twt-comments-preview-modal').appendTo(parentDoc.body);
+    $('#twt-comments-help-modal').appendTo(parentDoc.body);
+
     updateCommentsBgSolid();
     bindUI();
     updatePageTabVisibility();
@@ -1733,16 +1900,6 @@ jQuery(async () => {
     initMulu();
     initPaginationEvent(() => extension_settings.twt);
     initMenu(() => extension_settings.twt);
-
-    // 监听聊天区域右键/长按菜单事件以禁用长按菜单
-    let parentDoc = document;
-    try {
-        if (window.parent && window.parent.document) {
-            parentDoc = window.parent.document;
-        }
-    } catch (e) {
-        console.warn("TwT: Cannot access window.parent.document for contextmenu event listener.", e);
-    }
     parentDoc.addEventListener('contextmenu', (e) => {
         const patches = extension_settings.twt.optimizePatches || {};
         const isEnabled = extension_settings.twt.optimizeEnabled && patches['禁用聊天区域长按菜单']?.active;

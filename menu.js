@@ -387,24 +387,30 @@ export function openMessageManagerModal(mesId) {
 
     modalEl.style.cssText = 'position: absolute; left: 0; top: 0; width: 100%; z-index: 999999; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);';
 
-    let listItemsHtml = '';
-    chat.forEach((msg, idx) => {
-        const name = msg.name || (msg.is_user ? 'User' : 'AI');
-        const mes = msg.mes || '';
-        const clean = mes.replace(/[\r\n]+/g, ' ').trim();
-        const excerpt = clean.substring(0, 30);
-        const preview = `${name}: ${excerpt}${clean.length > 30 ? '...' : ''}`;
-        const isHidden = msg.is_system || msg.extra?.is_system;
-        const statusText = isHidden ? ' [已隐藏]' : '';
-        const itemClass = isHidden ? 'twt-range-item twt-item-hidden' : 'twt-range-item';
-        
-        listItemsHtml += `
-            <div class="${itemClass}" data-id="${idx}">
-                <input type="checkbox" class="twt-range-item-checkbox" data-id="${idx}" />
-                <span class="twt-range-item-label">#${idx}${statusText} - ${preview}</span>
-            </div>
-        `;
-    });
+    const buildListHtml = () => {
+        let html = '';
+        const currentChat = context.chat || [];
+        currentChat.forEach((msg, idx) => {
+            const name = msg.name || (msg.is_user ? 'User' : 'AI');
+            const mes = msg.mes || '';
+            const clean = mes.replace(/[\r\n]+/g, ' ').trim();
+            const excerpt = clean.substring(0, 30);
+            const preview = `${name}: ${excerpt}${clean.length > 30 ? '...' : ''}`;
+            const isHidden = msg.is_system || msg.extra?.is_system;
+            const statusText = isHidden ? ' [已隐藏]' : '';
+            const itemClass = isHidden ? 'twt-range-item twt-item-hidden' : 'twt-range-item';
+            
+            html += `
+                <div class="${itemClass}" data-id="${idx}">
+                    <input type="checkbox" class="twt-range-item-checkbox" data-id="${idx}" />
+                    <span class="twt-range-item-label">#${idx}${statusText} - ${preview}</span>
+                </div>
+            `;
+        });
+        return html;
+    };
+
+    const listItemsHtml = buildListHtml();
 
     const boxStyle = opaqueBgColor ? `background-color: ${opaqueBgColor} !important;` : '';
 
@@ -473,6 +479,12 @@ export function openMessageManagerModal(mesId) {
     };
     
     repositionModal();
+    const refreshList = () => {
+        const scrollTop = $scrollContainer.scrollTop();
+        $scrollContainer.html(buildListHtml());
+        $scrollContainer.scrollTop(scrollTop);
+    };
+
     window.addEventListener('resize', repositionModal);
     window.addEventListener('scroll', repositionModal);
     try {
@@ -591,7 +603,7 @@ export function openMessageManagerModal(mesId) {
         lastCheckedIdx = currentIdx;
     }
 
-    $modal.find('.twt-range-item').on('click', function(e) {
+    $scrollContainer.on('click', '.twt-range-item', function(e) {
         const $chk = $(this).find('.twt-range-item-checkbox');
         const currentIdx = Number($chk.attr('data-id'));
         
@@ -606,7 +618,7 @@ export function openMessageManagerModal(mesId) {
         }
     });
 
-    $modal.find('.twt-range-item-checkbox').on('click', function(e) {
+    $scrollContainer.on('click', '.twt-range-item-checkbox', function(e) {
         e.stopPropagation();
         const currentIdx = Number($(this).attr('data-id'));
         const isChecked = $(this).prop('checked');
@@ -658,8 +670,9 @@ export function openMessageManagerModal(mesId) {
             alert('请先选择目标消息！');
             return;
         }
-        closeModal();
         await setHideStateForIds(targetIds, true);
+        refreshList();
+        repositionModal();
     });
 
     $modal.find('.confirm-hide').on('click', async (e) => {
@@ -669,8 +682,9 @@ export function openMessageManagerModal(mesId) {
             alert('请先选择目标消息！');
             return;
         }
-        closeModal();
         await setHideStateForIds(targetIds, false);
+        refreshList();
+        repositionModal();
     });
 
     $modal.find('.confirm-delete').on('click', async (e) => {
@@ -686,11 +700,12 @@ export function openMessageManagerModal(mesId) {
             : `确定要删除选中的 ${targetIds.length} 条消息吗？(此操作不可逆！)`;
             
         if (confirm(confirmMsg)) {
-            closeModal();
             const sortedIds = targetIds.sort((a, b) => b - a);
             for (const id of sortedIds) {
                 await context.deleteMessage(id, undefined, false);
             }
+            refreshList();
+            repositionModal();
         }
     });
 }
