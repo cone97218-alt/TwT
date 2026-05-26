@@ -475,9 +475,9 @@ function showMuluModal() {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 10px 15px;
+        padding: 6px 8px;
         border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.1));
-        gap: 12px;
+        gap: 4px;
     `;
 
     const titleSpan = doc.createElement('span');
@@ -495,14 +495,15 @@ function showMuluModal() {
     searchInput.style.cssText = `
         flex: 1;
         box-sizing: border-box;
-        padding: 6px 10px;
+        padding: 4px 8px;
         border: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.2));
-        border-radius: 6px;
+        border-radius: 4px;
         background: var(--SmartThemeDarkColor, rgba(0, 0, 0, 0.2));
         color: var(--SmartThemeBodyColor, #fff);
-        font-size: 0.9em;
+        font-size: 0.85em;
         outline: none;
         transition: border-color 0.2s;
+        min-width: 0;
     `;
 
     let searchTimeout = null;
@@ -523,18 +524,190 @@ function showMuluModal() {
         }, 800); // 延后 800 毫秒（约1秒左右）等待打字结束
     });
 
+    let isBatchMode = false;
+
+    // Batch Action Container (starts hidden)
+    const batchActionsContainer = doc.createElement('div');
+    batchActionsContainer.style.cssText = `
+        display: none;
+        flex: 1;
+        align-items: center;
+        gap: 2px;
+        box-sizing: border-box;
+        overflow-x: auto;
+        min-width: 0;
+    `;
+    
+    // Shared exit batch mode logic
+    const exitBatchSelectMode = () => {
+        isBatchMode = false;
+        batchActionsContainer.style.display = 'none';
+        searchInput.style.display = 'block';
+        batchSelectBtn.style.background = 'rgba(255, 255, 255, 0.08)';
+        
+        // Hide checkboxes, restore regular clicks
+        listContainer.querySelectorAll('.twt-mulu-checkbox').forEach(cb => {
+            cb.dataset.checked = 'false';
+            cb.style.display = 'none';
+            cb.innerHTML = '';
+        });
+    };
+
+    const btnStyle = 'padding: 2px 3px !important; margin: 0 !important; font-size: 0.8em !important; min-height: 24px !important; min-width: 28px !important; line-height: 1 !important; height: auto !important; width: auto !important; flex-shrink: 0 !important;';
+    
+    // Add batch action buttons:
+    const btnSelectAll = doc.createElement('button');
+    btnSelectAll.className = 'menu_button';
+    btnSelectAll.style.cssText = btnStyle;
+    btnSelectAll.innerText = '全选';
+    btnSelectAll.addEventListener('click', (e) => {
+        e.stopPropagation();
+        listContainer.querySelectorAll('.twt-mulu-checkbox').forEach(cb => {
+            cb.dataset.checked = 'true';
+            cb.innerHTML = '<i class="fa-solid fa-check" style="font-size:11px;"></i>';
+        });
+    });
+
+    const btnReverseSelect = doc.createElement('button');
+    btnReverseSelect.className = 'menu_button';
+    btnReverseSelect.style.cssText = btnStyle;
+    btnReverseSelect.innerText = '反选';
+    btnReverseSelect.addEventListener('click', (e) => {
+        e.stopPropagation();
+        listContainer.querySelectorAll('.twt-mulu-checkbox').forEach(cb => {
+            const nowChecked = cb.dataset.checked !== 'true';
+            cb.dataset.checked = String(nowChecked);
+            cb.innerHTML = nowChecked ? '<i class="fa-solid fa-check" style="font-size:11px;"></i>' : '';
+        });
+    });
+
+    const btnRangeSelect = doc.createElement('button');
+    btnRangeSelect.className = 'menu_button';
+    btnRangeSelect.style.cssText = btnStyle;
+    btnRangeSelect.innerText = '连选';
+    btnRangeSelect.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const checkboxes = Array.from(listContainer.querySelectorAll('.twt-mulu-checkbox'));
+        const checkedIndices = checkboxes.reduce((acc, cb, idx) => {
+            if (cb.dataset.checked === 'true') acc.push(idx);
+            return acc;
+        }, []);
+        if (checkedIndices.length >= 2) {
+            const minIdx = Math.min(...checkedIndices);
+            const maxIdx = Math.max(...checkedIndices);
+            for (let i = minIdx; i <= maxIdx; i++) {
+                checkboxes[i].dataset.checked = 'true';
+                checkboxes[i].innerHTML = '<i class="fa-solid fa-check" style="font-size:11px;"></i>';
+            }
+        } else {
+            toastr.info('请先手动勾选至少两个章节作为起点和终点！', '提示');
+        }
+    });
+
+    const btnClearAll = doc.createElement('button');
+    btnClearAll.className = 'menu_button';
+    btnClearAll.style.cssText = btnStyle;
+    btnClearAll.innerText = '清空';
+    btnClearAll.addEventListener('click', (e) => {
+        e.stopPropagation();
+        listContainer.querySelectorAll('.twt-mulu-checkbox').forEach(cb => {
+            cb.dataset.checked = 'false';
+            cb.innerHTML = '';
+        });
+    });
+
+    const btnGenerate = doc.createElement('button');
+    btnGenerate.className = 'menu_button';
+    btnGenerate.style.cssText = 'padding: 2px 4px !important; margin: 0 !important; font-size: 0.8em !important; min-height: 24px !important; white-space: nowrap !important; background: var(--SmartThemeUnderlineColor, #007aff) !important; color: #fff !important; font-weight: bold !important; border: none !important; border-radius: 4px !important; display: inline-flex !important; align-items: center !important; gap: 2px !important; flex-shrink: 0 !important;';
+    btnGenerate.innerHTML = '<i class="fa-regular fa-comment-dots"></i> 生成';
+    
+    const progressSpan = doc.createElement('span');
+    progressSpan.style.cssText = 'font-size: 0.8em; opacity: 0.8; white-space: nowrap; display: none; margin-left: 3px;';
+    progressSpan.innerText = '';
+
+    btnGenerate.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const selectedCbs = listContainer.querySelectorAll('.twt-mulu-checkbox[data-checked="true"]');
+        const selectedIds = Array.from(selectedCbs).map(cb => parseInt(cb.getAttribute('data-id')));
+        if (selectedIds.length === 0) {
+            toastr.warning('请先选择要生成段评的章节！', '提示');
+            return;
+        }
+
+        // Disable batch buttons during generation
+        btnSelectAll.disabled = true;
+        btnReverseSelect.disabled = true;
+        btnRangeSelect.disabled = true;
+        btnClearAll.disabled = true;
+        btnGenerate.disabled = true;
+
+        progressSpan.style.display = 'inline';
+        progressSpan.innerText = `准备中...`;
+
+        try {
+            const { triggerBatchCommentsForMessages } = await import('./paragraph.js');
+            // Sequentially generate with progress callback!
+            await triggerBatchCommentsForMessages(selectedIds, (current, total) => {
+                progressSpan.innerText = `${current}/${total}`;
+            });
+            toastr.success('批量生成段评完成！', '成功');
+        } catch (err) {
+            console.error('Batch comments generation failed:', err);
+            toastr.error(`生成失败: ${err.message || err}`, '错误');
+        } finally {
+            // Re-enable
+            btnSelectAll.disabled = false;
+            btnReverseSelect.disabled = false;
+            btnRangeSelect.disabled = false;
+            btnClearAll.disabled = false;
+            btnGenerate.disabled = false;
+            progressSpan.style.display = 'none';
+
+            // Exit batch mode
+            exitBatchSelectMode();
+        }
+    });
+
+    batchActionsContainer.appendChild(btnSelectAll);
+    batchActionsContainer.appendChild(btnReverseSelect);
+    batchActionsContainer.appendChild(btnRangeSelect);
+    batchActionsContainer.appendChild(btnClearAll);
+    batchActionsContainer.appendChild(btnGenerate);
+    batchActionsContainer.appendChild(progressSpan);
+
     const headerActions = doc.createElement('div');
     headerActions.style.cssText = `
         display: flex;
-        gap: 8px;
+        gap: 3px;
         align-items: center;
         flex-shrink: 0;
     `;
 
+    const iconBtnStyle = 'padding: 2px !important; margin: 0 !important; font-size: 0.8em !important; min-height: 24px !important; min-width: 24px !important; height: 24px !important; width: 24px !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; flex-shrink: 0 !important;';
+
+    const batchSelectBtn = doc.createElement('button');
+    batchSelectBtn.className = 'menu_button';
+    batchSelectBtn.style.cssText = iconBtnStyle + ' background: rgba(255, 255, 255, 0.08);';
+    batchSelectBtn.title = '批量生成段评';
+    batchSelectBtn.innerHTML = '<i class="fa-solid fa-list-check"></i>';
+    batchSelectBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        isBatchMode = !isBatchMode;
+        if (isBatchMode) {
+            searchInput.style.display = 'none';
+            batchActionsContainer.style.display = 'flex';
+            batchSelectBtn.style.background = 'var(--SmartThemeUnderlineColor, #007aff)';
+            
+            // Show checkboxes
+            listContainer.querySelectorAll('.twt-mulu-checkbox').forEach(cb => cb.style.display = 'inline-flex');
+        } else {
+            exitBatchSelectMode();
+        }
+    });
+
     const sortBtn = doc.createElement('button');
     sortBtn.className = 'menu_button';
-    sortBtn.style.padding = '4px 8px';
-    sortBtn.style.margin = '0';
+    sortBtn.style.cssText = iconBtnStyle;
     sortBtn.title = sortOrder === 'asc' ? '当前：正序 (点击切换倒序)' : '当前：倒序 (点击切换正序)';
     sortBtn.innerHTML = sortOrder === 'asc' ? '<i class="fa-solid fa-sort-amount-down-alt"></i>' : '<i class="fa-solid fa-sort-amount-up"></i>';
     sortBtn.addEventListener('click', () => {
@@ -547,15 +720,18 @@ function showMuluModal() {
 
     const closeBtn = doc.createElement('button');
     closeBtn.className = 'menu_button';
-    closeBtn.style.padding = '4px 8px';
-    closeBtn.style.margin = '0';
+    closeBtn.style.cssText = iconBtnStyle;
     closeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
     closeBtn.addEventListener('click', closeMuluModal);
 
+    if (settings.commentsEnabled) {
+        headerActions.appendChild(batchSelectBtn);
+    }
     headerActions.appendChild(sortBtn);
     headerActions.appendChild(closeBtn);
     header.appendChild(titleSpan);
     header.appendChild(searchInput);
+    header.appendChild(batchActionsContainer);
     header.appendChild(headerActions);
     modal.appendChild(header);
 
@@ -616,6 +792,31 @@ function showMuluModal() {
             margin-left: 8px;
         `;
 
+        // 自定义勾选框 div，彻底绕过酒馆全局 CSS 对 input[type=checkbox] appearance 的覆盖
+        const checkbox = doc.createElement('div');
+        checkbox.className = 'twt-mulu-checkbox';
+        checkbox.setAttribute('data-id', item.mesId);
+        checkbox.dataset.checked = 'false';
+        checkbox.style.cssText = `
+            margin-right: 10px;
+            cursor: pointer;
+            width: 16px;
+            height: 16px;
+            flex-shrink: 0;
+            display: none;
+            border: 2px solid var(--SmartThemeUnderlineColor, #007aff);
+            border-radius: 3px;
+            background: transparent;
+            align-items: center;
+            justify-content: center;
+            color: var(--SmartThemeUnderlineColor, #007aff);
+            font-size: 11px;
+            box-sizing: border-box;
+            transition: background 0.15s;
+            user-select: none;
+        `;
+
+        row.appendChild(checkbox);
         row.appendChild(leftSpan);
         row.appendChild(rightSpan);
 
@@ -626,7 +827,19 @@ function showMuluModal() {
             row.style.backgroundColor = 'transparent';
         });
 
-        row.addEventListener('click', async () => {
+        // 统一的 toggle 函数
+        const toggleCheckbox = () => {
+            const nowChecked = checkbox.dataset.checked !== 'true';
+            checkbox.dataset.checked = String(nowChecked);
+            checkbox.innerHTML = nowChecked ? '<i class="fa-solid fa-check" style="font-size:11px;"></i>' : '';
+            checkbox.style.background = nowChecked ? 'rgba(var(--SmartThemeUnderlineColor-rgb, 0, 122, 255), 0.15)' : 'transparent';
+        };
+
+        row.addEventListener('click', async (e) => {
+            if (isBatchMode) {
+                toggleCheckbox();
+                return;
+            }
             closeMuluModal();
             await scrollToMessageOrNearest(item.mesId);
         });

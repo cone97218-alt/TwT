@@ -143,6 +143,19 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
         hasItems = true;
     }
 
+    // Add Paragraph Comment (小说段评) -> 段评
+    if (settings.commentsEnabled) {
+        const $item = $('<div class="twt-menu-item"><i class="fa-regular fa-comment-dots"></i><span>段评</span></div>');
+        $item.on('click', async (evt) => {
+            evt.stopPropagation();
+            $menu.hide();
+            const { triggerBatchCommentsForMessage } = await import('./paragraph.js');
+            await triggerBatchCommentsForMessage(mesId);
+        });
+        $menu.append($item);
+        hasItems = true;
+    }
+
     // Add Paragraph Edit (分段编辑) -> 编辑
     if (settings.menuOptEdit) {
         const $item = $('<div class="twt-menu-item"><i class="fa-regular fa-pen-to-square"></i><span>编辑</span></div>');

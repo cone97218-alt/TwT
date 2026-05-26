@@ -5,6 +5,14 @@ import { applyVisualMode } from './visual.js';
 import { initMulu, applyMuluSettings } from './mulu.js';
 import { initMenu, applyMenuMode, applyFullscreenMode } from './menu.js';
 
+
+const escapeHtml = (str) => (str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
 const extensionName = 'TwT';
 
 const defaultSettings = {
@@ -58,7 +66,31 @@ const defaultSettings = {
 
     // CSS Custom Optimization settings
     optimizeEnabled: false,
-    optimizePatches: {}
+    optimizePatches: {},
+
+    // Comments settings
+    commentsEnabled: true,
+    commentsSelectedApiId: 'main',
+    commentsApis: [],
+    commentsPromptPresets: {
+        '网络读者弹幕吐槽': [
+            { role: 'system', content: '你是一个小说读者，正在小说网站上阅读小说。请针对以下带编号的段落，写一些像真实读者留下的评论吐槽（俗称“本章说”、“间贴”、“弹幕”）。\n\n【要求】\n1. 吐槽数量：不需要每一段都写，挑选 2~4 个最精彩、最想让人吐槽的段落。\n2. 吐槽内容：符合小说读者的语气，包含剧情猜测、吐槽、玩梗、情感发泄（如甜死我了、虐心、前方高能、男主太帅了）等，保持简短（通常 15~35 字）。\n3. 网友网名：结合你吐槽的内容和小说背景，为每个吐槽生成一个个性化的网友网名（例如：纯爱战神_123、催更狂魔_456、催泪弹收割机、列文虎克等）。', enabled: true, name: '系统角色指令' },
+            { role: 'user', content: '【前文剧情】\n{{context_history}}\n\n【上下文背景】\n主角姓名（用户）：{{user}}\nNPC姓名（角色）：{{char}}\n\n【待阅读小说片段】\n{{paragraphs_input}}', enabled: true, name: '前文与段落输入' },
+            { role: 'system', content: '必须以 JSON 数组格式返回，不要有任何前言、后记或解释，格式如下：\n[\n  { "para_id": 0, "author": "个性化的网友网名", "comment": "吐槽内容" },\n  { "para_id": 2, "author": "个性化的网友网名", "comment": "吐槽内容" }\n]', enabled: true, name: '输出格式控制' }
+        ],
+        '理性剧情分析': [
+            { role: 'system', content: '你是一个非常理性的网络小说评论家。请阅读以下小说片段，挑选 1~2 个段落进行专业分析，并给出简短的书评吐槽。\n\n【要求】\n1. 网友网名：结合你分析的内容 and 小说背景，为每个分析生成一个个性化的专业网友网名（例如：剧情分析师_99、细节怪、伏笔回收站等）。\n2. 字数控制在 50 字以内。', enabled: true, name: '系统分析师指令' },
+            { role: 'user', content: '【前文剧情】\n{{context_history}}\n\n【待阅读小说片段】\n{{paragraphs_input}}', enabled: true, name: '前文与段落输入' },
+            { role: 'system', content: '必须以 JSON 数组格式返回，格式如下：\n[\n  { "para_id": 1, "author": "个性化的网友网名", "comment": "分析吐槽" }\n]', enabled: true, name: '输出格式控制' }
+        ]
+    },
+    commentsCurrentPreset: '网络读者弹幕吐槽',
+    commentsRegexFilters: [
+        { id: 'filter_thought', name: '排除 AI 思考过程 (thought/details)', pattern: '<(thought|TavernThought|details|reasoning)[^>]*>[\\s\\S]*?<\\/\\1>', action: 'remove', enabled: true },
+        { id: 'filter_markdown', name: '排除 Markdown 样式标记 (*和_)', pattern: '[*_]', action: 'remove', enabled: false }
+    ],
+    commentsDrawerPosition: 'right', // left, right, center
+    commentsDrawerWidth: 35 // default width percentage
 };
 
 const defaultPatches = {
@@ -107,6 +139,44 @@ if (!extension_settings.twt) {
         if (extension_settings.twt.optimizePatches[key] === undefined) {
             extension_settings.twt.optimizePatches[key] = Object.assign({}, val);
         }
+    }
+    if (!extension_settings.twt.commentsApis) {
+        extension_settings.twt.commentsApis = [];
+    }
+    if (extension_settings.twt.commentsSelectedApiId === undefined) {
+        extension_settings.twt.commentsSelectedApiId = 'main';
+    }
+    if (!extension_settings.twt.commentsPromptPresets || typeof extension_settings.twt.commentsPromptPresets !== 'object' || Object.keys(extension_settings.twt.commentsPromptPresets).length === 0) {
+        extension_settings.twt.commentsPromptPresets = JSON.parse(JSON.stringify(defaultSettings.commentsPromptPresets));
+    }
+    
+    // 迁移旧版字符串提示词为新版结构化数组提示词
+    for (const key in extension_settings.twt.commentsPromptPresets) {
+        const val = extension_settings.twt.commentsPromptPresets[key];
+        if (typeof val === 'string') {
+            if (key === '网络读者弹幕吐槽' && defaultSettings.commentsPromptPresets['网络读者弹幕吐槽']) {
+                extension_settings.twt.commentsPromptPresets[key] = JSON.parse(JSON.stringify(defaultSettings.commentsPromptPresets['网络读者弹幕吐槽']));
+            } else if (key === '理性剧情分析' && defaultSettings.commentsPromptPresets['理性剧情分析']) {
+                extension_settings.twt.commentsPromptPresets[key] = JSON.parse(JSON.stringify(defaultSettings.commentsPromptPresets['理性剧情分析']));
+            } else {
+                extension_settings.twt.commentsPromptPresets[key] = [
+                    { role: 'user', content: val, enabled: true }
+                ];
+            }
+        }
+    }
+    
+    if (!extension_settings.twt.commentsCurrentPreset || !extension_settings.twt.commentsPromptPresets[extension_settings.twt.commentsCurrentPreset]) {
+        extension_settings.twt.commentsCurrentPreset = Object.keys(extension_settings.twt.commentsPromptPresets)[0] || '网络读者弹幕吐槽';
+    }
+    if (!extension_settings.twt.commentsRegexFilters) {
+        extension_settings.twt.commentsRegexFilters = JSON.parse(JSON.stringify(defaultSettings.commentsRegexFilters));
+    }
+    if (extension_settings.twt.commentsDrawerPosition === undefined) {
+        extension_settings.twt.commentsDrawerPosition = defaultSettings.commentsDrawerPosition;
+    }
+    if (extension_settings.twt.commentsDrawerWidth === undefined) {
+        extension_settings.twt.commentsDrawerWidth = defaultSettings.commentsDrawerWidth;
     }
 }
 
@@ -193,6 +263,37 @@ function updateOptimizeTabVisibility() {
             $('#twt-tab-settings').show().addClass('active');
         }
     }
+}
+
+function updateCommentsTabVisibility() {
+    const $tabBtn = $('#tab-btn-comments');
+    const $tabContent = $('#twt-tab-comments');
+    
+    if (extension_settings.twt.commentsEnabled) {
+        $tabBtn.show();
+    } else {
+        $tabBtn.hide();
+        if ($tabBtn.hasClass('active')) {
+            $tabBtn.removeClass('active');
+            $tabContent.hide().removeClass('active');
+            $('[data-tab="twt-tab-settings"]').addClass('active');
+            $('#twt-tab-settings').show().addClass('active');
+        }
+    }
+}
+
+function renderCommentsPresetList() {
+    const $select = $('#twt_comments_preset');
+    if (!$select.length) return;
+    $select.empty();
+    const presets = extension_settings.twt.commentsPromptPresets || {};
+    for (const presetName of Object.keys(presets)) {
+        const $opt = $('<option></option>').val(presetName).text(presetName);
+        $select.append($opt);
+    }
+    const current = extension_settings.twt.commentsCurrentPreset || Object.keys(presets)[0] || '';
+    $select.val(current);
+    $('#twt_comments_prompt').val(presets[current] || '');
 }
 
 function updateParagraphSubOptionsVisibility() {
@@ -899,18 +1000,730 @@ function bindUI() {
         const targetId = $(this).data('tab');
         $('#' + targetId).show().addClass('active');
     });
+
+    const $commentsEnabled = $('#twt_comments_enabled');
+    $commentsEnabled.prop('checked', extension_settings.twt.commentsEnabled);
+    
+    const updateCommentsBtnVisibilityLocal = () => {
+        if ($commentsEnabled.prop('checked')) {
+            $('#twt_comments_btn_row').show();
+        } else {
+            $('#twt_comments_btn_row').hide();
+        }
+    };
+    updateCommentsBtnVisibilityLocal();
+
+    $commentsEnabled.on('change', function () {
+        extension_settings.twt.commentsEnabled = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+        updateCommentsTabVisibility();
+        updateCommentsBtnVisibilityLocal();
+        if (window.twtRefreshComments) {
+            window.twtRefreshComments();
+        }
+    });
+
+    // Wire up comments settings overlay button
+    $('#twt_comments_open_editor_btn').on('click', () => {
+        initCommentsEditor();
+    });
+}
+
+function initCommentsEditor() {
+    const $overlay = $('#twt-comments-editor-overlay');
+    const $closeBtn = $('#twt_comments_editor_close');
+    
+    updateCommentsBgSolid();
+    $overlay.fadeIn(200);
+
+    // Sub-tab switching inside the editor
+    $overlay.find('.twt-editor-subtab').off('click').on('click', function() {
+        $overlay.find('.twt-editor-subtab').removeClass('active');
+        $overlay.find('.twt-subtab-content').hide();
+        
+        $(this).addClass('active');
+        const targetId = $(this).data('subtab');
+        $overlay.find('#' + targetId).show();
+    });
+
+    $closeBtn.off('click').on('click', () => {
+        $overlay.fadeOut(200);
+    });
+
+    // ==========================================
+    // API Tab Management
+    // ==========================================
+    let currentlySelectedApiId = extension_settings.twt.commentsSelectedApiId || 'main';
+    let localApis = JSON.parse(JSON.stringify(extension_settings.twt.commentsApis || []));
+
+    function renderApisTab() {
+        const $select = $('#twt_comments_api_select');
+        $select.empty();
+        
+        $select.append($('<option></option>').val('main').text('沿用酒馆当前主 API'));
+        localApis.forEach(api => {
+            $select.append($('<option></option>').val(api.id).text(api.name));
+        });
+        
+        $select.val(currentlySelectedApiId);
+        
+        if (currentlySelectedApiId === 'main') {
+            $('#twt_comments_api_edit_section').hide();
+        } else {
+            const api = localApis.find(a => a.id === currentlySelectedApiId);
+            if (api) {
+                $('#twt_comments_api_edit_section').show();
+                $('#twt_comments_api_form_title').text(`编辑 API 接口: ${api.name}`);
+                $('#twt_comments_api_name').val(api.name);
+                $('#twt_comments_api_url').val(api.url);
+                $('#twt_comments_api_key').val(api.key);
+                $('#twt_comments_api_model').val(api.model);
+                $('#twt_comments_api_model_select').hide();
+                $('#twt_api_test_status').hide();
+            } else {
+                $('#twt_comments_api_edit_section').hide();
+            }
+        }
+    }
+
+    $('#twt_comments_api_select').off('change').on('change', function() {
+        currentlySelectedApiId = $(this).val();
+        renderApisTab();
+    });
+
+    $('#twt_comments_api_add_btn').off('click').on('click', () => {
+        const id = 'api_' + Date.now();
+        const newApi = {
+            id: id,
+            name: '未命名接口',
+            url: 'http://localhost:11434/v1',
+            key: '',
+            model: 'qwen2.5'
+        };
+        localApis.push(newApi);
+        currentlySelectedApiId = id;
+        renderApisTab();
+    });
+
+    $('#twt_comments_api_delete_btn').off('click').on('click', () => {
+        if (currentlySelectedApiId === 'main') return;
+        if (confirm('确定要删除这个 API 接口配置吗？')) {
+            localApis = localApis.filter(a => a.id !== currentlySelectedApiId);
+            currentlySelectedApiId = 'main';
+            renderApisTab();
+        }
+    });
+
+    $('#twt_comments_api_save_btn').off('click').on('click', () => {
+        if (currentlySelectedApiId !== 'main') {
+            const api = localApis.find(a => a.id === currentlySelectedApiId);
+            if (api) {
+                api.name = $('#twt_comments_api_name').val().trim() || '未命名接口';
+                api.url = $('#twt_comments_api_url').val().trim();
+                api.key = $('#twt_comments_api_key').val().trim();
+                api.model = $('#twt_comments_api_model').val().trim();
+            }
+        }
+        extension_settings.twt.commentsApis = JSON.parse(JSON.stringify(localApis));
+        extension_settings.twt.commentsSelectedApiId = currentlySelectedApiId;
+        getContext().saveSettingsDebounced();
+        toastr.success('API 接口配置保存成功！', '成功');
+        renderApisTab();
+    });
+
+    $('#twt_comments_api_test_btn').off('click').on('click', async () => {
+        const url = $('#twt_comments_api_url').val().trim();
+        const key = $('#twt_comments_api_key').val().trim();
+        const $status = $('#twt_api_test_status');
+        
+        if (!url) {
+            toastr.warning('请先输入 API Base URL！', '提示');
+            return;
+        }
+
+        $status.show().css('color', 'var(--SmartThemeBodyColor)').html('<i class="fa-solid fa-spinner fa-spin"></i> 测试中...');
+
+        try {
+            const headers = { 'Accept': 'application/json' };
+            if (key) {
+                headers['Authorization'] = `Bearer ${key}`;
+            }
+
+            const response = await fetch(`${url}/models`, {
+                method: 'GET',
+                headers: headers
+            });
+
+            if (response.ok) {
+                $status.css('color', '#4caf50').html('<i class="fa-solid fa-circle-check"></i> 连接成功');
+                toastr.success('连接测试成功！', '成功');
+            } else {
+                const errText = await response.text();
+                $status.css('color', '#ff4444').html('<i class="fa-solid fa-circle-xmark"></i> 连接失败');
+                toastr.error(`连接失败 (${response.status}): ${errText.substring(0, 100)}`, '错误');
+            }
+        } catch (err) {
+            console.error('API connection test failed:', err);
+            $status.css('color', '#ff4444').html('<i class="fa-solid fa-circle-xmark"></i> 连接出错');
+            toastr.error(`连接出错: ${err.message || err}`, '错误');
+        }
+    });
+
+    $('#twt_comments_api_fetch_models_btn').off('click').on('click', async () => {
+        const url = $('#twt_comments_api_url').val().trim();
+        const key = $('#twt_comments_api_key').val().trim();
+        const $select = $('#twt_comments_api_model_select');
+        
+        if (!url) {
+            toastr.warning('请先输入 API Base URL！', '提示');
+            return;
+        }
+
+        toastr.info('正在获取可用模型列表...', '提示');
+
+        try {
+            const headers = { 'Accept': 'application/json' };
+            if (key) {
+                headers['Authorization'] = `Bearer ${key}`;
+            }
+
+            const response = await fetch(`${url}/models`, {
+                method: 'GET',
+                headers: headers
+            });
+
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error(`HTTP ${response.status}: ${errText.substring(0, 100)}`);
+            }
+
+            const json = await response.json();
+            const models = (json.data || []).map(m => m.id);
+
+            if (models.length === 0) {
+                toastr.info('获取成功，但未找到任何可用模型。', '提示');
+                return;
+            }
+
+            $select.empty().show();
+            $select.append($('<option></option>').val('').text('-- 选择模型 --'));
+            models.forEach(model => {
+                $select.append($('<option></option>').val(model).text(model));
+            });
+
+            $select.off('change').on('change', function() {
+                const val = $(this).val();
+                if (val) {
+                    $('#twt_comments_api_model').val(val);
+                }
+            });
+
+            toastr.success(`成功拉取到 ${models.length} 个模型！`, '成功');
+        } catch (err) {
+            console.error('Fetch models failed:', err);
+            toastr.error(`获取模型失败: ${err.message || err}`, '错误');
+        }
+    });
+
+    // ==========================================
+    // Prompts Preset Tab Management
+    // ==========================================
+    let currentPresetName = extension_settings.twt.commentsCurrentPreset || '网络读者弹幕吐槽';
+    let localPresets = JSON.parse(JSON.stringify(extension_settings.twt.commentsPromptPresets || {}));
+
+    function renderPromptsTab() {
+        const $select = $('#twt_comments_preset_select');
+        $select.empty();
+        
+        Object.keys(localPresets).forEach(name => {
+            $select.append($('<option></option>').val(name).text(name));
+        });
+        
+        if (!localPresets[currentPresetName]) {
+            currentPresetName = Object.keys(localPresets)[0] || '网络读者弹幕吐槽';
+        }
+        $select.val(currentPresetName);
+        
+        renderPromptItemsList();
+    }
+
+    $('#twt_comments_preset_select').off('change').on('change', function() {
+        saveCurrentPromptItemsToMemory();
+        currentPresetName = $(this).val();
+        renderPromptsTab();
+    });
+
+    $('#twt_comments_preset_add_btn').off('click').on('click', () => {
+        const name = prompt('请输入新提示词预设名称：');
+        if (name && name.trim().length > 0) {
+            saveCurrentPromptItemsToMemory();
+            const trimmed = name.trim();
+            localPresets[trimmed] = [
+                { role: 'system', content: '你是一个小说读者。', enabled: true }
+            ];
+            currentPresetName = trimmed;
+            renderPromptsTab();
+        }
+    });
+
+    $('#twt_comments_preset_dup_btn').off('click').on('click', () => {
+        const name = prompt('请输入复制后的预设名称：', currentPresetName + '_copy');
+        if (name && name.trim().length > 0) {
+            saveCurrentPromptItemsToMemory();
+            const trimmed = name.trim();
+            localPresets[trimmed] = JSON.parse(JSON.stringify(localPresets[currentPresetName] || []));
+            currentPresetName = trimmed;
+            renderPromptsTab();
+        }
+    });
+
+    $('#twt_comments_preset_rename_btn').off('click').on('click', () => {
+        const name = prompt('请输入预设的新名称：', currentPresetName);
+        if (name && name.trim().length > 0 && name.trim() !== currentPresetName) {
+            const trimmed = name.trim();
+            localPresets[trimmed] = localPresets[currentPresetName];
+            delete localPresets[currentPresetName];
+            currentPresetName = trimmed;
+            renderPromptsTab();
+        }
+    });
+
+    $('#twt_comments_preset_del_btn').off('click').on('click', () => {
+        const keys = Object.keys(localPresets);
+        if (keys.length <= 1) {
+            toastr.warning('必须保留至少一个提示词预设。', '提示');
+            return;
+        }
+        if (confirm(`确定要删除预设 "${currentPresetName}" 吗？`)) {
+            delete localPresets[currentPresetName];
+            currentPresetName = Object.keys(localPresets)[0];
+            renderPromptsTab();
+        }
+    });
+
+    function saveCurrentPromptItemsToMemory() {
+        const items = [];
+        $('#twt-comments-prompt-items-container .twt-prompt-item-card').each(function() {
+            const role = $(this).find('.twt-prompt-item-role-select').val();
+            const enabled = $(this).find('.twt-prompt-item-enable-toggle').prop('checked');
+            const name = $(this).find('.twt-prompt-item-name-input').val();
+            const content = $(this).find('.twt-prompt-item-textarea').val();
+            const collapsed = $(this).hasClass('collapsed');
+            items.push({ role, enabled, name, content, collapsed });
+        });
+        if (currentPresetName) {
+            localPresets[currentPresetName] = items;
+        }
+    }
+
+    function renderPromptItemsList() {
+        const container = $('#twt-comments-prompt-items-container');
+        container.empty();
+        
+        const items = localPresets[currentPresetName] || [];
+        items.forEach((item, index) => {
+            const isCollapsed = item.collapsed !== false; // Default to true (collapsed)
+            const collapsedClass = isCollapsed ? 'collapsed' : '';
+            const textareaStyle = isCollapsed ? 'display: none;' : '';
+            const caretIcon = isCollapsed ? 'fa-chevron-right' : 'fa-chevron-down';
+            
+            const card = $(`
+                <div class="twt-prompt-item-card ${collapsedClass}" data-index="${index}" style="display: flex; flex-direction: column; gap: 8px;">
+                    <div class="twt-prompt-item-row" style="cursor: pointer; user-select: none;">
+                        <div class="twt-prompt-item-left">
+                            <span class="twt-prompt-item-toggle-collapse" style="cursor: pointer; padding: 4px; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px;"><i class="fa-solid ${caretIcon}"></i></span>
+                            <span style="font-weight: bold; font-size: 0.85em; opacity: 0.5;">#${index + 1}</span>
+                            <select class="twt-prompt-item-role-select" style="background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 3px; font-size: 0.85em; width: auto; max-width: 110px;">
+                                <option value="system" ${item.role === 'system' ? 'selected' : ''}>System (系统)</option>
+                                <option value="user" ${item.role === 'user' ? 'selected' : ''}>User (用户)</option>
+                                <option value="assistant" ${item.role === 'assistant' ? 'selected' : ''}>Assistant (AI)</option>
+                            </select>
+                            <input type="text" class="twt-prompt-item-name-input" placeholder="条目名称，如：背景上下文" value="${item.name || ''}" style="flex: 1; min-width: 100px; max-width: 250px; font-size: 0.85em; padding: 3px 6px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px;" />
+                        </div>
+                        <div class="twt-prompt-item-right">
+                            <label style="display: flex; align-items: center; gap: 4px; font-size: 0.85em; cursor: pointer; margin: 0; white-space: nowrap;">
+                                <input type="checkbox" class="twt-prompt-item-enable-toggle" ${item.enabled !== false ? 'checked' : ''} /> 启用
+                            </label>
+                            <button class="twt-prompt-item-fullscreen-btn menu_button" style="padding: 3px 6px; margin: 0; font-size: 0.8em; white-space: nowrap !important; display: inline-flex !important; align-items: center !important; gap: 2px !important;" title="全屏编辑这行内容"><i class="fa-solid fa-expand"></i> 全屏</button>
+                            <button class="twt-prompt-item-dup-btn menu_button" style="padding: 3px 6px; margin: 0; font-size: 0.8em; white-space: nowrap !important; display: inline-flex !important; align-items: center !important; gap: 2px !important;" title="复制此条目"><i class="fa-regular fa-copy"></i> 复制</button>
+                            <button class="twt-prompt-item-del-btn menu_button" style="padding: 3px 6px; margin: 0; color: #ff4444; font-size: 0.8em; white-space: nowrap !important; display: inline-flex !important; align-items: center !important; gap: 2px !important;" title="删除此条目"><i class="fa-solid fa-trash"></i> 删除</button>
+                        </div>
+                    </div>
+                    <textarea class="twt-prompt-item-textarea" placeholder="消息内容..." style="width: 100%; height: 80px; box-sizing: border-box; padding: 6px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; resize: vertical; ${textareaStyle}">${item.content || ''}</textarea>
+                </div>
+            `);
+            
+            // Prevent event bubbling when clicking inside input, select, label or buttons in header
+            card.find('.twt-prompt-item-role-select, .twt-prompt-item-name-input, .twt-prompt-item-enable-toggle, .menu_button').on('click', (e) => {
+                e.stopPropagation();
+            });
+
+            // Expand/collapse toggling (Accordion style)
+            const toggleCollapse = () => {
+                const isCollapsed = card.hasClass('collapsed');
+                if (isCollapsed) {
+                    // Collapse all other sibling items first
+                    card.siblings('.twt-prompt-item-card').each(function() {
+                        const $sibling = $(this);
+                        if (!$sibling.hasClass('collapsed')) {
+                            $sibling.addClass('collapsed');
+                            $sibling.find('.twt-prompt-item-textarea').slideUp(150);
+                            $sibling.find('.twt-prompt-item-toggle-collapse i').removeClass('fa-chevron-down').addClass('fa-chevron-right');
+                        }
+                    });
+                    
+                    // Expand this item
+                    card.removeClass('collapsed');
+                    card.find('.twt-prompt-item-textarea').slideDown(150);
+                    card.find('.twt-prompt-item-toggle-collapse i').removeClass('fa-chevron-right').addClass('fa-chevron-down');
+                } else {
+                    // Collapse this item
+                    card.addClass('collapsed');
+                    card.find('.twt-prompt-item-textarea').slideUp(150);
+                    card.find('.twt-prompt-item-toggle-collapse i').removeClass('fa-chevron-down').addClass('fa-chevron-right');
+                }
+                saveCurrentPromptItemsToMemory();
+            };
+
+            card.find('.twt-prompt-item-row').on('click', (e) => {
+                if ($(e.target).closest('.twt-prompt-item-role-select, .twt-prompt-item-name-input, .twt-prompt-item-enable-toggle, .menu_button').length) return;
+                toggleCollapse();
+            });
+            
+            card.find('.twt-prompt-item-fullscreen-btn').on('click', (e) => {
+                e.stopPropagation();
+                saveCurrentPromptItemsToMemory();
+                
+                const $textarea = card.find('.twt-prompt-item-textarea');
+                const currentContent = $textarea.val();
+                
+                const $fsOverlay = $('#twt-comments-text-fullscreen-overlay');
+                const $fsTextarea = $('#twt_comments_fullscreen_textarea');
+                
+                $fsTextarea.val(currentContent);
+                $fsOverlay.fadeIn(200);
+                
+                $('#twt_comments_fullscreen_save').off('click').on('click', () => {
+                    const editedContent = $fsTextarea.val();
+                    $textarea.val(editedContent);
+                    saveCurrentPromptItemsToMemory();
+                    $fsOverlay.fadeOut(200);
+                });
+                
+                $('#twt_comments_fullscreen_cancel').off('click').on('click', () => {
+                    $fsOverlay.fadeOut(200);
+                });
+            });
+
+            card.find('.twt-prompt-item-del-btn').on('click', (e) => {
+                e.stopPropagation();
+                saveCurrentPromptItemsToMemory();
+                localPresets[currentPresetName].splice(index, 1);
+                renderPromptItemsList();
+            });
+
+            card.find('.twt-prompt-item-dup-btn').on('click', (e) => {
+                e.stopPropagation();
+                saveCurrentPromptItemsToMemory();
+                const copiedItem = JSON.parse(JSON.stringify(localPresets[currentPresetName][index]));
+                localPresets[currentPresetName].splice(index + 1, 0, copiedItem);
+                renderPromptItemsList();
+            });
+
+            container.append(card);
+        });
+    }
+
+    $('#twt_comments_prompt_add_item_btn').off('click').on('click', () => {
+        saveCurrentPromptItemsToMemory();
+        if (!localPresets[currentPresetName]) {
+            localPresets[currentPresetName] = [];
+        }
+        localPresets[currentPresetName].push({
+            role: 'user',
+            content: '',
+            enabled: true
+        });
+        renderPromptItemsList();
+        
+        setTimeout(() => {
+            const container = document.getElementById('twt-comments-prompt-items-container');
+            if (container) {
+                container.scrollTop = container.scrollHeight;
+            }
+        }, 50);
+    });
+
+    $('#twt_comments_prompt_save_btn').off('click').on('click', () => {
+        saveCurrentPromptItemsToMemory();
+        extension_settings.twt.commentsPromptPresets = JSON.parse(JSON.stringify(localPresets));
+        extension_settings.twt.commentsCurrentPreset = currentPresetName;
+        getContext().saveSettingsDebounced();
+        toastr.success('提示词预设保存成功！', '成功');
+    });
+
+    // ==========================================
+    // Request Preview Dialog
+    // ==========================================
+    $('#twt_comments_prompt_preview_btn').off('click').on('click', () => {
+        saveCurrentPromptItemsToMemory();
+        const activePreset = localPresets[currentPresetName] || [];
+        const enabledMessages = activePreset.filter(m => m.enabled !== false);
+        
+        if (enabledMessages.length === 0) {
+            toastr.warning('当前预设中没有任何已启用的消息条目！', '提示');
+            return;
+        }
+
+        const context = getContext();
+        const userVal = context.name1 || 'User';
+        const charVal = context.name2 || 'Char';
+        function applyCommentsRegexFilters(text) {
+            if (!text) return '';
+            const filters = extension_settings.twt.commentsRegexFilters || [];
+            let result = text;
+            filters.forEach(filter => {
+                if (filter.enabled === false || !filter.pattern) return;
+                try {
+                    const regex = new RegExp(filter.pattern, 'g');
+                    if (filter.action === 'remove') {
+                        result = result.replace(regex, '');
+                    }
+                } catch (e) {
+                    console.warn(`[TwT Regex Filter Error] Pattern "${filter.pattern}":`, e);
+                }
+            });
+            return result;
+        }
+
+        // Get actual chat history context (last 5 messages before preview context)
+        let rawContextHistory = '';
+        if (context.chat && context.chat.length > 0) {
+            // Preview relative to the current chat session or end of chat
+            const lastMessages = context.chat.slice(-5);
+            rawContextHistory = lastMessages.map(msg => {
+                const sender = msg.is_user ? (context.name1 || 'User') : (context.name2 || 'Char');
+                return `${sender}: ${msg.mes || ''}`;
+            }).join('\n\n');
+        } else {
+            rawContextHistory = `User: 这是一个测试的前文故事开头。\nChar: 这是一个测试的AI回复内容，里面包含一些需要排除的思考过程 <thought>AI正在思考如何回应用户...</thought> 思考完毕。`;
+        }
+
+        const filteredContextHistory = applyCommentsRegexFilters(rawContextHistory);
+
+        const finalMessages = enabledMessages.map(m => {
+            let replacedContent = (m.content || '')
+                .replace(/{{paragraphs_input}}/g, mockParagraphsInput)
+                .replace(/{{context_history}}/g, filteredContextHistory)
+                .replace(/{{user}}/g, userVal)
+                .replace(/{{char}}/g, charVal);
+            return {
+                role: m.role,
+                content: replacedContent
+            };
+        });
+
+        let endpointUrl = '';
+        let headersStr = '';
+        let modelStr = '';
+
+        if (currentlySelectedApiId === 'main') {
+            const STModel = (typeof context.getChatCompletionModel === 'function') ? context.getChatCompletionModel(context.chatCompletionSettings) : '酒馆当前主模型';
+            endpointUrl = '/api/backends/chat-completions/generate';
+            headersStr = JSON.stringify({
+                'Content-Type': 'application/json',
+                'X-Source': 'SillyTavern-TwT-Extension'
+            }, null, 2);
+            modelStr = STModel;
+        } else {
+            const api = localApis.find(a => a.id === currentlySelectedApiId);
+            if (api) {
+                endpointUrl = `${api.url}/chat/completions`;
+                headersStr = JSON.stringify({
+                    'Content-Type': 'application/json',
+                    'Authorization': api.key ? `Bearer ${api.key.substring(0, 4)}...${api.key.substring(Math.max(0, api.key.length - 4))}` : 'None'
+                }, null, 2);
+                modelStr = api.model;
+            } else {
+                endpointUrl = '未知接口';
+                headersStr = '无';
+                modelStr = '无';
+            }
+        }
+
+        $('#twt_comments_preview_url').text(endpointUrl);
+        $('#twt_comments_preview_headers').text(headersStr);
+        $('#twt_comments_preview_model').text(modelStr);
+
+        const $payloadContainer = $('#twt_comments_preview_payload_container');
+        $payloadContainer.empty();
+
+        finalMessages.forEach(msg => {
+            const roleClass = msg.role;
+            const $msgDiv = $(`
+                <div class="twt-preview-payload-msg">
+                    <span class="twt-preview-payload-role ${roleClass}">${msg.role.toUpperCase()}</span>
+                    <div class="twt-preview-payload-content">${escapeHtml(msg.content)}</div>
+                </div>
+            `);
+            $payloadContainer.append($msgDiv);
+        });
+
+        $('#twt-comments-preview-modal').fadeIn(200);
+    });
+
+    $('#twt_comments_preview_close').off('click').on('click', () => {
+        $('#twt-comments-preview-modal').fadeOut(200);
+    });
+
+    // ==========================================
+    // Regex Filters Tab Management
+    // ==========================================
+    let localFilters = JSON.parse(JSON.stringify(extension_settings.twt.commentsRegexFilters || []));
+
+    function renderRegexFiltersTab() {
+        const container = $('#twt-comments-regex-rules-container');
+        container.empty();
+
+        localFilters.forEach((filter, index) => {
+            const card = $(`
+                <div class="twt-prompt-item-card" data-index="${index}" style="display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--SmartThemeBorderColor); border-radius: 6px; background: rgba(255,255,255,0.02);">
+                    <div class="twt-prompt-item-row" style="display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
+                        <div class="twt-prompt-item-left" style="display: flex; gap: 6px; align-items: center; flex: 1; min-width: 200px;">
+                            <span style="font-weight: bold; font-size: 0.85em; opacity: 0.5;">#${index + 1}</span>
+                            <input type="text" class="twt-regex-name-input" placeholder="规则名称" value="${filter.name || ''}" style="flex: 1; min-width: 100px; max-width: 200px; font-size: 0.85em; padding: 3px 6px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px;" />
+                            <select class="twt-regex-action-select" style="background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 3px; font-size: 0.85em;">
+                                <option value="remove" ${filter.action === 'remove' ? 'selected' : ''}>排除/清除移除</option>
+                            </select>
+                        </div>
+                        <div class="twt-prompt-item-right" style="display: flex; gap: 8px; align-items: center; justify-content: flex-end; white-space: nowrap;">
+                            <label style="display: flex; align-items: center; gap: 4px; font-size: 0.85em; cursor: pointer; margin: 0; white-space: nowrap;">
+                                <input type="checkbox" class="twt-regex-enable-toggle" ${filter.enabled !== false ? 'checked' : ''} /> 启用
+                            </label>
+                            <button class="twt-regex-del-btn menu_button" style="padding: 3px 6px; margin: 0; color: #ff4444; font-size: 0.85em; white-space: nowrap !important; display: inline-flex !important; align-items: center !important; gap: 2px !important;" title="删除此规则"><i class="fa-solid fa-trash"></i> 删除</button>
+                        </div>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px;">
+                        <span style="font-size: 0.8em; opacity: 0.6;">正则表达式 (Regular Expression Pattern)：</span>
+                        <input type="text" class="twt-regex-pattern-input" placeholder="例如：<thought[^>]*>[\\s\\S]*?<\\/thought>" value="${filter.pattern || ''}" style="width: 100%; font-size: 0.9em; padding: 5px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-family: monospace;" />
+                    </div>
+                </div>
+            `);
+
+            card.find('.twt-regex-del-btn').on('click', () => {
+                saveCurrentFiltersToMemory();
+                localFilters.splice(index, 1);
+                renderRegexFiltersTab();
+            });
+
+            container.append(card);
+        });
+    }
+
+    function saveCurrentFiltersToMemory() {
+        const filters = [];
+        $('#twt-comments-regex-rules-container .twt-prompt-item-card').each(function() {
+            const name = $(this).find('.twt-regex-name-input').val().trim();
+            const action = $(this).find('.twt-regex-action-select').val();
+            const enabled = $(this).find('.twt-regex-enable-toggle').prop('checked');
+            const pattern = $(this).find('.twt-regex-pattern-input').val();
+            const id = 'filter_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+            filters.push({ id, name, action, enabled, pattern });
+        });
+        localFilters = filters;
+    }
+
+    $('#twt_comments_regex_add_btn').off('click').on('click', () => {
+        saveCurrentFiltersToMemory();
+        localFilters.push({
+            id: 'filter_' + Date.now(),
+            name: '新规则',
+            pattern: '',
+            action: 'remove',
+            enabled: true
+        });
+        renderRegexFiltersTab();
+    });
+
+    $('#twt_comments_regex_save_btn').off('click').on('click', () => {
+        saveCurrentFiltersToMemory();
+        extension_settings.twt.commentsRegexFilters = JSON.parse(JSON.stringify(localFilters));
+        getContext().saveSettingsDebounced();
+        toastr.success('正则过滤规则保存成功！', '成功');
+    });
+
+    // ==========================================
+    // Layout settings Tab Management
+    // ==========================================
+    function renderLayoutTab() {
+        const currentPos = extension_settings.twt.commentsDrawerPosition || 'right';
+        const currentWidth = extension_settings.twt.commentsDrawerWidth || 35; // Default 35%
+        
+        $('#twt_comments_drawer_position_select').val(currentPos);
+        $('#twt_comments_drawer_width_range').val(currentWidth);
+        
+        $('#twt_comments_drawer_width_display').text(currentWidth + '%');
+    }
+
+    // Bind slider input change
+    $('#twt_comments_drawer_width_range').off('input').on('input', function() {
+        const val = $(this).val();
+        $('#twt_comments_drawer_width_display').text(val + '%');
+    });
+
+    $('#twt_comments_layout_save_btn').off('click').on('click', () => {
+        const pos = $('#twt_comments_drawer_position_select').val();
+        const width = parseInt($('#twt_comments_drawer_width_range').val(), 10) || 35;
+        
+        extension_settings.twt.commentsDrawerPosition = pos;
+        extension_settings.twt.commentsDrawerWidth = width;
+        
+        getContext().saveSettingsDebounced();
+        toastr.success('界面布局设置保存成功！', '成功');
+    });
+
+    // Render tabs initially
+    renderApisTab();
+    renderPromptsTab();
+    renderRegexFiltersTab();
+    renderLayoutTab();
+}
+
+function updateCommentsBgSolid() {
+    try {
+        const tempEl = document.createElement('div');
+        tempEl.style.color = 'var(--SmartThemeBlurTintColor)';
+        document.body.appendChild(tempEl);
+        const computedColor = getComputedStyle(tempEl).color;
+        document.body.removeChild(tempEl);
+        
+        const match = computedColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        if (match) {
+            const r = match[1];
+            const g = match[2];
+            const b = match[3];
+            document.documentElement.style.setProperty('--twt-comments-bg-solid', `rgb(${r}, ${g}, ${b})`);
+        } else {
+            document.documentElement.style.setProperty('--twt-comments-bg-solid', 'var(--SmartThemeBlurTintColor)');
+        }
+    } catch (e) {
+        console.warn("TwT: Failed to parse SmartThemeBlurTintColor:", e);
+        document.documentElement.style.setProperty('--twt-comments-bg-solid', 'var(--SmartThemeBlurTintColor)');
+    }
 }
 
 jQuery(async () => {
     const html = await renderExtensionTemplateAsync('third-party/TwT', 'index');
     $('#extensions_settings').append(html);
 
+    updateCommentsBgSolid();
     bindUI();
     updatePageTabVisibility();
     updateMenuTabVisibility();
     updateVisualTabVisibility();
     updateMuluTabVisibility();
     updateOptimizeTabVisibility();
+    updateCommentsTabVisibility();
     
     applyPaginationMode(extension_settings.twt.enabled, extension_settings.twt);
     applyVisualMode(extension_settings.twt.visualEnabled, extension_settings.twt);
