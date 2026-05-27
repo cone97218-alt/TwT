@@ -331,8 +331,9 @@ function injectMuluStyles() {
             left: 0;
             width: 100vw;
             height: 100vh;
-            background: rgba(0, 0, 0, 0.75);
+            background: rgba(0, 0, 0, 0.6);
             z-index: 10000;
+            backdrop-filter: blur(3px);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -342,7 +343,7 @@ function injectMuluStyles() {
             width: 90%;
             max-width: 500px;
             max-height: 80vh;
-            background: var(--SmartThemeBlurTintColor, rgba(30, 30, 30, 0.98));
+            background: var(--SmartThemeBlurTintColor, rgba(30, 30, 30, 0.95));
             border: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.15));
             border-radius: 12px;
             box-shadow: 0 10px 30px var(--SmartThemeShadowColor, rgba(0, 0, 0, 0.5));
@@ -351,6 +352,7 @@ function injectMuluStyles() {
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            backdrop-filter: blur(10px);
             font-family: var(--SmartThemeFontFamily, sans-serif);
         }
         #twt-mulu-modal button.menu_button {
@@ -377,56 +379,50 @@ function injectMuluStyles() {
         .twt-mulu-list::-webkit-scrollbar-thumb:hover {
             background: var(--SmartThemeEmColor, rgba(255, 255, 255, 0.4));
         }
-        .twt-mulu-row:hover {
-            background-color: var(--SmartThemeBotMesBlurTintColor, rgba(255, 255, 255, 0.05)) !important;
-        }
     `;
     doc.head.appendChild(style);
 }
 
-let cachedOverlay = null;
-let cachedChatLength = 0;
-let cachedLastMessageText = '';
-let cachedRegexStr = '';
-let cachedSortOrder = '';
-let cachedCommentsEnabled = false;
+function showMuluModal() {
+    closeMuluModal();
+    injectMuluStyles();
 
-function getOrBuildMuluOverlay(forceRebuild = false) {
-    const settings = extension_settings.twt || {};
-    const regexStr = settings.customMuluRegex || '';
+    const settings = extension_settings.twt;
+    const regexStr = settings.customMuluRegex;
     const sortOrder = settings.muluSortOrder || 'asc';
-    const commentsEnabled = !!settings.commentsEnabled;
+
+    const doc = getDoc();
+    const chatContainer = doc.getElementById('chat');
+    if (!chatContainer) {
+        toastr.error('无法找到聊天容器');
+        return;
+    }
 
     const context = typeof getContext === 'function' ? getContext() : null;
     const chatArray = context ? context.chat : window.chat;
     if (!chatArray || chatArray.length === 0) {
-        return null;
+        toastr.info('当前没有聊天记录', '提示');
+        return;
     }
 
-    const lastMsgText = chatArray.length > 0 ? (chatArray[chatArray.length - 1].mes || '') : '';
-
-    if (
-        !forceRebuild &&
-        cachedOverlay &&
-        cachedChatLength === chatArray.length &&
-        cachedLastMessageText === lastMsgText &&
-        cachedRegexStr === regexStr &&
-        cachedSortOrder === sortOrder &&
-        cachedCommentsEnabled === commentsEnabled
-    ) {
-        return cachedOverlay;
-    }
-
-    injectMuluStyles();
-
-    const doc = getDoc();
     const tocItems = [];
 
     for (let i = 0; i < chatArray.length; i++) {
         const msg = chatArray[i];
         if (msg.is_user || msg.system) continue;
 
-        const rawText = msg.mes || '';
+        let rawText = '';
+        const mesEl = doc.querySelector(`#chat .mes[mesid="${i}"]`);
+        if (mesEl) {
+            const textEl = mesEl.querySelector('.mes_text');
+            if (textEl) {
+                rawText = textEl.innerText.trim();
+            }
+        }
+        if (!rawText) {
+            rawText = msg.mes || '';
+        }
+
         const cleanText = getCleanText(rawText);
 
         let displayTitle = '';
@@ -441,13 +437,20 @@ function getOrBuildMuluOverlay(forceRebuild = false) {
             displayTitle = cleanText;
         }
 
+        // 强行替换所有换行符为空格，并将多个连续空格合并为一个，以确保维持“一楼层一行”的单行排版
         displayTitle = displayTitle.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
 
         tocItems.push({
             mesId: i,
             title: displayTitle,
-            fullText: cleanText
+            fullText: cleanText,
+            mesEl: mesEl
         });
+    }
+
+    if (tocItems.length === 0) {
+        toastr.info(regexStr ? '未匹配到任何符合正则的目录项' : '未找到任何AI消息', '提示');
+        return;
     }
 
     if (sortOrder === 'desc') {
@@ -458,13 +461,12 @@ function getOrBuildMuluOverlay(forceRebuild = false) {
 
     const overlay = doc.createElement('div');
     overlay.id = 'twt-mulu-overlay';
-    overlay.style.display = 'none';
     overlay.addEventListener('click', closeMuluModal);
 
     const modal = doc.createElement('div');
     modal.id = 'twt-mulu-modal';
     modal.addEventListener('click', (e) => {
-        e.stopPropagation();
+        e.stopPropagation(); // 阻止点击弹窗内部导致弹窗关闭
     });
 
     const listContainer = doc.createElement('div');
@@ -530,11 +532,12 @@ function getOrBuildMuluOverlay(forceRebuild = false) {
                     row.style.display = 'none';
                 }
             });
-        }, 800);
+        }, 800); // 延后 800 毫秒（约1秒左右）等待打字结束
     });
 
     let isBatchMode = false;
 
+    // Batch Action Container (starts hidden)
     const batchActionsContainer = doc.createElement('div');
     batchActionsContainer.style.cssText = `
         display: none;
@@ -546,12 +549,14 @@ function getOrBuildMuluOverlay(forceRebuild = false) {
         min-width: 0;
     `;
     
+    // Shared exit batch mode logic
     const exitBatchSelectMode = () => {
         isBatchMode = false;
         batchActionsContainer.style.display = 'none';
         searchInput.style.display = 'block';
         batchSelectBtn.style.background = 'rgba(255, 255, 255, 0.08)';
         
+        // Hide checkboxes, restore regular clicks
         listContainer.querySelectorAll('.twt-mulu-checkbox').forEach(cb => {
             cb.dataset.checked = 'false';
             cb.style.display = 'none';
@@ -561,6 +566,7 @@ function getOrBuildMuluOverlay(forceRebuild = false) {
 
     const btnStyle = 'padding: 2px 3px !important; margin: 0 !important; font-size: 0.8em !important; min-height: 24px !important; min-width: 28px !important; line-height: 1 !important; height: auto !important; width: auto !important; flex-shrink: 0 !important;';
     
+    // Add batch action buttons:
     const btnSelectAll = doc.createElement('button');
     btnSelectAll.className = 'menu_button';
     btnSelectAll.style.cssText = btnStyle;
@@ -626,10 +632,12 @@ function getOrBuildMuluOverlay(forceRebuild = false) {
     btnGenerate.style.cssText = 'padding: 2px 4px !important; margin: 0 !important; font-size: 0.8em !important; min-height: 24px !important; white-space: nowrap !important; background: var(--SmartThemeUnderlineColor, #007aff) !important; color: #fff !important; font-weight: bold !important; border: none !important; border-radius: 4px !important; display: inline-flex !important; align-items: center !important; gap: 2px !important; flex-shrink: 0 !important;';
     btnGenerate.innerHTML = '<i class="fa-regular fa-comment-dots"></i> 生成';
 
+    // 日志图标按钮：生成前显示普通日志图标，生成中显示转圈圈，生成后显示勾号并可点击查看日志
     const btnLog = doc.createElement('button');
     btnLog.className = 'menu_button';
     btnLog.style.cssText = 'padding: 2px !important; margin: 0 !important; font-size: 0.8em !important; min-height: 24px !important; min-width: 24px !important; height: 24px !important; width: 24px !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; flex-shrink: 0 !important; border-radius: 4px !important;';
     
+    // 根据全局状态初始化图标
     if (globalGenerationStatus === 'generating') {
         btnLog.title = '正在生成...';
         btnLog.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
@@ -644,10 +652,12 @@ function getOrBuildMuluOverlay(forceRebuild = false) {
         btnLog.disabled = false;
     }
 
+    // 日志面板（浮层弹出，使用和目录类似的遮罩居中机制）
     const showLogPanel = () => {
         const existingOverlay = doc.getElementById('twt-batch-log-overlay');
         if (existingOverlay) { existingOverlay.remove(); return; }
 
+        // 注入日志面板专用样式（避免被宿主 CSS 覆盖）
         if (!doc.getElementById('twt-log-panel-styles')) {
             const s = doc.createElement('style');
             s.id = 'twt-log-panel-styles';
@@ -720,14 +730,15 @@ function getOrBuildMuluOverlay(forceRebuild = false) {
             doc.head.appendChild(s);
         }
 
-        const logOverlay = doc.createElement('div');
-        logOverlay.id = 'twt-batch-log-overlay';
-        logOverlay.addEventListener('click', () => logOverlay.remove());
+        const overlay = doc.createElement('div');
+        overlay.id = 'twt-batch-log-overlay';
+        overlay.addEventListener('click', () => overlay.remove());
 
         const panel = doc.createElement('div');
         panel.id = 'twt-batch-log-panel';
         panel.addEventListener('click', (e) => e.stopPropagation());
 
+        // 头部
         const panelHeader = doc.createElement('div');
         panelHeader.id = 'twt-batch-log-panel-header';
         panelHeader.innerHTML = `<span style="font-weight:bold;font-size:1em;"><i class="fa-solid fa-clipboard-list" style="margin-right:6px;"></i>生成日志 (${globalBatchLogs.length}条)</span>`;
@@ -735,10 +746,11 @@ function getOrBuildMuluOverlay(forceRebuild = false) {
         panelClose.className = 'menu_button';
         panelClose.style.cssText = 'padding:2px 6px !important; font-size:0.9em !important; margin:0 !important;';
         panelClose.innerHTML = '<i class="fa-solid fa-xmark"></i>';
-        panelClose.addEventListener('click', () => logOverlay.remove());
+        panelClose.addEventListener('click', () => overlay.remove());
         panelHeader.appendChild(panelClose);
         panel.appendChild(panelHeader);
 
+        // 内容区（纯 block，不用 flex，让 overflow-y:scroll 真正生效）
         const panelBody = doc.createElement('div');
         panelBody.id = 'twt-batch-log-panel-body';
 
@@ -746,8 +758,9 @@ function getOrBuildMuluOverlay(forceRebuild = false) {
             panelBody.innerHTML = '<div style="opacity:0.5;text-align:center;padding:20px;">暂无日志</div>';
         } else {
             globalBatchLogs.forEach(entry => {
-                const msgPreview = chatArray[entry.mesId]
-                    ? (chatArray[entry.mesId].mes || '').substring(0, 40) + '...'
+                const context = getContext ? getContext() : null;
+                const msgPreview = context && context.chat && context.chat[entry.mesId]
+                    ? (context.chat[entry.mesId].mes || '').substring(0, 40) + '...'
                     : `消息 #${entry.mesId}`;
 
                 const statusColor = entry.status === 'ok' ? '#4caf50' : entry.status === 'empty' ? '#ff9800' : entry.status === 'skip' ? '#9e9e9e' : '#f44336';
@@ -769,6 +782,7 @@ function getOrBuildMuluOverlay(forceRebuild = false) {
                 const cardBody = doc.createElement('div');
                 cardBody.className = 'twt-log-card-body';
 
+                // 错误信息
                 if (entry.error) {
                     const errDiv = doc.createElement('div');
                     errDiv.style.cssText = 'background:rgba(244,67,54,0.1);border:1px solid rgba(244,67,54,0.3);border-radius:4px;padding:6px 8px;color:#f44336;white-space:pre-wrap;word-break:break-all;margin-bottom:6px;';
@@ -776,6 +790,7 @@ function getOrBuildMuluOverlay(forceRebuild = false) {
                     cardBody.appendChild(errDiv);
                 }
 
+                // 发送的提示词
                 if (entry.sentMessages && entry.sentMessages.length > 0) {
                     const promptLabel = doc.createElement('div');
                     promptLabel.style.cssText = 'font-weight:bold;opacity:0.7;font-size:0.9em;margin-bottom:4px;';
@@ -799,6 +814,7 @@ function getOrBuildMuluOverlay(forceRebuild = false) {
                     });
                 }
 
+                // AI 原始回复
                 if (entry.rawResponse) {
                     const respLabel = doc.createElement('div');
                     respLabel.style.cssText = 'font-weight:bold;opacity:0.7;font-size:0.9em;margin-top:6px;margin-bottom:4px;';
@@ -811,6 +827,7 @@ function getOrBuildMuluOverlay(forceRebuild = false) {
                     cardBody.appendChild(respBlock);
                 }
 
+                // 展开/折叠切换
                 let expanded = entry.status !== 'ok';
                 if (expanded) {
                     cardBody.classList.add('open');
@@ -831,8 +848,8 @@ function getOrBuildMuluOverlay(forceRebuild = false) {
         }
 
         panel.appendChild(panelBody);
-        logOverlay.appendChild(panel);
-        doc.body.appendChild(logOverlay);
+        overlay.appendChild(panel);
+        doc.body.appendChild(overlay);
     };
 
     btnLog.addEventListener('click', (e) => {
@@ -857,13 +874,16 @@ function getOrBuildMuluOverlay(forceRebuild = false) {
             return;
         }
 
+        // 重置全局日志和全局状态
         globalBatchLogs = [];
         globalGenerationStatus = 'generating';
 
+        // 进入旋转状态
         btnLog.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
         btnLog.title = '正在生成...';
         btnLog.disabled = true;
 
+        // Disable batch buttons during generation
         btnSelectAll.disabled = true;
         btnReverseSelect.disabled = true;
         btnRangeSelect.disabled = true;
@@ -875,6 +895,7 @@ function getOrBuildMuluOverlay(forceRebuild = false) {
 
         try {
             const { triggerBatchCommentsForMessages } = await import('./paragraph.js');
+            // Sequentially generate with progress callback and log callback
             await triggerBatchCommentsForMessages(
                 selectedIds,
                 (current, total) => {
@@ -891,6 +912,7 @@ function getOrBuildMuluOverlay(forceRebuild = false) {
             toastr.error(`生成失败: ${err.message || err}`, '错误');
             globalGenerationStatus = 'done';
         } finally {
+            // Re-enable
             btnSelectAll.disabled = false;
             btnReverseSelect.disabled = false;
             btnRangeSelect.disabled = false;
@@ -898,10 +920,12 @@ function getOrBuildMuluOverlay(forceRebuild = false) {
             btnGenerate.disabled = false;
             progressSpan.style.display = 'none';
 
+            // 日志按钮切换为勾号状态
             btnLog.innerHTML = '<i class="fa-solid fa-circle-check" style="color:#4caf50;"></i>';
             btnLog.title = `查看生成日志 (共${globalBatchLogs.length}条)`;
             btnLog.disabled = false;
 
+            // Exit batch mode
             exitBatchSelectMode();
         }
     });
@@ -935,6 +959,8 @@ function getOrBuildMuluOverlay(forceRebuild = false) {
             searchInput.style.display = 'none';
             batchActionsContainer.style.display = 'flex';
             batchSelectBtn.style.background = 'var(--SmartThemeUnderlineColor, #007aff)';
+            
+            // Show checkboxes
             listContainer.querySelectorAll('.twt-mulu-checkbox').forEach(cb => cb.style.display = 'inline-flex');
         } else {
             exitBatchSelectMode();
@@ -951,8 +977,7 @@ function getOrBuildMuluOverlay(forceRebuild = false) {
         if (context && typeof context.saveSettingsDebounced === 'function') {
             context.saveSettingsDebounced();
         }
-        getOrBuildMuluOverlay(true);
-        showMuluModal();
+        showMuluModal(); 
     });
 
     const closeBtn = doc.createElement('button');
@@ -961,7 +986,8 @@ function getOrBuildMuluOverlay(forceRebuild = false) {
     closeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
     closeBtn.addEventListener('click', closeMuluModal);
 
-    if (commentsEnabled) {
+    // 将日志按钮(btnLog)常态化放置在“批量生成段评”按钮的前面(左侧)
+    if (settings.commentsEnabled) {
         headerActions.appendChild(btnLog);
         headerActions.appendChild(batchSelectBtn);
     }
@@ -972,8 +998,6 @@ function getOrBuildMuluOverlay(forceRebuild = false) {
     header.appendChild(batchActionsContainer);
     header.appendChild(headerActions);
     modal.appendChild(header);
-
-    const fragment = doc.createDocumentFragment();
 
     tocItems.forEach(item => {
         const row = doc.createElement('div');
@@ -1032,6 +1056,7 @@ function getOrBuildMuluOverlay(forceRebuild = false) {
             margin-left: 8px;
         `;
 
+        // 自定义勾选框 div，彻底绕过酒馆全局 CSS 对 input[type=checkbox] appearance 的覆盖
         const checkbox = doc.createElement('div');
         checkbox.className = 'twt-mulu-checkbox';
         checkbox.setAttribute('data-id', item.mesId);
@@ -1059,6 +1084,14 @@ function getOrBuildMuluOverlay(forceRebuild = false) {
         row.appendChild(leftSpan);
         row.appendChild(rightSpan);
 
+        row.addEventListener('mouseover', () => {
+            row.style.backgroundColor = 'var(--SmartThemeBotMesBlurTintColor, rgba(255, 255, 255, 0.05))';
+        });
+        row.addEventListener('mouseout', () => {
+            row.style.backgroundColor = 'transparent';
+        });
+
+        // 统一的 toggle 函数
         const toggleCheckbox = () => {
             const nowChecked = checkbox.dataset.checked !== 'true';
             checkbox.dataset.checked = String(nowChecked);
@@ -1075,10 +1108,9 @@ function getOrBuildMuluOverlay(forceRebuild = false) {
             await scrollToMessageOrNearest(item.mesId);
         });
 
-        fragment.appendChild(row);
+        listContainer.appendChild(row);
     });
 
-    listContainer.appendChild(fragment);
     modal.appendChild(listContainer);
 
     const footer = doc.createElement('div');
@@ -1094,42 +1126,13 @@ function getOrBuildMuluOverlay(forceRebuild = false) {
     modal.appendChild(footer);
 
     overlay.appendChild(modal);
-
-    cachedOverlay = overlay;
-    cachedChatLength = chatArray.length;
-    cachedLastMessageText = lastMsgText;
-    cachedRegexStr = regexStr;
-    cachedSortOrder = sortOrder;
-    cachedCommentsEnabled = commentsEnabled;
-
-    return overlay;
-}
-
-function showMuluModal() {
-    const doc = getDoc();
-    const overlay = getOrBuildMuluOverlay();
-    if (!overlay) {
-        toastr.error('无法生成目录');
-        return;
-    }
-    
-    const searchInput = overlay.querySelector('#twt-mulu-search');
-    if (searchInput) {
-        searchInput.value = '';
-    }
-    const rows = overlay.querySelectorAll('.twt-mulu-row');
-    rows.forEach(row => row.style.display = 'flex');
-    
-    overlay.style.display = 'flex';
-    if (!doc.body.contains(overlay)) {
-        doc.body.appendChild(overlay);
-    }
+    doc.body.appendChild(overlay);
 }
 
 function closeMuluModal() {
     const doc = getDoc();
     const overlay = doc.getElementById('twt-mulu-overlay');
-    if (overlay) overlay.style.display = 'none';
+    if (overlay) overlay.remove();
 }
 
 function getCleanText(mesText) {
@@ -1220,24 +1223,6 @@ async function scrollToMessageOrNearest(mesId) {
     toastr.error('无法定位消息元素');
 }
 
-let prebuildTimeout = null;
-function triggerBackgroundPrebuild() {
-    clearTimeout(prebuildTimeout);
-    prebuildTimeout = setTimeout(() => {
-        const settings = extension_settings.twt;
-        if (!settings || !settings.muluEnabled) return;
-        
-        const win = getWin();
-        if (win && typeof win.requestIdleCallback === 'function') {
-            win.requestIdleCallback(() => getOrBuildMuluOverlay());
-        } else if (typeof requestIdleCallback === 'function') {
-            requestIdleCallback(() => getOrBuildMuluOverlay());
-        } else {
-            getOrBuildMuluOverlay();
-        }
-    }, 1500);
-}
-
 export function applyMuluSettings() {
     const settings = extension_settings.twt;
     if (!settings) return;
@@ -1263,8 +1248,6 @@ export function applyMuluSettings() {
     toggleBtn(BTN_END_ID, settings.muluBtnEnd, '跳至结尾 / 下一条', 'fa-angle-right', () => scrollToMessageEdge('end'));
     toggleBtn(BTN_TOC_ID, settings.muluBtnToc, '阅读目录', 'fa-book', showMuluModal);
     toggleBtn(BTN_START_ID, settings.muluBtnStart, '跳至开头 / 上一条', 'fa-angle-left', () => scrollToMessageEdge('start'));
-
-    triggerBackgroundPrebuild();
 }
 
 export function initMulu() {
@@ -1272,28 +1255,8 @@ export function initMulu() {
     const win = getWin();
     const MutationObserverClass = win.MutationObserver || win.parent?.MutationObserver || window.MutationObserver;
     const observer = new MutationObserverClass(() => {
-        const settings = extension_settings.twt;
-        if (!settings || !settings.muluEnabled) return;
-
-        const btnContainer = doc.querySelector('#qr--bar .qr--buttons') || doc.getElementById('qr--bar');
-        if (btnContainer) {
-            const hasEnd = doc.getElementById(BTN_END_ID);
-            const hasToc = doc.getElementById(BTN_TOC_ID);
-            const hasStart = doc.getElementById(BTN_START_ID);
-
-            const needsEnd = settings.muluBtnEnd && !hasEnd;
-            const needsToc = settings.muluBtnToc && !hasToc;
-            const needsStart = settings.muluBtnStart && !hasStart;
-
-            if (needsEnd || needsToc || needsStart) {
-                applyMuluSettings();
-            }
-        }
-        
-        const context = typeof getContext === 'function' ? getContext() : null;
-        const chatArray = context ? context.chat : window.chat;
-        if (chatArray && chatArray.length !== cachedChatLength) {
-            triggerBackgroundPrebuild();
+        if (doc.querySelector('#qr--bar .qr--buttons')) {
+            applyMuluSettings();
         }
     });
     observer.observe(doc.body, { childList: true, subtree: true });
