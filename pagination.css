@@ -116,3 +116,16 @@ body.twt-keyboard-open .chat-space {
     max-height: 100% !important;
     transform: none !important;
 }
+
+/* 确保键盘覆盖模式下，输入框始终固定在视口底部（键盘上方）而不被隐藏或挤压 */
+body.twt-keyboard-open #send_form,
+body.twt-keyboard-open #input_bar,
+body.twt-keyboard-open .input_bar,
+body.twt-keyboard-open #form_container {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 9999 !important;
+    background: var(--SmartThemeBlurTintColor, rgba(30, 30, 30, 0.98)) !important;
+}
