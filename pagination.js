@@ -3,20 +3,44 @@ let resizeObserver = null;
 let lastUserPage = 0;
 let isProgrammaticScrolling = false;
 
+function getDoc() {
+    try {
+        if (window.parent && window.parent.document) {
+            return window.parent.document;
+        }
+    } catch (e) {
+        console.warn("TwT: Cannot access window.parent.document in pagination.js", e);
+    }
+    return document;
+}
+
+function getWin() {
+    try {
+        if (window.parent && window.parent.document) {
+            return window.parent;
+        }
+    } catch (e) {
+        console.warn("TwT: Cannot access window.parent in pagination.js", e);
+    }
+    return window;
+}
+
 export function applyPaginationMode(enabled, settings) {
+    const doc = getDoc();
+    const win = getWin();
     if (enabled) {
-        document.body.classList.add('twt-reading-mode');
+        doc.body.classList.add('twt-reading-mode');
         if (settings) {
-            document.body.classList.toggle('twt-swipe-disabled', !settings.swipeEnabled);
-            document.body.classList.toggle('twt-message-page', !!settings.messagePageEnabled);
+            doc.body.classList.toggle('twt-swipe-disabled', !settings.swipeEnabled);
+            doc.body.classList.toggle('twt-message-page', !!settings.messagePageEnabled);
         }
         updateColWidth();
-        window.addEventListener('resize', updateColWidth);
+        win.addEventListener('resize', updateColWidth);
         initResizeObserver();
         patchScrollIntoView();
     } else {
-        document.body.classList.remove('twt-reading-mode', 'twt-swipe-disabled', 'twt-message-page');
-        window.removeEventListener('resize', updateColWidth);
+        doc.body.classList.remove('twt-reading-mode', 'twt-swipe-disabled', 'twt-message-page');
+        win.removeEventListener('resize', updateColWidth);
         if (resizeObserver) {
             resizeObserver.disconnect();
             resizeObserver = null;
@@ -25,8 +49,9 @@ export function applyPaginationMode(enabled, settings) {
 }
 
 function updateColWidth() {
-    const chatContainer = document.getElementById('chat');
-    if (!chatContainer || !document.body.classList.contains('twt-reading-mode')) return;
+    const doc = getDoc();
+    const chatContainer = doc.getElementById('chat');
+    if (!chatContainer || !doc.body.classList.contains('twt-reading-mode')) return;
     const width = chatContainer.getBoundingClientRect().width;
     if (width > 0) {
         chatContainer.style.setProperty('--twt-col-width', `${width}px`, 'important');
@@ -38,15 +63,17 @@ function updateColWidth() {
  * 重新计算列宽并跳转到最后一页（或指定页）
  */
 export function refreshPagination(targetPage = null) {
-    const chatContainer = document.getElementById('chat');
-    if (!chatContainer || !document.body.classList.contains('twt-reading-mode')) return;
+    const doc = getDoc();
+    const chatContainer = doc.getElementById('chat');
+    if (!chatContainer || !doc.body.classList.contains('twt-reading-mode')) return;
     updateColWidth();
     const cw = chatContainer.getBoundingClientRect().width;
     if (cw <= 0) return;
     const totalPages = Math.round(chatContainer.scrollWidth / cw);
     const page = targetPage !== null ? Math.max(0, Math.min(targetPage, totalPages - 1)) : totalPages - 1;
     // 用 requestAnimationFrame 确保 DOM 已经刷新完毕
-    requestAnimationFrame(() => {
+    const win = getWin();
+    win.requestAnimationFrame(() => {
         chatContainer.scrollTo({ left: page * cw, behavior: 'smooth' });
         lastUserPage = page;
     });
@@ -54,9 +81,12 @@ export function refreshPagination(targetPage = null) {
 
 
 function initResizeObserver() {
-    const chatContainer = document.getElementById('chat');
+    const doc = getDoc();
+    const chatContainer = doc.getElementById('chat');
     if (!chatContainer || resizeObserver) return;
-    resizeObserver = new ResizeObserver(updateColWidth);
+    const win = getWin();
+    const ResizeObserverClass = win.ResizeObserver || window.ResizeObserver;
+    resizeObserver = new ResizeObserverClass(updateColWidth);
     resizeObserver.observe(chatContainer);
 }
 
@@ -64,9 +94,11 @@ let isScrollIntoViewPatched = false;
 function patchScrollIntoView() {
     if (isScrollIntoViewPatched) return;
     isScrollIntoViewPatched = true;
-    const original = Element.prototype.scrollIntoView;
-    Element.prototype.scrollIntoView = function(...args) {
-        if (document.body.classList.contains('twt-reading-mode') && this.closest('#chat')) return;
+    const doc = getDoc();
+    const win = getWin();
+    const original = win.Element.prototype.scrollIntoView || Element.prototype.scrollIntoView;
+    win.Element.prototype.scrollIntoView = function(...args) {
+        if (doc.body.classList.contains('twt-reading-mode') && this.closest('#chat')) return;
         original.apply(this, args);
     };
 }
@@ -80,7 +112,8 @@ function scrollToPage(chatContainer, targetPage, cw) {
 
 // 供段落编辑器工具栏按钮调用的翻页函数
 export function scrollPageLeft() {
-    const chatContainer = document.getElementById('chat');
+    const doc = getDoc();
+    const chatContainer = doc.getElementById('chat');
     if (!chatContainer) return;
     const cw = chatContainer.getBoundingClientRect().width;
     if (cw <= 0) return;
@@ -89,7 +122,8 @@ export function scrollPageLeft() {
 }
 
 export function scrollPageRight() {
-    const chatContainer = document.getElementById('chat');
+    const doc = getDoc();
+    const chatContainer = doc.getElementById('chat');
     if (!chatContainer) return;
     const cw = chatContainer.getBoundingClientRect().width;
     if (cw <= 0) return;
@@ -101,23 +135,26 @@ export function scrollPageRight() {
 let isScrollEventsBound = false;
 
 export function initPaginationEvent(getSettings) {
+    const doc = getDoc();
+    const win = getWin();
+
     // 点击翻页
-    document.addEventListener('click', function(e) {
+    doc.addEventListener('click', function(e) {
         const settings = getSettings();
         if (!settings?.enabled) return;
 
         // 如果界面上存在自定义消息操作菜单且处于可见状态，点击时不触发翻页（该点击会仅用于隐藏菜单）
-        const customMenu = document.getElementById('twt-custom-menu');
-        if (customMenu && window.getComputedStyle(customMenu).display !== 'none') {
+        const customMenu = doc.getElementById('twt-custom-menu');
+        if (customMenu && win.getComputedStyle(customMenu).display !== 'none') {
             return;
         }
 
         // 段落编辑模式激活时，屏蔽所有翻页，让点按专门用于段落勾选
-        if (document.body.classList.contains('twt-paragraph-editing')) {
+        if (doc.body.classList.contains('twt-paragraph-editing')) {
             return;
         }
 
-        const chatContainer = document.getElementById('chat');
+        const chatContainer = doc.getElementById('chat');
         if (!chatContainer?.contains(e.target)) return;
 
         const baseSelector = 'button, a, input, textarea, select, .mes_button, .swipe-button, .ch_name, .avatar, img, .svg-icon';
@@ -128,14 +165,14 @@ export function initPaginationEvent(getSettings) {
         }
         if (!isInteractive) isInteractive = !!e.target.closest(baseSelector);
         if (isInteractive) return;
-        if (window.getSelection().toString().length > 0) return;
+        if (win.getSelection().toString().length > 0) return;
 
         const cw = chatContainer.getBoundingClientRect().width;
         if (cw <= 0) return;
 
         const currentPage = Math.round(chatContainer.scrollLeft / cw);
         const clickX = e.clientX;
-        const sw = window.innerWidth;
+        const sw = win.innerWidth;
 
         if (clickX < sw * 0.3) {
             scrollToPage(chatContainer, Math.max(0, currentPage - 1), cw);
@@ -153,7 +190,7 @@ export function initPaginationEvent(getSettings) {
     if (isScrollEventsBound) return;
     isScrollEventsBound = true;
 
-    const chatContainer = document.getElementById('chat');
+    const chatContainer = doc.getElementById('chat');
     if (!chatContainer) return;
 
     // 后备 snap 校正：鼠标拖动 / 键盘等非 touch 方式导致页未对齐时修正
@@ -162,8 +199,8 @@ export function initPaginationEvent(getSettings) {
 
     const handleScrollSnap = () => {
         if (isProgrammaticScrolling || isTouching) return;
-        if (!document.body.classList.contains('twt-reading-mode')) return;
-        if (document.body.classList.contains('twt-paragraph-editing')) return;
+        if (!doc.body.classList.contains('twt-reading-mode')) return;
+        if (doc.body.classList.contains('twt-paragraph-editing')) return;
         const cw = chatContainer.getBoundingClientRect().width;
         if (cw <= 0) return;
         const cur = chatContainer.scrollLeft;
@@ -178,14 +215,14 @@ export function initPaginationEvent(getSettings) {
 
     chatContainer.addEventListener('scroll', () => {
         if (isProgrammaticScrolling || isTouching) return;
-        if (document.body.classList.contains('twt-paragraph-editing')) return;
+        if (doc.body.classList.contains('twt-paragraph-editing')) return;
         clearTimeout(snapDebounce);
         snapDebounce = setTimeout(handleScrollSnap, 100);
     });
 
     chatContainer.addEventListener('scrollend', () => {
         if (isTouching) return;
-        if (document.body.classList.contains('twt-paragraph-editing')) return;
+        if (doc.body.classList.contains('twt-paragraph-editing')) return;
         clearTimeout(snapDebounce);
         if (!isProgrammaticScrolling) handleScrollSnap();
         isProgrammaticScrolling = false;
@@ -201,8 +238,8 @@ export function initPaginationEvent(getSettings) {
     let touchCooldownTimer = null;
 
     chatContainer.addEventListener('touchstart', (e) => {
-        if (!document.body.classList.contains('twt-reading-mode')) return;
-        if (document.body.classList.contains('twt-paragraph-editing')) return;
+        if (!doc.body.classList.contains('twt-reading-mode')) return;
+        if (doc.body.classList.contains('twt-paragraph-editing')) return;
         const settings = getSettings();
         if (!settings?.enabled || !settings.swipeEnabled) return;
 
@@ -221,7 +258,7 @@ export function initPaginationEvent(getSettings) {
 
     chatContainer.addEventListener('touchmove', (e) => {
         if (!isTouchTracking) return;
-        if (!document.body.classList.contains('twt-reading-mode')) return;
+        if (!doc.body.classList.contains('twt-reading-mode')) return;
         const settings = getSettings();
         if (!settings?.enabled || !settings.swipeEnabled) return;
 
@@ -231,23 +268,32 @@ export function initPaginationEvent(getSettings) {
         if (touchIsHorizontal === null) {
             const adx = Math.abs(e.touches[0].clientX - touchStartX);
             const ady = Math.abs(e.touches[0].clientY - touchStartY);
-            if (adx > 8 || ady > 8) touchIsHorizontal = adx >= ady;
+            if (adx > 8 || ady > 8) {
+                touchIsHorizontal = adx >= ady;
+                if (touchIsHorizontal && e.cancelable) {
+                    e.preventDefault();
+                }
+            }
             return;
         }
         if (!touchIsHorizontal) return;
 
-        // touch-action:pan-y 已阻断浏览器横向惯性，无需 preventDefault
+        // 横向滑动时阻止浏览器默认的原生滚动/回弹，彻底解决手势冲突引起的卡顿
+        if (e.cancelable) {
+            e.preventDefault();
+        }
+
         const max = chatContainer.scrollWidth - chatContainer.getBoundingClientRect().width;
         isProgrammaticScrolling = true;
         chatContainer.scrollLeft = Math.max(0, Math.min(max, touchStartScrollLeft - dx));
-    }, { passive: true });
+    }, { passive: false });
 
     chatContainer.addEventListener('touchend', (e) => {
         if (!isTouchTracking) return;
         isTouchTracking = false;
 
-        if (!document.body.classList.contains('twt-reading-mode')) return;
-        if (document.body.classList.contains('twt-paragraph-editing')) return;
+        if (!doc.body.classList.contains('twt-reading-mode')) return;
+        if (doc.body.classList.contains('twt-paragraph-editing')) return;
         const settings = getSettings();
         if (!settings?.enabled || !settings.swipeEnabled) return;
 
@@ -309,7 +355,7 @@ export function initPaginationEvent(getSettings) {
 
     // 焦点跳转防护：输入框获焦时回到当前页
     chatContainer.addEventListener('focusin', (e) => {
-        if (!document.body.classList.contains('twt-reading-mode')) return;
+        if (!doc.body.classList.contains('twt-reading-mode')) return;
         if (e.target && (e.target.classList.contains('twt-p-textarea') || e.target.closest('.twt-p-editor'))) return;
         setTimeout(() => {
             const cw = chatContainer.getBoundingClientRect().width;

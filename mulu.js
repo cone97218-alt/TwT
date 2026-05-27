@@ -434,22 +434,35 @@ function showMuluModal() {
             }
         }
 
-        const cleanText = getCleanText(rawText);
+        // 截取前 2000 个字符进行匹配以防巨长文本拖慢正则匹配
+        const searchPrefix = rawText.length > 2000 ? rawText.substring(0, 2000) : rawText;
 
         let displayTitle = '';
+        let cleanText = '';
         if (regexStr && regexStr.trim() !== '') {
-            const matchedTitle = extractDirectoryTitle(cleanText, regexStr);
+            const matchedTitle = extractDirectoryTitle(searchPrefix, regexStr);
             if (matchedTitle) {
-                displayTitle = matchedTitle;
+                // 仅对提取出的短标题部分进行清洗
+                displayTitle = getCleanText(matchedTitle);
+                // 清洗前缀文本供搜索时过滤使用
+                cleanText = getCleanText(searchPrefix);
             } else {
                 continue;
             }
         } else {
-            displayTitle = cleanText;
+            // 没有配置正则时，只提取首行（且不超过 80 个字符），绝对不把整篇巨量长文注入到 DOM 中
+            const cleanedPrefix = getCleanText(searchPrefix);
+            const firstLine = cleanedPrefix.split('\n')[0] || '';
+            displayTitle = firstLine.substring(0, 80).trim();
+            cleanText = cleanedPrefix;
         }
 
         // 强行替换所有换行符为空格，并将多个连续空格合并为一个，以确保维持“一楼层一行”的单行排版
         displayTitle = displayTitle.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+        if (!displayTitle) {
+            displayTitle = `楼层 #${i}`;
+        }
 
         tocItems.push({
             mesId: i,
