@@ -1,5 +1,6 @@
 body.twt-reading-mode #chat {
     max-height: 100% !important;
+    flex-shrink: 0 !important;
     overflow-y: hidden !important;
     overflow-x: auto !important;
     display: block !important;
@@ -102,4 +103,16 @@ body.twt-reading-mode.twt-message-page #chat .mes {
     break-before: column !important;
     page-break-before: always !important;
     -webkit-column-break-before: always !important;
+}
+
+/* 锁定键盘弹出时外层容器的滚动，保证键盘像抽屉一样纯覆盖在界面之上，不导致翻页位移 */
+body.twt-keyboard-open,
+body.twt-keyboard-open html,
+body.twt-keyboard-open #chat-container,
+body.twt-keyboard-open #chat-body,
+body.twt-keyboard-open .chat-space {
+    overflow: hidden !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    transform: none !important;
 }

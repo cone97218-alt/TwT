@@ -139,6 +139,7 @@ function initResizeObserver(getSettings) {
     if (!chatContainer || resizeObserver) return;
     
     resizeObserver = new ResizeObserver(() => {
+        if (isKeyboardOpen) return;
         const settings = getSettings();
         if (!settings || !settings.enabled) return;
 
@@ -193,6 +194,59 @@ export function scrollPageRight() {
     scrollToPage(chatContainer, Math.min(maxPage, currentPage + 1), cw);
 }
 
+let scrollableParents = [];
+
+function findScrollableParents(el) {
+    const parents = [];
+    let parent = el.parentNode;
+    while (parent && parent !== document.documentElement) {
+        parents.push(parent);
+        parent = parent.parentNode;
+    }
+    parents.push(window);
+    parents.push(document.body);
+    return parents;
+}
+
+function preventVerticalScroll(e) {
+    if (!isKeyboardOpen) return;
+    const target = e.currentTarget;
+    if (target === window) {
+        window.scrollTo(window.scrollX, 0);
+    } else {
+        target.scrollTop = 0;
+    }
+}
+
+function lockParentScrolls() {
+    const chatContainer = document.getElementById('chat');
+    if (!chatContainer) return;
+    
+    unlockParentScrolls();
+    
+    scrollableParents = findScrollableParents(chatContainer);
+    scrollableParents.forEach(parent => {
+        parent.addEventListener('scroll', preventVerticalScroll, { passive: true });
+    });
+    
+    document.body.classList.add('twt-keyboard-open');
+}
+
+function unlockParentScrolls() {
+    scrollableParents.forEach(parent => {
+        parent.removeEventListener('scroll', preventVerticalScroll);
+    });
+    scrollableParents = [];
+    
+    document.body.classList.remove('twt-keyboard-open');
+    
+    window.scrollTo(window.scrollX, 0);
+    document.body.scrollTop = 0;
+    if (document.documentElement) {
+        document.documentElement.scrollTop = 0;
+    }
+}
+
 let isScrollEventsBound = false;
 let isClickEventBound = false;
 let lastChatContainer = null;
@@ -205,17 +259,19 @@ document.addEventListener('focusin', (e) => {
         const chatContainer = document.getElementById('chat');
         if (chatContainer && !chatContainer.contains(e.target)) {
             isKeyboardOpen = true;
+            lockParentScrolls();
         }
     }
 });
 document.addEventListener('focusout', (e) => {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.contentEditable === 'true')) {
-        isKeyboardOpen = false;
-        // 键盘收起后，延迟更新重置高度，使 #chat 重新恢复满屏高度并保持之前阅读的 AI 消息不动
+        // 等待键盘完全收起（动画结束）后再清除 isKeyboardOpen 标记并重算高度，避免中间过渡期的尺寸被锁死成缩水尺寸
         setTimeout(() => {
+            isKeyboardOpen = false;
+            unlockParentScrolls();
             lockChatHeight();
             updateColWidth();
-        }, 100);
+        }, 400);
     }
 });
 
@@ -350,7 +406,7 @@ export function bindScrollTouchEvents(chatContainer, getSettings) {
 
     chatContainer.addEventListener('scroll', () => {
         if (isProgrammaticScrolling || isTouching) return;
-        if (document.body.classList.contains('twt-reading-mode')) return;
+        if (!document.body.classList.contains('twt-reading-mode')) return;
         if (document.body.classList.contains('twt-paragraph-editing')) return;
 
         // 关键防护：如果当前已唤起输入法键盘，强制将 #chat 的滚动位置锁死在 lastUserPage，杜绝自动乱翻页
@@ -370,7 +426,7 @@ export function bindScrollTouchEvents(chatContainer, getSettings) {
 
     chatContainer.addEventListener('scrollend', () => {
         if (isTouching) return;
-        if (document.body.classList.contains('twt-reading-mode')) return;
+        if (!document.body.classList.contains('twt-reading-mode')) return;
         if (document.body.classList.contains('twt-paragraph-editing')) return;
 
         // 同样保护 scrollend，防止键盘弹起/收起时的惯性滚动篡改页面
