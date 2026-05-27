@@ -379,6 +379,9 @@ function injectMuluStyles() {
         .twt-mulu-list::-webkit-scrollbar-thumb:hover {
             background: var(--SmartThemeEmColor, rgba(255, 255, 255, 0.4));
         }
+        .twt-mulu-row:hover {
+            background-color: var(--SmartThemeBotMesBlurTintColor, rgba(255, 255, 255, 0.05)) !important;
+        }
     `;
     doc.head.appendChild(style);
 }
@@ -405,22 +408,30 @@ function showMuluModal() {
         return;
     }
 
+    // 一次性获取所有消息 DOM 节点并建立 Map，避免在循环中重复进行 querySelector 查询
+    const mesElements = doc.querySelectorAll('#chat .mes');
+    const mesMap = new Map();
+    mesElements.forEach(el => {
+        const idAttr = el.getAttribute('mesid');
+        if (idAttr !== null) {
+            mesMap.set(parseInt(idAttr), el);
+        }
+    });
+
     const tocItems = [];
 
     for (let i = 0; i < chatArray.length; i++) {
         const msg = chatArray[i];
         if (msg.is_user || msg.system) continue;
 
-        let rawText = '';
-        const mesEl = doc.querySelector(`#chat .mes[mesid="${i}"]`);
-        if (mesEl) {
+        // 优先使用内存中的 msg.mes，避免在循环内调用极度消耗性能且触发重排的 innerText
+        let rawText = msg.mes || '';
+        const mesEl = mesMap.get(i);
+        if (!rawText && mesEl) {
             const textEl = mesEl.querySelector('.mes_text');
             if (textEl) {
-                rawText = textEl.innerText.trim();
+                rawText = textEl.textContent || '';
             }
-        }
-        if (!rawText) {
-            rawText = msg.mes || '';
         }
 
         const cleanText = getCleanText(rawText);
@@ -1084,12 +1095,7 @@ function showMuluModal() {
         row.appendChild(leftSpan);
         row.appendChild(rightSpan);
 
-        row.addEventListener('mouseover', () => {
-            row.style.backgroundColor = 'var(--SmartThemeBotMesBlurTintColor, rgba(255, 255, 255, 0.05))';
-        });
-        row.addEventListener('mouseout', () => {
-            row.style.backgroundColor = 'transparent';
-        });
+
 
         // 统一的 toggle 函数
         const toggleCheckbox = () => {
@@ -1255,8 +1261,23 @@ export function initMulu() {
     const win = getWin();
     const MutationObserverClass = win.MutationObserver || win.parent?.MutationObserver || window.MutationObserver;
     const observer = new MutationObserverClass(() => {
-        if (doc.querySelector('#qr--bar .qr--buttons')) {
-            applyMuluSettings();
+        const settings = extension_settings.twt;
+        if (!settings || !settings.muluEnabled) return;
+
+        const btnContainer = doc.querySelector('#qr--bar .qr--buttons') || doc.getElementById('qr--bar');
+        if (btnContainer) {
+            // 仅在已启用的目录快捷按钮尚未被渲染到 DOM 时，才执行 applyMuluSettings，极大地减少不必要的 DOM 操作
+            const hasEnd = doc.getElementById(BTN_END_ID);
+            const hasToc = doc.getElementById(BTN_TOC_ID);
+            const hasStart = doc.getElementById(BTN_START_ID);
+
+            const needsEnd = settings.muluBtnEnd && !hasEnd;
+            const needsToc = settings.muluBtnToc && !hasToc;
+            const needsStart = settings.muluBtnStart && !hasStart;
+
+            if (needsEnd || needsToc || needsStart) {
+                applyMuluSettings();
+            }
         }
     });
     observer.observe(doc.body, { childList: true, subtree: true });
