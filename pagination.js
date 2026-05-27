@@ -102,6 +102,22 @@ let isScrollEventsBound = false;
 let isClickEventBound = false;
 let lastChatContainer = null;
 let paginationObserver = null;
+let isKeyboardOpen = false;
+
+// 全局监听：通过 focusin 和 focusout 可靠捕捉移动端键盘唤起状态
+document.addEventListener('focusin', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.contentEditable === 'true')) {
+        const chatContainer = document.getElementById('chat');
+        if (chatContainer && !chatContainer.contains(e.target)) {
+            isKeyboardOpen = true;
+        }
+    }
+});
+document.addEventListener('focusout', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.contentEditable === 'true')) {
+        isKeyboardOpen = false;
+    }
+});
 
 export function initPaginationObserver(getSettings) {
     if (paginationObserver) return;
@@ -114,20 +130,30 @@ export function initPaginationObserver(getSettings) {
         if (!settings?.enabled) return;
 
         const chatContainer = document.getElementById('chat');
-        if (chatContainer && chatContainer !== lastChatContainer) {
-            lastChatContainer = chatContainer;
-            
-            // 重置绑定状态，允许重新绑定到新的 chat 元素
-            isScrollEventsBound = false;
-            if (resizeObserver) {
-                resizeObserver.disconnect();
-                resizeObserver = null;
+        if (chatContainer) {
+            // 如果 #chat 容器节点发生了物理替换，重置绑定状态
+            if (chatContainer !== lastChatContainer) {
+                lastChatContainer = chatContainer;
+                isScrollEventsBound = false;
+                if (resizeObserver) {
+                    resizeObserver.disconnect();
+                    resizeObserver = null;
+                }
+                initResizeObserver();
             }
+
+            // 无论如何，一旦 #chat 宽度大于 0 (已显示)，且尚未设置自定义列宽，立即应用列宽
+            const currentWidth = chatContainer.getBoundingClientRect().width;
+            const hasColWidth = chatContainer.style.getPropertyValue('--twt-col-width');
             
-            // 重新应用设置和监听
-            updateColWidth();
-            initResizeObserver();
-            initPaginationEvent(getSettings);
+            if (currentWidth > 0 && (!hasColWidth || hasColWidth === '0px')) {
+                updateColWidth();
+            }
+
+            // 无论如何，一旦 #chat 宽度大于 0 (已显示)，且尚未绑定滑动/滚动监听，立即重新触发绑定
+            if (currentWidth > 0 && !isScrollEventsBound) {
+                initPaginationEvent(getSettings);
+            }
         }
     });
 
@@ -193,6 +219,11 @@ export function initPaginationEvent(getSettings) {
     const chatContainer = document.getElementById('chat');
     if (!chatContainer) return;
 
+    // 关键修正：若当前聊天容器宽度为 0（即界面未完全加载完毕或处于隐藏状态），暂不绑定并退出
+    // 等到 MutationObserver 监测到其宽度大于 0 后，会自动再次触发 initPaginationEvent 完成绑定
+    const width = chatContainer.getBoundingClientRect().width;
+    if (width <= 0) return;
+
     if (isScrollEventsBound) return;
     isScrollEventsBound = true;
     lastChatContainer = chatContainer;
@@ -205,6 +236,8 @@ export function initPaginationEvent(getSettings) {
         if (isProgrammaticScrolling || isTouching) return;
         if (!document.body.classList.contains('twt-reading-mode')) return;
         if (document.body.classList.contains('twt-paragraph-editing')) return;
+        if (isKeyboardOpen) return; // 键盘打字时完全忽略对齐 snap
+
         const cw = chatContainer.getBoundingClientRect().width;
         if (cw <= 0) return;
         const cur = chatContainer.scrollLeft;
@@ -221,11 +254,8 @@ export function initPaginationEvent(getSettings) {
         if (isProgrammaticScrolling || isTouching) return;
         if (document.body.classList.contains('twt-paragraph-editing')) return;
 
-        // 关键防护：如果当前获焦的是聊天区域外部的输入框（如底部主输入框），任何 #chat 滚动都是键盘弹出导致的非预期位移，强制锁死在当前页
-        const activeEl = document.activeElement;
-        if (activeEl && 
-            (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.contentEditable === 'true') &&
-            !chatContainer.contains(activeEl)) {
+        // 关键防护：如果当前已唤起输入法键盘，强制将 #chat 的滚动位置锁死在 lastUserPage，杜绝自动乱翻页
+        if (isKeyboardOpen) {
             const cw = chatContainer.getBoundingClientRect().width;
             if (cw > 0) {
                 isProgrammaticScrolling = true;
@@ -244,10 +274,7 @@ export function initPaginationEvent(getSettings) {
         if (document.body.classList.contains('twt-paragraph-editing')) return;
 
         // 同样保护 scrollend，防止键盘弹起/收起时的惯性滚动篡改页面
-        const activeEl = document.activeElement;
-        if (activeEl && 
-            (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.contentEditable === 'true') &&
-            !chatContainer.contains(activeEl)) {
+        if (isKeyboardOpen) {
             const cw = chatContainer.getBoundingClientRect().width;
             if (cw > 0) {
                 isProgrammaticScrolling = true;
