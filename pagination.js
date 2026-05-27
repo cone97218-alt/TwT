@@ -2,6 +2,7 @@
 let resizeObserver = null;
 let lastUserPage = 0;
 let isProgrammaticScrolling = false;
+let lastActiveMessage = null;
 
 export function applyPaginationMode(enabled, settings) {
     if (enabled) {
@@ -10,17 +11,82 @@ export function applyPaginationMode(enabled, settings) {
             document.body.classList.toggle('twt-swipe-disabled', !settings.swipeEnabled);
             document.body.classList.toggle('twt-message-page', !!settings.messagePageEnabled);
         }
+        lockChatHeight();
         updateColWidth();
-        window.addEventListener('resize', updateColWidth);
+        window.addEventListener('resize', handleWindowResize);
         initResizeObserver();
         patchScrollIntoView();
     } else {
         document.body.classList.remove('twt-reading-mode', 'twt-swipe-disabled', 'twt-message-page');
-        window.removeEventListener('resize', updateColWidth);
+        window.removeEventListener('resize', handleWindowResize);
+        unlockChatHeight();
         if (resizeObserver) {
             resizeObserver.disconnect();
             resizeObserver = null;
         }
+    }
+}
+
+function lockChatHeight() {
+    const chatContainer = document.getElementById('chat');
+    if (!chatContainer) return;
+    
+    // 只有在键盘未打开时，才锁死 #chat 的高度为当前视口高度，从而在键盘弹出时避免挤压和重排
+    if (!isKeyboardOpen) {
+        const height = window.innerHeight;
+        chatContainer.style.setProperty('height', `${height}px`, 'important');
+        chatContainer.style.setProperty('max-height', `${height}px`, 'important');
+    }
+}
+
+function unlockChatHeight() {
+    const chatContainer = document.getElementById('chat');
+    if (!chatContainer) return;
+    chatContainer.style.removeProperty('height');
+    chatContainer.style.removeProperty('max-height');
+}
+
+function handleWindowResize() {
+    if (isKeyboardOpen) return;
+    lockChatHeight();
+    updateColWidth();
+}
+
+
+function updateActiveMessage() {
+    const chatContainer = document.getElementById('chat');
+    if (!chatContainer) return;
+
+    const chatRect = chatContainer.getBoundingClientRect();
+    const messages = Array.from(chatContainer.querySelectorAll('.mes'));
+    const aiMessages = messages.filter(m => {
+        const isUser = m.classList.contains('user_mes') || m.getAttribute('is_user') === 'true';
+        const isSystem = m.classList.contains('system_mes') || m.getAttribute('is_system') === 'true';
+        return !isUser && !isSystem;
+    });
+    if (aiMessages.length === 0) return;
+
+    const pageCenter = chatContainer.scrollLeft + (chatContainer.clientWidth / 2);
+    
+    let closestMes = null;
+    let minDistance = Infinity;
+    for (const mes of aiMessages) {
+        const rect = mes.getBoundingClientRect();
+        const absoluteLeft = rect.left - chatRect.left + chatContainer.scrollLeft;
+        const absoluteRight = rect.right - chatRect.left + chatContainer.scrollLeft;
+        if (pageCenter >= absoluteLeft && pageCenter <= absoluteRight) {
+            lastActiveMessage = mes;
+            return;
+        }
+        const mesCenter = (absoluteLeft + absoluteRight) / 2;
+        const dist = Math.abs(mesCenter - pageCenter);
+        if (dist < minDistance) {
+            minDistance = dist;
+            closestMes = mes;
+        }
+    }
+    if (closestMes) {
+        lastActiveMessage = closestMes;
     }
 }
 
@@ -30,6 +96,20 @@ function updateColWidth() {
     const width = chatContainer.getBoundingClientRect().width;
     if (width > 0) {
         chatContainer.style.setProperty('--twt-col-width', `${width}px`, 'important');
+        
+        // 关键定位：在高度改变重新分栏后，将视口对齐到当前阅读的消息，保持阅读内容不跳显
+        if (lastActiveMessage) {
+            const chatRect = chatContainer.getBoundingClientRect();
+            const rect = lastActiveMessage.getBoundingClientRect();
+            const currentScrollLeft = chatContainer.scrollLeft;
+            const absoluteLeft = rect.left - chatRect.left + currentScrollLeft;
+            const targetPage = Math.floor(absoluteLeft / width);
+            
+            isProgrammaticScrolling = true;
+            chatContainer.scrollLeft = targetPage * width;
+            isProgrammaticScrolling = false;
+            lastUserPage = targetPage;
+        }
     }
 }
 
@@ -49,14 +129,29 @@ export function refreshPagination(targetPage = null) {
     requestAnimationFrame(() => {
         chatContainer.scrollTo({ left: page * cw, behavior: 'smooth' });
         lastUserPage = page;
+        updateActiveMessage();
     });
 }
 
 
-function initResizeObserver() {
+function initResizeObserver(getSettings) {
     const chatContainer = document.getElementById('chat');
     if (!chatContainer || resizeObserver) return;
-    resizeObserver = new ResizeObserver(updateColWidth);
+    
+    resizeObserver = new ResizeObserver(() => {
+        const settings = getSettings();
+        if (!settings || !settings.enabled) return;
+
+        const width = chatContainer.getBoundingClientRect().width;
+        if (width > 0) {
+            lockChatHeight();
+            updateColWidth();
+            
+            if (!isScrollEventsBound) {
+                bindScrollTouchEvents(chatContainer, getSettings);
+            }
+        }
+    });
     resizeObserver.observe(chatContainer);
 }
 
@@ -116,6 +211,11 @@ document.addEventListener('focusin', (e) => {
 document.addEventListener('focusout', (e) => {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.contentEditable === 'true')) {
         isKeyboardOpen = false;
+        // 键盘收起后，延迟更新重置高度，使 #chat 重新恢复满屏高度并保持之前阅读的 AI 消息不动
+        setTimeout(() => {
+            lockChatHeight();
+            updateColWidth();
+        }, 100);
     }
 });
 
@@ -139,20 +239,7 @@ export function initPaginationObserver(getSettings) {
                     resizeObserver.disconnect();
                     resizeObserver = null;
                 }
-                initResizeObserver();
-            }
-
-            // 无论如何，一旦 #chat 宽度大于 0 (已显示)，且尚未设置自定义列宽，立即应用列宽
-            const currentWidth = chatContainer.getBoundingClientRect().width;
-            const hasColWidth = chatContainer.style.getPropertyValue('--twt-col-width');
-            
-            if (currentWidth > 0 && (!hasColWidth || hasColWidth === '0px')) {
-                updateColWidth();
-            }
-
-            // 无论如何，一旦 #chat 宽度大于 0 (已显示)，且尚未绑定滑动/滚动监听，立即重新触发绑定
-            if (currentWidth > 0 && !isScrollEventsBound) {
-                initPaginationEvent(getSettings);
+                initResizeObserver(getSettings);
             }
         }
     });
@@ -219,11 +306,19 @@ export function initPaginationEvent(getSettings) {
     const chatContainer = document.getElementById('chat');
     if (!chatContainer) return;
 
-    // 关键修正：若当前聊天容器宽度为 0（即界面未完全加载完毕或处于隐藏状态），暂不绑定并退出
-    // 等到 MutationObserver 监测到其宽度大于 0 后，会自动再次触发 initPaginationEvent 完成绑定
+    // 尝试初始化 ResizeObserver，这样即使它一开始宽度为 0，也会在变得可见时触发宽度设定和事件绑定
+    initResizeObserver(getSettings);
+    
+    // 如果已经可见，且尚未绑定，直接触发绑定
     const width = chatContainer.getBoundingClientRect().width;
-    if (width <= 0) return;
+    if (width > 0 && !isScrollEventsBound) {
+        lockChatHeight();
+        updateColWidth();
+        bindScrollTouchEvents(chatContainer, getSettings);
+    }
+}
 
+export function bindScrollTouchEvents(chatContainer, getSettings) {
     if (isScrollEventsBound) return;
     isScrollEventsBound = true;
     lastChatContainer = chatContainer;
@@ -248,10 +343,14 @@ export function initPaginationEvent(getSettings) {
             isProgrammaticScrolling = false;
         }
         lastUserPage = Math.round(chatContainer.scrollLeft / cw);
+        
+        // 更新当前阅读的消息
+        updateActiveMessage();
     };
 
     chatContainer.addEventListener('scroll', () => {
         if (isProgrammaticScrolling || isTouching) return;
+        if (document.body.classList.contains('twt-reading-mode')) return;
         if (document.body.classList.contains('twt-paragraph-editing')) return;
 
         // 关键防护：如果当前已唤起输入法键盘，强制将 #chat 的滚动位置锁死在 lastUserPage，杜绝自动乱翻页
@@ -271,6 +370,7 @@ export function initPaginationEvent(getSettings) {
 
     chatContainer.addEventListener('scrollend', () => {
         if (isTouching) return;
+        if (document.body.classList.contains('twt-reading-mode')) return;
         if (document.body.classList.contains('twt-paragraph-editing')) return;
 
         // 同样保护 scrollend，防止键盘弹起/收起时的惯性滚动篡改页面
@@ -287,6 +387,9 @@ export function initPaginationEvent(getSettings) {
         clearTimeout(snapDebounce);
         if (!isProgrammaticScrolling) handleScrollSnap();
         isProgrammaticScrolling = false;
+
+        // 关键更新：当任何翻页动作彻底停止时，立刻更新当前阅读中的 AI 消息引用
+        updateActiveMessage();
     });
 
     // ---- 滑动翻页 ----

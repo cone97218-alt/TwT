@@ -408,32 +408,14 @@ function showMuluModal() {
         return;
     }
 
-    // 一次性获取所有消息 DOM 节点并建立 Map，避免在循环中重复进行 querySelector 查询
-    const mesElements = doc.querySelectorAll('#chat .mes');
-    const mesMap = new Map();
-    mesElements.forEach(el => {
-        const idAttr = el.getAttribute('mesid');
-        if (idAttr !== null) {
-            mesMap.set(parseInt(idAttr), el);
-        }
-    });
-
     const tocItems = [];
 
     for (let i = 0; i < chatArray.length; i++) {
         const msg = chatArray[i];
         if (msg.is_user || msg.system) continue;
 
-        // 优先使用内存中的 msg.mes，避免在循环内调用极度消耗性能且触发重排的 innerText
-        let rawText = msg.mes || '';
-        const mesEl = mesMap.get(i);
-        if (!rawText && mesEl) {
-            const textEl = mesEl.querySelector('.mes_text');
-            if (textEl) {
-                rawText = textEl.textContent || '';
-            }
-        }
-
+        // 彻底移除了任何 DOM 元素查询，纯内存操作耗时几乎为 0
+        const rawText = msg.mes || '';
         const cleanText = getCleanText(rawText);
 
         let displayTitle = '';
@@ -454,8 +436,7 @@ function showMuluModal() {
         tocItems.push({
             mesId: i,
             title: displayTitle,
-            fullText: cleanText,
-            mesEl: mesEl
+            fullText: cleanText
         });
     }
 
@@ -1010,6 +991,8 @@ function showMuluModal() {
     header.appendChild(headerActions);
     modal.appendChild(header);
 
+    const fragment = doc.createDocumentFragment();
+
     tocItems.forEach(item => {
         const row = doc.createElement('div');
         row.className = 'twt-mulu-row interactable';
@@ -1096,7 +1079,6 @@ function showMuluModal() {
         row.appendChild(rightSpan);
 
 
-
         // 统一的 toggle 函数
         const toggleCheckbox = () => {
             const nowChecked = checkbox.dataset.checked !== 'true';
@@ -1114,8 +1096,10 @@ function showMuluModal() {
             await scrollToMessageOrNearest(item.mesId);
         });
 
-        listContainer.appendChild(row);
+        fragment.appendChild(row);
     });
+
+    listContainer.appendChild(fragment);
 
     modal.appendChild(listContainer);
 
