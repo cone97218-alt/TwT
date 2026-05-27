@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
-import { applyPaginationMode, initPaginationEvent } from './pagination.js';
+import { applyPaginationMode, initPaginationEvent, resetPaginationBinding } from './pagination.js';
 import { applyVisualMode } from './visual.js';
 import { initMulu, applyMuluSettings } from './mulu.js';
 import { initMenu, applyMenuMode, applyFullscreenMode } from './menu.js';
@@ -1913,4 +1913,19 @@ jQuery(async () => {
             }
         }
     }, true);
+
+    // 聊天切换时重新绑定翻页事件到新的 #chat 元素
+    // 解决：旧 #chat 被销毁后事件监听器失效导致翻页失控的竞态问题
+    try {
+        const ctx = getContext();
+        if (ctx && ctx.eventSource && ctx.eventTypes) {
+            ctx.eventSource.on(ctx.eventTypes.CHAT_CHANGED, () => {
+                if (extension_settings.twt.enabled) {
+                    resetPaginationBinding(() => extension_settings.twt);
+                }
+            });
+        }
+    } catch (e) {
+        console.warn('[TwT] Failed to register CHAT_CHANGED listener for pagination reset:', e);
+    }
 });

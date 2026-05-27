@@ -3,6 +3,65 @@ let resizeObserver = null;
 let lastUserPage = 0;
 let isProgrammaticScrolling = false;
 
+// ---- 虚拟键盘检测（移动端）----
+let isKeyboardOpen = false;
+let frozenChatHeight = 0;
+let keyboardRestoreTimer = null;
+let isKeyboardGuardInit = false; // 防止重复注册
+
+function initVirtualKeyboardGuard() {
+    if (isKeyboardGuardInit || !window.visualViewport) return;
+    isKeyboardGuardInit = true;
+
+    const vv = window.visualViewport;
+    let lastVVHeight = vv.height;
+
+    vv.addEventListener('resize', () => {
+        if (!document.body.classList.contains('twt-reading-mode')) return;
+
+        const currentVVHeight = vv.height;
+        const heightDiff = lastVVHeight - currentVVHeight;
+
+        // 高度明显缩小（>100px）视为键盘弹出
+        if (heightDiff > 100 && !isKeyboardOpen) {
+            isKeyboardOpen = true;
+            clearTimeout(keyboardRestoreTimer);
+
+            const chatContainer = document.getElementById('chat');
+            if (chatContainer) {
+                frozenChatHeight = chatContainer.getBoundingClientRect().height;
+                if (frozenChatHeight > 0) {
+                    chatContainer.style.setProperty('height', `${frozenChatHeight}px`, 'important');
+                    chatContainer.style.setProperty('max-height', `${frozenChatHeight}px`, 'important');
+                    chatContainer.style.setProperty('min-height', `${frozenChatHeight}px`, 'important');
+                }
+            }
+        }
+        // 高度明显增大（>100px）视为键盘收起
+        else if (heightDiff < -100 && isKeyboardOpen) {
+            clearTimeout(keyboardRestoreTimer);
+            keyboardRestoreTimer = setTimeout(() => {
+                isKeyboardOpen = false;
+                frozenChatHeight = 0;
+                const chatContainer = document.getElementById('chat');
+                if (chatContainer) {
+                    chatContainer.style.removeProperty('height');
+                    chatContainer.style.removeProperty('max-height');
+                    chatContainer.style.removeProperty('min-height');
+                }
+                // 解冻后重新校正列宽（保持在当前页）
+                updateColWidth();
+                const cw = chatContainer?.getBoundingClientRect().width;
+                if (cw > 0) {
+                    chatContainer.scrollTo({ left: lastUserPage * cw, behavior: 'instant' });
+                }
+            }, 300);
+        }
+
+        lastVVHeight = currentVVHeight;
+    });
+}
+
 export function applyPaginationMode(enabled, settings) {
     if (enabled) {
         document.body.classList.add('twt-reading-mode');
@@ -10,18 +69,36 @@ export function applyPaginationMode(enabled, settings) {
             document.body.classList.toggle('twt-swipe-disabled', !settings.swipeEnabled);
             document.body.classList.toggle('twt-message-page', !!settings.messagePageEnabled);
         }
-        updateColWidth();
-        window.addEventListener('resize', updateColWidth);
+        // 延迟+重试等待 DOM 稳定后再初始化列宽
+        updateColWidthWhenReady();
+        window.addEventListener('resize', handleWindowResize);
         initResizeObserver();
         patchScrollIntoView();
+        initVirtualKeyboardGuard();
     } else {
         document.body.classList.remove('twt-reading-mode', 'twt-swipe-disabled', 'twt-message-page');
-        window.removeEventListener('resize', updateColWidth);
+        window.removeEventListener('resize', handleWindowResize);
         if (resizeObserver) {
             resizeObserver.disconnect();
             resizeObserver = null;
         }
+        // 退出翻页模式时解冻高度
+        isKeyboardOpen = false;
+        frozenChatHeight = 0;
+        clearTimeout(keyboardRestoreTimer);
+        const chatContainer = document.getElementById('chat');
+        if (chatContainer) {
+            chatContainer.style.removeProperty('height');
+            chatContainer.style.removeProperty('max-height');
+            chatContainer.style.removeProperty('min-height');
+        }
     }
+}
+
+// 包装 resize 事件处理：键盘弹出期间跳过 updateColWidth
+function handleWindowResize() {
+    if (isKeyboardOpen) return;
+    updateColWidth();
 }
 
 function updateColWidth() {
@@ -30,6 +107,29 @@ function updateColWidth() {
     const width = chatContainer.getBoundingClientRect().width;
     if (width > 0) {
         chatContainer.style.setProperty('--twt-col-width', `${width}px`, 'important');
+    }
+}
+
+/**
+ * 延迟+重试初始化列宽，解决聊天加载时 DOM 未就绪导致列宽为 0 的竞态问题。
+ * 成功获取宽度后，吸附回 lastUserPage 所在页。
+ */
+function updateColWidthWhenReady(retries = 15, interval = 120) {
+    const chatContainer = document.getElementById('chat');
+    if (!chatContainer || !document.body.classList.contains('twt-reading-mode')) return;
+
+    const width = chatContainer.getBoundingClientRect().width;
+    if (width > 0) {
+        chatContainer.style.setProperty('--twt-col-width', `${width}px`, 'important');
+        // 重新吸附到 lastUserPage（切换聊天时为 0，不影响正常使用）
+        requestAnimationFrame(() => {
+            chatContainer.scrollTo({ left: lastUserPage * width, behavior: 'instant' });
+        });
+        return;
+    }
+
+    if (retries > 0) {
+        setTimeout(() => updateColWidthWhenReady(retries - 1, interval), interval);
     }
 }
 
@@ -45,18 +145,19 @@ export function refreshPagination(targetPage = null) {
     if (cw <= 0) return;
     const totalPages = Math.round(chatContainer.scrollWidth / cw);
     const page = targetPage !== null ? Math.max(0, Math.min(targetPage, totalPages - 1)) : totalPages - 1;
-    // 用 requestAnimationFrame 确保 DOM 已经刷新完毕
     requestAnimationFrame(() => {
         chatContainer.scrollTo({ left: page * cw, behavior: 'smooth' });
         lastUserPage = page;
     });
 }
 
-
 function initResizeObserver() {
     const chatContainer = document.getElementById('chat');
     if (!chatContainer || resizeObserver) return;
-    resizeObserver = new ResizeObserver(updateColWidth);
+    resizeObserver = new ResizeObserver(() => {
+        if (isKeyboardOpen) return; // 键盘打开时忽略，防止二次分页
+        updateColWidth();
+    });
     resizeObserver.observe(chatContainer);
 }
 
@@ -98,21 +199,51 @@ export function scrollPageRight() {
     scrollToPage(chatContainer, Math.min(maxPage, currentPage + 1), cw);
 }
 
-let isScrollEventsBound = false;
+// ---- 事件绑定生命周期管理 ----
+// 用 AbortController 管理 chatContainer 上的事件，切换聊天时彻底重绑
+let scrollEventsAbortController = null;
+
+/**
+ * 重置翻页事件绑定，供聊天切换时调用。
+ * 会中止旧 #chat 上的所有事件监听，并重新绑定到新的 #chat。
+ */
+export function resetPaginationBinding(getSettings) {
+    // 1. 中止旧 chatContainer 上的所有事件
+    if (scrollEventsAbortController) {
+        scrollEventsAbortController.abort();
+        scrollEventsAbortController = null;
+    }
+
+    // 2. 重置状态
+    lastUserPage = 0;
+    isProgrammaticScrolling = false;
+
+    // 3. 重置 ResizeObserver（旧 #chat 已销毁，需要重新观察新的）
+    if (resizeObserver) {
+        resizeObserver.disconnect();
+        resizeObserver = null;
+    }
+
+    // 4. 如果翻页模式开启，重新绑定到新 #chat
+    if (document.body.classList.contains('twt-reading-mode')) {
+        initResizeObserver();
+        bindScrollEvents(getSettings);
+        // 延迟+重试等待新 #chat DOM 稳定
+        updateColWidthWhenReady();
+    }
+}
 
 export function initPaginationEvent(getSettings) {
-    // 点击翻页
+    // 点击翻页（全局委托，无需随 #chat 重建）
     document.addEventListener('click', function(e) {
         const settings = getSettings();
         if (!settings?.enabled) return;
 
-        // 如果界面上存在自定义消息操作菜单且处于可见状态，点击时不触发翻页（该点击会仅用于隐藏菜单）
         const customMenu = document.getElementById('twt-custom-menu');
         if (customMenu && window.getComputedStyle(customMenu).display !== 'none') {
             return;
         }
 
-        // 段落编辑模式激活时，屏蔽所有翻页，让点按专门用于段落勾选
         if (document.body.classList.contains('twt-paragraph-editing')) {
             return;
         }
@@ -150,15 +281,29 @@ export function initPaginationEvent(getSettings) {
         }
     });
 
-    if (isScrollEventsBound) return;
-    isScrollEventsBound = true;
+    // 初次绑定 chatContainer 上的 scroll/touch 事件
+    bindScrollEvents(getSettings);
+}
 
+/**
+ * 绑定 #chat 上的 scroll / touch 事件。
+ * 每次聊天切换后都需要重新调用，以重新绑定到新的 #chat 元素。
+ * 通过 AbortController 管理事件生命周期，防止在旧元素上积累无效监听器。
+ */
+function bindScrollEvents(getSettings) {
     const chatContainer = document.getElementById('chat');
     if (!chatContainer) return;
 
-    // 后备 snap 校正：鼠标拖动 / 键盘等非 touch 方式导致页未对齐时修正
+    // 中止上一轮绑定（如果有）
+    if (scrollEventsAbortController) {
+        scrollEventsAbortController.abort();
+    }
+    scrollEventsAbortController = new AbortController();
+    const signal = scrollEventsAbortController.signal;
+
+    // 后备 snap 校正
     let snapDebounce = null;
-    let isTouching = false; // 滑动冷却期内为 true，封锁后备 snap
+    let isTouching = false;
 
     const handleScrollSnap = () => {
         if (isProgrammaticScrolling || isTouching) return;
@@ -181,7 +326,7 @@ export function initPaginationEvent(getSettings) {
         if (document.body.classList.contains('twt-paragraph-editing')) return;
         clearTimeout(snapDebounce);
         snapDebounce = setTimeout(handleScrollSnap, 100);
-    });
+    }, { signal });
 
     chatContainer.addEventListener('scrollend', () => {
         if (isTouching) return;
@@ -189,7 +334,7 @@ export function initPaginationEvent(getSettings) {
         clearTimeout(snapDebounce);
         if (!isProgrammaticScrolling) handleScrollSnap();
         isProgrammaticScrolling = false;
-    });
+    }, { signal });
 
     // ---- 滑动翻页 ----
     let touchStartX = 0;
@@ -197,7 +342,7 @@ export function initPaginationEvent(getSettings) {
     let touchStartScrollLeft = 0;
     let touchStartTime = 0;
     let isTouchTracking = false;
-    let touchIsHorizontal = null; // null=未判断, true=横向, false=纵向
+    let touchIsHorizontal = null;
     let touchCooldownTimer = null;
 
     chatContainer.addEventListener('touchstart', (e) => {
@@ -217,7 +362,7 @@ export function initPaginationEvent(getSettings) {
         isTouchTracking = true;
         touchIsHorizontal = null;
         isProgrammaticScrolling = false;
-    }, { passive: true });
+    }, { passive: true, signal });
 
     chatContainer.addEventListener('touchmove', (e) => {
         if (!isTouchTracking) return;
@@ -227,7 +372,6 @@ export function initPaginationEvent(getSettings) {
 
         const dx = e.touches[0].clientX - touchStartX;
 
-        // 用第一帧 >8px 位移判定方向
         if (touchIsHorizontal === null) {
             const adx = Math.abs(e.touches[0].clientX - touchStartX);
             const ady = Math.abs(e.touches[0].clientY - touchStartY);
@@ -236,11 +380,10 @@ export function initPaginationEvent(getSettings) {
         }
         if (!touchIsHorizontal) return;
 
-        // touch-action:pan-y 已阻断浏览器横向惯性，无需 preventDefault
         const max = chatContainer.scrollWidth - chatContainer.getBoundingClientRect().width;
         isProgrammaticScrolling = true;
         chatContainer.scrollLeft = Math.max(0, Math.min(max, touchStartScrollLeft - dx));
-    }, { passive: true });
+    }, { passive: true, signal });
 
     chatContainer.addEventListener('touchend', (e) => {
         if (!isTouchTracking) return;
@@ -251,7 +394,6 @@ export function initPaginationEvent(getSettings) {
         const settings = getSettings();
         if (!settings?.enabled || !settings.swipeEnabled) return;
 
-        // 纵向或未判定方向：直接放行
         if (!touchIsHorizontal) {
             isProgrammaticScrolling = false;
             touchCooldownTimer = setTimeout(() => { isTouching = false; }, 150);
@@ -263,7 +405,6 @@ export function initPaginationEvent(getSettings) {
         const cw = chatContainer.getBoundingClientRect().width;
         if (cw <= 0) { isProgrammaticScrolling = false; isTouching = false; return; }
 
-        // 目标页：基于 touchStart 时的页，严格限制 ±1 页
         const startPage = Math.round(touchStartScrollLeft / cw);
         let targetPage = startPage;
 
@@ -275,15 +416,12 @@ export function initPaginationEvent(getSettings) {
                 ? Math.max(0, startPage - 1)
                 : Math.min(Math.max(0, Math.ceil(chatContainer.scrollWidth / cw) - 1), startPage + 1);
         } else {
-            // 未达阈值：就近吸附，但限制在 ±1 页内
             const nearest = Math.round(chatContainer.scrollLeft / cw);
             targetPage = Math.max(startPage - 1, Math.min(startPage + 1, Math.max(0, nearest)));
         }
 
-        // 使用 smooth，与点击翻页动画保持一致
         scrollToPage(chatContainer, targetPage, cw);
 
-        // isTouching 冷却：等 scrollend 后释放，确保 handleScrollSnap 不在动画中途介入
         const onSnapEnd = () => {
             isTouching = false;
             isProgrammaticScrolling = false;
@@ -291,13 +429,12 @@ export function initPaginationEvent(getSettings) {
             clearTimeout(touchCooldownTimer);
         };
         chatContainer.addEventListener('scrollend', onSnapEnd);
-        // 安全兜底：scrollend 若未触发则 600ms 后强制释放
         touchCooldownTimer = setTimeout(() => {
             isTouching = false;
             isProgrammaticScrolling = false;
             chatContainer.removeEventListener('scrollend', onSnapEnd);
         }, 600);
-    }, { passive: true });
+    }, { passive: true, signal });
 
     chatContainer.addEventListener('touchcancel', () => {
         isTouchTracking = false;
@@ -305,7 +442,7 @@ export function initPaginationEvent(getSettings) {
         isProgrammaticScrolling = false;
         clearTimeout(touchCooldownTimer);
         isTouching = false;
-    }, { passive: true });
+    }, { passive: true, signal });
 
     // 焦点跳转防护：输入框获焦时回到当前页
     chatContainer.addEventListener('focusin', (e) => {
@@ -315,5 +452,5 @@ export function initPaginationEvent(getSettings) {
             const cw = chatContainer.getBoundingClientRect().width;
             if (cw > 0) chatContainer.scrollTo({ left: lastUserPage * cw });
         }, 10);
-    });
+    }, { signal });
 }
