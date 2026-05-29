@@ -2,7 +2,8 @@
     display: none;
     position: absolute;
     z-index: 10000;
-    background: var(--SmartThemeBlurTintColor);
+    background: var(--twt-comments-bg-solid, var(--SmartThemeBlurTintColor));
+    opacity: 1 !important;
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: 4px;
     padding: 4px 0;

@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { extension_settings, getContext } from '../../../extensions.js';
 import { showMoreMessages } from '../../../../script.js';
+import { setLastUserPage } from './pagination.js';
 
 const BTN_START_ID = 'twt-mulu-start-btn';
 const BTN_END_ID = 'twt-mulu-end-btn';
@@ -110,7 +111,7 @@ function getTargetMessage() {
     
     if (doc.body.classList.contains('twt-reading-mode')) {
         const currentScrollLeft = chatContainer.scrollLeft;
-        const cw = chatContainer.clientWidth;
+        const cw = chatContainer.getBoundingClientRect().width;
         const pageCenter = currentScrollLeft + (cw / 2);
         
         // Find the AI message that spans the pageCenter
@@ -178,11 +179,14 @@ async function scrollToMessageEdge(edge) {
         const chatContainer = doc.getElementById('chat');
         if (chatContainer) {
             if (doc.body.classList.contains('twt-reading-mode')) {
-                const cw = chatContainer.clientWidth;
+                const cw = chatContainer.getBoundingClientRect().width;
                 if (edge === 'start') {
                     chatContainer.scrollTo({ left: 0, behavior: 'smooth' });
+                    setLastUserPage(0);
                 } else {
+                    const maxPage = Math.max(0, Math.ceil(chatContainer.scrollWidth / cw) - 1);
                     chatContainer.scrollTo({ left: chatContainer.scrollWidth, behavior: 'smooth' });
+                    setLastUserPage(maxPage);
                 }
             } else {
                 if (edge === 'start') {
@@ -206,7 +210,7 @@ async function scrollToMessageEdge(edge) {
     
     if (doc.body.classList.contains('twt-reading-mode')) {
         const chatRect = chatContainer.getBoundingClientRect();
-        const cw = chatContainer.clientWidth;
+        const cw = chatContainer.getBoundingClientRect().width;
         const currentScrollLeft = chatContainer.scrollLeft;
         const currentPage = Math.round(currentScrollLeft / cw);
         
@@ -247,11 +251,16 @@ async function scrollToMessageEdge(edge) {
             // Sibling not found or already at edge -> jump to absolute start or end!
             if (edge === 'start') {
                 chatContainer.scrollTo({ left: 0, behavior: 'smooth' });
+                setLastUserPage(0);
             } else {
+                const maxLeft = chatContainer.scrollWidth - cw;
+                const maxPage = Math.max(0, Math.ceil(chatContainer.scrollWidth / cw) - 1);
                 chatContainer.scrollTo({ left: chatContainer.scrollWidth, behavior: 'smooth' });
+                setLastUserPage(maxPage);
             }
         } else {
             chatContainer.scrollTo({ left: targetPage * cw, behavior: 'smooth' });
+            setLastUserPage(targetPage);
         }
     } else {
         // Vertical scroll mode chain scrolling
@@ -1170,12 +1179,13 @@ function scrollToMessage(mes) {
     
     if (doc.body.classList.contains('twt-reading-mode')) {
         const chatRect = chatContainer.getBoundingClientRect();
-        const cw = chatContainer.clientWidth;
+        const cw = chatContainer.getBoundingClientRect().width;
         const currentScrollLeft = chatContainer.scrollLeft;
         const rect = mes.getBoundingClientRect();
         const absoluteLeft = rect.left - chatRect.left + currentScrollLeft;
-        const targetPage = Math.floor(absoluteLeft / cw);
+        const targetPage = Math.round(absoluteLeft / cw);
         chatContainer.scrollTo({ left: targetPage * cw, behavior: 'smooth' });
+        setLastUserPage(targetPage);
     } else {
         mes.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }

@@ -112,25 +112,36 @@ function updateColWidth() {
 
 /**
  * 延迟+重试初始化列宽，解决聊天加载时 DOM 未就绪导致列宽为 0 的竞态问题。
- * 成功获取宽度后，吸附回 lastUserPage 所在页。
+ * 同时等待 scrollWidth 在两帧内稳定，确保 CSS 多列布局已完全展开后再固化列宽。
+ * 成功后吸附回 lastUserPage 所在页。
  */
-function updateColWidthWhenReady(retries = 15, interval = 120) {
+function updateColWidthWhenReady(retries = 20, interval = 150) {
     const chatContainer = document.getElementById('chat');
     if (!chatContainer || !document.body.classList.contains('twt-reading-mode')) return;
 
     const width = chatContainer.getBoundingClientRect().width;
-    if (width > 0) {
-        chatContainer.style.setProperty('--twt-col-width', `${width}px`, 'important');
-        // 重新吸附到 lastUserPage（切换聊天时为 0，不影响正常使用）
-        requestAnimationFrame(() => {
-            chatContainer.scrollTo({ left: lastUserPage * width, behavior: 'instant' });
-        });
+    if (width <= 0) {
+        // 容器宽度还没就绪，继续等
+        if (retries > 0) setTimeout(() => updateColWidthWhenReady(retries - 1, interval), interval);
         return;
     }
 
-    if (retries > 0) {
-        setTimeout(() => updateColWidthWhenReady(retries - 1, interval), interval);
-    }
+    // 检查 scrollWidth 是否已稳定（两个 rAF 之间变化 < 2px，说明多列排版已完成）
+    const sw1 = chatContainer.scrollWidth;
+    requestAnimationFrame(() => {
+        if (!document.body.classList.contains('twt-reading-mode')) return;
+        const sw2 = chatContainer.scrollWidth;
+        if (Math.abs(sw2 - sw1) > 1 && retries > 0) {
+            // scrollWidth 还在变化，再等一轮
+            setTimeout(() => updateColWidthWhenReady(retries - 1, interval), interval);
+            return;
+        }
+        // scrollWidth 已稳定，固化列宽并吸附页面
+        chatContainer.style.setProperty('--twt-col-width', `${width}px`, 'important');
+        requestAnimationFrame(() => {
+            chatContainer.scrollTo({ left: lastUserPage * width, behavior: 'instant' });
+        });
+    });
 }
 
 /**
@@ -199,13 +210,22 @@ export function scrollPageRight() {
     scrollToPage(chatContainer, Math.min(maxPage, currentPage + 1), cw);
 }
 
+/**
+ * 供外部模块（如 mulu.js）在程序化跳转后同步更新 lastUserPage，
+ * 防止 snap 校正逻辑在下次 scroll 时跳回旧页。
+ */
+export function setLastUserPage(page) {
+    lastUserPage = page;
+}
+
 // ---- 事件绑定生命周期管理 ----
 // 用 AbortController 管理 chatContainer 上的事件，切换聊天时彻底重绑
 let scrollEventsAbortController = null;
 
 /**
  * 重置翻页事件绑定，供聊天切换时调用。
- * 会中止旧 #chat 上的所有事件监听，并重新绑定到新的 #chat。
+ * 会中止旧 #chat 上的所有事件监听，并在新 #chat 就绪后重新绑定。
+ * CHAT_CHANGED 事件触发时新 #chat 可能尚未渲染，因此采用重试机制。
  */
 export function resetPaginationBinding(getSettings) {
     // 1. 中止旧 chatContainer 上的所有事件
@@ -218,19 +238,26 @@ export function resetPaginationBinding(getSettings) {
     lastUserPage = 0;
     isProgrammaticScrolling = false;
 
-    // 3. 重置 ResizeObserver（旧 #chat 已销毁，需要重新观察新的）
+    // 3. 重置 ResizeObserver（旧 #chat 可能已销毁）
     if (resizeObserver) {
         resizeObserver.disconnect();
         resizeObserver = null;
     }
 
-    // 4. 如果翻页模式开启，重新绑定到新 #chat
-    if (document.body.classList.contains('twt-reading-mode')) {
-        initResizeObserver();
-        bindScrollEvents(getSettings);
-        // 延迟+重试等待新 #chat DOM 稳定
-        updateColWidthWhenReady();
+    if (!document.body.classList.contains('twt-reading-mode')) return;
+
+    // 4. 等待新 #chat 就绪后再绑定（CHAT_CHANGED 时 #chat 可能尚未重建）
+    function tryBind(retries) {
+        const chatContainer = document.getElementById('chat');
+        if (chatContainer) {
+            initResizeObserver();
+            bindScrollEvents(getSettings);
+            updateColWidthWhenReady();
+        } else if (retries > 0) {
+            setTimeout(() => tryBind(retries - 1), 100);
+        }
     }
+    tryBind(20); // 最多等待 2 秒
 }
 
 export function initPaginationEvent(getSettings) {
