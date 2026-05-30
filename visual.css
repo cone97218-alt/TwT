@@ -10,11 +10,23 @@ body.twt-visual-mode #chat .mes {
 }
 
 body.twt-visual-mode #chat .mes_text,
-body.twt-visual-mode #chat .mes_text p {
+body.twt-visual-mode #chat .mes_text p,
+body.twt-visual-mode #chat .mes_text em,
+body.twt-visual-mode #chat .mes_text i,
+body.twt-visual-mode #chat .mes_text span {
     font-size: var(--twt-font-size, 16px) !important;
     line-height: var(--twt-line-height, 1.6) !important;
     text-align: var(--twt-text-align, left) !important;
     letter-spacing: var(--twt-letter-spacing, 0px) !important;
+    font-weight: var(--twt-font-weight, normal) !important;
+}
+
+/* 确保粗体（包括粗体+斜体组合）依然保持粗体 */
+body.twt-visual-mode #chat .mes_text strong,
+body.twt-visual-mode #chat .mes_text strong *,
+body.twt-visual-mode #chat .mes_text b,
+body.twt-visual-mode #chat .mes_text b * {
+    font-weight: bold !important;
 }
 
 /* 首行缩进：仅作用于 <p> 标签段落，避免影响代码块/列表等其他元素 */
@@ -25,4 +37,8 @@ body.twt-visual-mode #chat .mes_text p {
 /* 段落间距：通过 <p> 标签的 margin-bottom 控制 */
 body.twt-visual-mode #chat .mes_text p {
     margin-bottom: var(--twt-paragraph-spacing, 0px) !important;
+}
+
+.twt-collapsible-icon.rotated {
+    transform: rotate(180deg);
 }

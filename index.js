@@ -62,8 +62,10 @@ const defaultSettings = {
     textAlign: 'left',       // 对齐方式：left | justify | center | right
     paragraphSpacing: 0,     // 段落间距 px
     letterSpacing: 0,        // 字间距 px
+    fontWeight: 'normal',    // 文本粗细
     visualPresets: {}, 
     currentPreset: 'custom',
+    presetThemeLinks: {},
     
     // New Mulu Regex settings
     muluRegexPresets: {
@@ -260,22 +262,6 @@ function updateMuluTabVisibility() {
     }
 }
 
-function updateOptimizeTabVisibility() {
-    const $tabBtn = $('#tab-btn-optimize');
-    const $tabContent = $('#twt-tab-optimize');
-    
-    if (extension_settings.twt.optimizeEnabled) {
-        $tabBtn.show();
-    } else {
-        $tabBtn.hide();
-        if ($tabBtn.hasClass('active')) {
-            $tabBtn.removeClass('active');
-            $tabContent.hide().removeClass('active');
-            $('[data-tab="twt-tab-settings"]').addClass('active');
-            $('#twt-tab-settings').show().addClass('active');
-        }
-    }
-}
 
 function updateCommentsTabVisibility() {
     const $tabBtn = $('#tab-btn-comments');
@@ -390,7 +376,7 @@ export function updateInjectedStyles() {
         doc.head.appendChild(style);
     }
 
-    if (!extension_settings.twt.optimizeEnabled) {
+    if (!extension_settings.twt.visualEnabled) {
         style.innerHTML = '';
         return;
     }
@@ -421,27 +407,60 @@ function applyPreset(presetName) {
     if (presetName === 'custom') return;
     const preset = extension_settings.twt.visualPresets[presetName];
     if (preset) {
-        extension_settings.twt.paddingTop = preset.paddingTop;
-        extension_settings.twt.paddingBottom = preset.paddingBottom;
-        extension_settings.twt.paddingLeft = preset.paddingLeft;
-        extension_settings.twt.paddingRight = preset.paddingRight;
-        extension_settings.twt.fontSize = preset.fontSize;
-        extension_settings.twt.lineHeight = preset.lineHeight;
-        extension_settings.twt.textIndent = preset.textIndent ?? 0;
-        extension_settings.twt.textAlign = preset.textAlign ?? 'left';
-        extension_settings.twt.paragraphSpacing = preset.paragraphSpacing ?? 0;
-        extension_settings.twt.letterSpacing = preset.letterSpacing ?? 0;
+        // Page margins
+        if (preset.paddingTop !== undefined) extension_settings.twt.paddingTop = preset.paddingTop;
+        if (preset.paddingBottom !== undefined) extension_settings.twt.paddingBottom = preset.paddingBottom;
+        if (preset.paddingLeft !== undefined) extension_settings.twt.paddingLeft = preset.paddingLeft;
+        if (preset.paddingRight !== undefined) extension_settings.twt.paddingRight = preset.paddingRight;
         
-        $('#twt_padding_top').val(preset.paddingTop);
-        $('#twt_padding_bottom').val(preset.paddingBottom);
-        $('#twt_padding_left').val(preset.paddingLeft);
-        $('#twt_padding_right').val(preset.paddingRight);
-        $('#twt_font_size').val(preset.fontSize);
-        $('#twt_line_height').val(preset.lineHeight);
-        $('#twt_text_indent').val(preset.textIndent ?? 0);
-        $('#twt_text_align').val(preset.textAlign ?? 'left');
-        $('#twt_paragraph_spacing').val(preset.paragraphSpacing ?? 0);
-        $('#twt_letter_spacing').val(preset.letterSpacing ?? 0);
+        $('#twt_padding_top').val(extension_settings.twt.paddingTop);
+        $('#twt_padding_bottom').val(extension_settings.twt.paddingBottom);
+        $('#twt_padding_left').val(extension_settings.twt.paddingLeft);
+        $('#twt_padding_right').val(extension_settings.twt.paddingRight);
+        
+        // Typography
+        if (preset.fontSize !== undefined) extension_settings.twt.fontSize = preset.fontSize;
+        if (preset.lineHeight !== undefined) extension_settings.twt.lineHeight = preset.lineHeight;
+        if (preset.textIndent !== undefined) extension_settings.twt.textIndent = preset.textIndent;
+        if (preset.textAlign !== undefined) extension_settings.twt.textAlign = preset.textAlign;
+        if (preset.paragraphSpacing !== undefined) extension_settings.twt.paragraphSpacing = preset.paragraphSpacing;
+        if (preset.letterSpacing !== undefined) extension_settings.twt.letterSpacing = preset.letterSpacing;
+        if (preset.fontWeight !== undefined) extension_settings.twt.fontWeight = preset.fontWeight;
+        
+        $('#twt_font_size').val(extension_settings.twt.fontSize);
+        $('#twt_line_height').val(extension_settings.twt.lineHeight);
+        $('#twt_text_indent').val(extension_settings.twt.textIndent);
+        $('#twt_text_align').val(extension_settings.twt.textAlign);
+        $('#twt_paragraph_spacing').val(extension_settings.twt.paragraphSpacing);
+        $('#twt_letter_spacing').val(extension_settings.twt.letterSpacing);
+        $('#twt_font_weight').val(extension_settings.twt.fontWeight || 'normal');
+        
+        // CSS Optimization Patches with new-patch detection and deleted-patch removal
+        const patches = extension_settings.twt.optimizePatches || {};
+        if (preset.optimizePatches) {
+            // Clean up preset.optimizePatches: remove any key that is not in the system's patches
+            for (const key of Object.keys(preset.optimizePatches)) {
+                if (!(key in patches)) {
+                    delete preset.optimizePatches[key];
+                }
+            }
+            // Apply states. If system patch is not in preset.optimizePatches (it's new), turn it off.
+            for (const key of Object.keys(patches)) {
+                if (key in preset.optimizePatches) {
+                    patches[key].active = !!preset.optimizePatches[key];
+                } else {
+                    patches[key].active = false;
+                }
+            }
+        } else {
+            // If preset doesn't have optimizePatches, turn all patches off
+            preset.optimizePatches = {};
+            for (const key of Object.keys(patches)) {
+                patches[key].active = false;
+            }
+        }
+        renderOptimizePatchList();
+        updateInjectedStyles();
         
         getContext().saveSettingsDebounced();
         applyVisualMode(extension_settings.twt.visualEnabled, extension_settings.twt);
@@ -449,7 +468,7 @@ function applyPreset(presetName) {
 }
 
 function saveCurrentToPreset(name) {
-    extension_settings.twt.visualPresets[name] = {
+    const presetData = {
         paddingTop: extension_settings.twt.paddingTop,
         paddingBottom: extension_settings.twt.paddingBottom,
         paddingLeft: extension_settings.twt.paddingLeft,
@@ -459,8 +478,17 @@ function saveCurrentToPreset(name) {
         textIndent: extension_settings.twt.textIndent,
         textAlign: extension_settings.twt.textAlign,
         paragraphSpacing: extension_settings.twt.paragraphSpacing,
-        letterSpacing: extension_settings.twt.letterSpacing
+        letterSpacing: extension_settings.twt.letterSpacing,
+        fontWeight: extension_settings.twt.fontWeight || 'normal'
     };
+
+    presetData.optimizePatches = {};
+    const patches = extension_settings.twt.optimizePatches || {};
+    for (const patchName of Object.keys(patches)) {
+        presetData.optimizePatches[patchName] = !!patches[patchName].active;
+    }
+
+    extension_settings.twt.visualPresets[name] = presetData;
     extension_settings.twt.currentPreset = name;
     getContext().saveSettingsDebounced();
     renderPresetList();
@@ -494,6 +522,76 @@ function saveCurrentToMuluRegexPreset(name) {
     renderMuluRegexPresetList();
 }
 
+let workLogs = [];
+
+function logWork(message) {
+    const timeStr = new Date().toLocaleTimeString();
+    const entry = { time: Date.now(), text: `[${timeStr}] ${message}` };
+    workLogs.push(entry);
+    
+    const $container = $('#twt-work-logs');
+    if ($container.length) {
+        $container.append(`<div style="line-height:1.3; font-size:0.95em;">${entry.text}</div>`);
+        $container.scrollTop($container[0].scrollHeight);
+    }
+}
+
+function cleanOldLogs() {
+    const halfHourAgo = Date.now() - 30 * 60 * 1000;
+    const initialLen = workLogs.length;
+    workLogs = workLogs.filter(log => log.time >= halfHourAgo);
+    
+    if (workLogs.length !== initialLen) {
+        const $container = $('#twt-work-logs');
+        if ($container.length) {
+            $container.empty();
+            workLogs.forEach(entry => {
+                $container.append(`<div style="line-height:1.3; font-size:0.95em;">${entry.text}</div>`);
+            });
+        }
+    }
+}
+
+// 每过半小时自动清理日志
+setInterval(cleanOldLogs, 30 * 60 * 1000);
+
+function getGlobalThemes() {
+    const themes = [];
+    const themeSelect = parentDoc.getElementById('themes');
+    if (themeSelect) {
+        for (const opt of themeSelect.options) {
+            if (opt.value) themes.push({ val: opt.value, name: opt.text || opt.value });
+        }
+    }
+    return themes;
+}
+
+function initThemeLinkListener() {
+    const handleThemeChange = (themeVal) => {
+        if (!themeVal) return;
+        const links = extension_settings.twt.presetThemeLinks || {};
+        const targetPreset = links[themeVal];
+        if (targetPreset && extension_settings.twt.visualPresets[targetPreset]) {
+            logWork(`检测到全局美化切换为 [${themeVal}]，自动载入关联的预设 [${targetPreset}]`);
+            extension_settings.twt.currentPreset = targetPreset;
+            $('#twt_visual_preset').val(targetPreset);
+            applyPreset(targetPreset);
+        }
+    };
+
+    const themeSelect = parentDoc.getElementById('themes');
+    if (themeSelect) {
+        $(themeSelect).off('change.twt').on('change.twt', function() {
+            handleThemeChange($(this).val());
+        });
+    }
+
+    // Check initial active theme on startup
+    if (themeSelect && $(themeSelect).val()) {
+        handleThemeChange($(themeSelect).val());
+    }
+}
+
 function bindUI() {
     const $enabled = $('#twt_enabled');
     const $swipeEnabled = $('#twt_swipe_enabled');
@@ -515,7 +613,6 @@ function bindUI() {
     const $menuOptFullscreen = $('#twt_menu_opt_fullscreen');
     const $visualEnabled = $('#twt_visual_enabled');
     const $muluEnabled = $('#twt_mulu_enabled');
-    const $optimizeEnabled = $('#twt_optimize_enabled');
     
     const $paddingTop = $('#twt_padding_top');
     const $paddingBottom = $('#twt_padding_bottom');
@@ -527,6 +624,7 @@ function bindUI() {
     const $textAlign = $('#twt_text_align');
     const $paragraphSpacing = $('#twt_paragraph_spacing');
     const $letterSpacing = $('#twt_letter_spacing');
+    const $fontWeight = $('#twt_font_weight');
 
     const $muluBtnStart = $('#twt_mulu_btn_start');
     const $muluBtnToc = $('#twt_mulu_btn_toc');
@@ -565,7 +663,7 @@ function bindUI() {
 
     $visualEnabled.prop('checked', extension_settings.twt.visualEnabled);
     $muluEnabled.prop('checked', extension_settings.twt.muluEnabled);
-    $optimizeEnabled.prop('checked', extension_settings.twt.optimizeEnabled);
+
 
     $paddingTop.val(extension_settings.twt.paddingTop);
     $paddingBottom.val(extension_settings.twt.paddingBottom);
@@ -577,6 +675,7 @@ function bindUI() {
     $textAlign.val(extension_settings.twt.textAlign ?? 'left');
     $paragraphSpacing.val(extension_settings.twt.paragraphSpacing ?? 0);
     $letterSpacing.val(extension_settings.twt.letterSpacing ?? 0);
+    $fontWeight.val(extension_settings.twt.fontWeight ?? 'normal');
 
     $muluBtnStart.prop('checked', extension_settings.twt.muluBtnStart);
     $muluBtnToc.prop('checked', extension_settings.twt.muluBtnToc);
@@ -594,6 +693,73 @@ function bindUI() {
         extension_settings.twt.currentPreset = val;
         getContext().saveSettingsDebounced();
         applyPreset(val);
+    });
+
+    $('#twt_preset_link').on('click', function() {
+        const currentPresetName = extension_settings.twt.currentPreset;
+        if (!currentPresetName || currentPresetName === 'custom') {
+            toastr.warning('“自定义”状态不可进行关联。', '提示');
+            return;
+        }
+        
+        getEl('#twt-link-preset-name').text(currentPresetName);
+        const $container = getEl('#twt-theme-checkboxes-container');
+        $container.empty();
+        
+        const themes = getGlobalThemes();
+        if (themes.length === 0) {
+            $container.append(`<div style="font-size:0.9em; opacity:0.5; text-align:center; padding:10px;">未找到可用的全局美化主题。</div>`);
+        } else {
+            const links = extension_settings.twt.presetThemeLinks || {};
+            themes.forEach(theme => {
+                const isChecked = links[theme.val] === currentPresetName;
+                $container.append(`
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin:0; font-size:0.95em; padding:4px 0; user-select:none;">
+                        <input type="checkbox" class="twt-theme-link-cb" value="${theme.val}" ${isChecked ? 'checked' : ''} style="margin:0;" />
+                        <span>${theme.name}</span>
+                    </label>
+                `);
+            });
+        }
+        getEl('#twt-link-theme-modal').css('display', 'flex');
+    });
+
+    getEl('#twt_link_theme_cancel').off('click').on('click', function(e) {
+        e.stopPropagation();
+        getEl('#twt-link-theme-modal').css('display', 'none');
+    });
+
+    getEl('#twt_link_theme_save').off('click').on('click', function(e) {
+        e.stopPropagation();
+        const currentPresetName = extension_settings.twt.currentPreset;
+        if (!extension_settings.twt.presetThemeLinks) {
+            extension_settings.twt.presetThemeLinks = {};
+        }
+        
+        const checkedThemes = [];
+        getEl('#twt-theme-checkboxes-container .twt-theme-link-cb').each(function() {
+            const val = $(this).val();
+            const checked = $(this).prop('checked');
+            if (checked) {
+                extension_settings.twt.presetThemeLinks[val] = currentPresetName;
+                checkedThemes.push(val);
+            } else {
+                if (extension_settings.twt.presetThemeLinks[val] === currentPresetName) {
+                    delete extension_settings.twt.presetThemeLinks[val];
+                }
+            }
+        });
+        
+        getContext().saveSettingsDebounced();
+        logWork(`更新预设 [${currentPresetName}] 关联的全局美化：[${checkedThemes.join(', ') || '无'}]`);
+        getEl('#twt-link-theme-modal').css('display', 'none');
+    });
+
+    getEl('#twt-link-theme-modal').off('click mousedown mouseup pointerdown pointerup touchstart').on('click mousedown mouseup pointerdown pointerup touchstart', function(e) {
+        if (e.type === 'click' && e.target === this) {
+            getEl('#twt-link-theme-modal').css('display', 'none');
+        }
+        e.stopPropagation();
     });
 
     $('#twt_preset_save').on('click', function() {
@@ -919,6 +1085,14 @@ function bindUI() {
         getContext().saveSettingsDebounced();
         updateVisualTabVisibility();
         applyVisualMode(extension_settings.twt.visualEnabled, extension_settings.twt);
+        updateInjectedStyles();
+    });
+
+    $('.twt-collapsible-header').off('click').on('click', function () {
+        const $content = $(this).next('.twt-collapsible-content');
+        const $icon = $(this).find('.twt-collapsible-icon');
+        $content.slideToggle(150);
+        $icon.toggleClass('rotated');
     });
 
     $muluEnabled.on('change', function () {
@@ -926,13 +1100,6 @@ function bindUI() {
         getContext().saveSettingsDebounced();
         updateMuluTabVisibility();
         applyMuluSettings();
-    });
-
-    $optimizeEnabled.on('change', function () {
-        extension_settings.twt.optimizeEnabled = $(this).prop('checked');
-        getContext().saveSettingsDebounced();
-        updateOptimizeTabVisibility();
-        updateInjectedStyles();
     });
 
     $muluBtnStart.on('change', function () {
@@ -1002,6 +1169,11 @@ function bindUI() {
     $letterSpacing.on('input', function () {
         const val = parseFloat($letterSpacing.val());
         if (!isNaN(val)) { extension_settings.twt.letterSpacing = val; handleVisualChange(); }
+    });
+
+    $fontWeight.on('change', function () {
+        extension_settings.twt.fontWeight = $(this).val();
+        handleVisualChange();
     });
 
     $('#twt-settings').on('click', '.twt-tab', function() {
@@ -1882,6 +2054,7 @@ jQuery(async () => {
     $('#twt-comments-text-fullscreen-overlay').appendTo(parentDoc.body);
     $('#twt-comments-preview-modal').appendTo(parentDoc.body);
     $('#twt-comments-help-modal').appendTo(parentDoc.body);
+    $('#twt-link-theme-modal').appendTo(parentDoc.body);
 
     updateCommentsBgSolid();
     bindUI();
@@ -1889,7 +2062,6 @@ jQuery(async () => {
     updateMenuTabVisibility();
     updateVisualTabVisibility();
     updateMuluTabVisibility();
-    updateOptimizeTabVisibility();
     updateCommentsTabVisibility();
     
     applyPaginationMode(extension_settings.twt.enabled, extension_settings.twt);
@@ -1898,11 +2070,12 @@ jQuery(async () => {
     applyFullscreenMode(extension_settings.twt.isFullscreen);
     updateInjectedStyles();
     initMulu();
+    initThemeLinkListener();
     initPaginationEvent(() => extension_settings.twt);
     initMenu(() => extension_settings.twt);
     parentDoc.addEventListener('contextmenu', (e) => {
         const patches = extension_settings.twt.optimizePatches || {};
-        const isEnabled = extension_settings.twt.optimizeEnabled && patches['禁用聊天区域长按菜单']?.active;
+        const isEnabled = extension_settings.twt.visualEnabled && patches['禁用聊天区域长按菜单']?.active;
         if (!isEnabled) return;
 
         const chat = parentDoc.getElementById('chat');

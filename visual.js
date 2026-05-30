@@ -13,6 +13,7 @@ export function applyVisualMode(enabled, settings) {
             chatContainer.style.setProperty('--twt-text-align', `${settings.textAlign ?? 'left'}`, 'important');
             chatContainer.style.setProperty('--twt-paragraph-spacing', `${settings.paragraphSpacing ?? 0}px`, 'important');
             chatContainer.style.setProperty('--twt-letter-spacing', `${settings.letterSpacing ?? 0}px`, 'important');
+            chatContainer.style.setProperty('--twt-font-weight', `${settings.fontWeight ?? 'normal'}`, 'important');
         }
     } else {
         document.body.classList.remove('twt-visual-mode');
