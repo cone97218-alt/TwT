@@ -116,27 +116,15 @@ body.twt-reading-mode .twt-pagination-scrollable::-webkit-scrollbar {
     display: none !important;
 }
 
-/* 底部渐隐提示：暗示可继续向下滚动 */
-body.twt-reading-mode .twt-pagination-scrollable::after {
-    content: '' !important;
-    position: sticky !important;
-    bottom: 0 !important;
-    left: 0 !important;
-    display: block !important;
-    width: 100% !important;
-    height: 16px !important;
-    background: linear-gradient(to bottom, transparent, rgba(0, 0, 0, 0.15)) !important;
-    pointer-events: none !important;
-    z-index: 10 !important;
-}
+
 
 /* 强制所有 HTML 容器和 HTML 折叠组件独占一页/一列，避免折叠展开时影响前后排版 */
-body.twt-reading-mode #chat .mes_text > div,
+body.twt-reading-mode #chat .mes_text > div:not(.thought-block):not(.mes_reasoning_details):not(.mes_reasoning_details_body),
 body.twt-reading-mode #chat .mes_text > table,
 body.twt-reading-mode #chat .mes_text > section,
 body.twt-reading-mode #chat .mes_text > form,
 body.twt-reading-mode #chat .mes_text > article,
-body.twt-reading-mode #chat .mes_text > details,
+body.twt-reading-mode #chat .mes_text > details:not(.mes_reasoning_details),
 body.twt-reading-mode #chat .mes_text > iframe {
     break-before: column !important;
     break-after: column !important;
