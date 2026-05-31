@@ -468,12 +468,31 @@ function showMuluModal() {
         tocItems.sort((a, b) => a.mesId - b.mesId);
     }
 
+    // Resolve opaque background color based on SmartThemeBlurTintColor (opacity 100%)
+    let opaqueBgColor = '';
+    try {
+        const temp = doc.createElement('div');
+        temp.style.color = 'var(--SmartThemeBlurTintColor)';
+        doc.body.appendChild(temp);
+        const style = getWin().getComputedStyle(temp).color;
+        doc.body.removeChild(temp);
+        const match = style.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/);
+        if (match) {
+            opaqueBgColor = `rgb(${match[1]}, ${match[2]}, ${match[3]})`;
+        }
+    } catch (e) {
+        console.error("TwT: Failed to resolve opaque background color in mulu.js", e);
+    }
+
     const overlay = doc.createElement('div');
     overlay.id = 'twt-mulu-overlay';
     overlay.addEventListener('click', closeMuluModal);
 
     const modal = doc.createElement('div');
     modal.id = 'twt-mulu-modal';
+    if (opaqueBgColor) {
+        modal.style.setProperty('background-color', opaqueBgColor, 'important');
+    }
     modal.addEventListener('click', (e) => {
         e.stopPropagation(); // 阻止点击弹窗内部导致弹窗关闭
     });

@@ -3,6 +3,217 @@ let resizeObserver = null;
 let lastUserPage = 0;
 let isProgrammaticScrolling = false;
 
+// ---- 翻页模式优化变量 ----
+let chatMutationObserver = null;
+let lastInteractedElement = null;
+let lastInteractedMessage = null;
+let lastInteractedMessagePageOffset = 0;
+let reflowNavigationTimer = null;
+
+// ---- 焦点保护窗口（防止键盘弹出时 ResizeObserver 抢先重排导致跳页）----
+let preKeyboardPage = -1;
+let focusGuardTimer = null;
+let isFocusGuardActive = false;
+
+function containOversizedElements() {
+    const chat = document.getElementById('chat');
+    if (!chat || !document.body.classList.contains('twt-reading-mode')) return;
+    
+    const colHeight = chat.clientHeight;
+    if (colHeight <= 0) return;
+    
+    // 1. 读相位 - 收集需要清理的元素
+    const toRemove = [];
+    chat.querySelectorAll('.twt-pagination-scrollable').forEach(el => {
+        toRemove.push(el);
+    });
+
+    // 2. 写相位 - 临时清除样式，以便准确测量
+    if (toRemove.length > 0) {
+        toRemove.forEach(el => {
+            el.style.removeProperty('max-height');
+            el.style.removeProperty('overflow-y');
+            el.classList.remove('twt-pagination-scrollable');
+        });
+        // 强制回流一次，确保后续测量准确
+        // eslint-disable-next-line no-unused-expressions
+        chat.scrollHeight; 
+    }
+
+    const toContain = [];
+    const excludedTags = new Set(['P', 'SPAN', 'BLOCKQUOTE', 'PRE', 'OL', 'UL', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'A', 'CODE', 'EM', 'STRONG', 'I', 'B']);
+    
+    // 3. 读相位 - 扫描超尺寸元素（为了移动端性能，仅扫描消息文本的直属一级子元素）
+    chat.querySelectorAll('.mes_text > *').forEach(el => {
+        // 跳过已经决定要收容的元素的子元素
+        if (toContain.some(parent => parent.contains(el))) return;
+        
+        // 排除普通文本类标签，它们可以跨列自然流动
+        if (excludedTags.has(el.tagName)) return;
+        
+        // 排除思维链/深度思考块，它们是特化组件，应该垂直自然断页而不是收容为内部滚动
+        if (el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')) return;
+        
+        // 快速高度检查
+        if (el.scrollHeight <= colHeight) return;
+        
+        // 检查是否创建 BFC 或者是常见的自定义容器标签
+        const cs = window.getComputedStyle(el);
+        const createsBFC = (
+            (cs.overflow !== 'visible' && cs.overflow !== '') ||
+            cs.display === 'flex' || cs.display === 'inline-flex' ||
+            cs.display === 'grid' || cs.display === 'inline-grid' ||
+            cs.position === 'absolute' || cs.position === 'fixed' ||
+            cs.display === 'flow-root'
+        );
+        
+        const isCommonContainer = el.tagName === 'DIV' || 
+                                  el.tagName === 'TABLE' || 
+                                  el.tagName === 'SECTION' || 
+                                  el.tagName === 'FORM' || 
+                                  el.tagName === 'ARTICLE' || 
+                                  el.tagName === 'DETAILS';
+        
+        if (createsBFC || isCommonContainer) {
+            toContain.push(el);
+        }
+    });
+
+    // 4. 写相位 - 应用收容样式
+    if (toContain.length > 0) {
+        toContain.forEach(el => {
+            el.style.setProperty('max-height', `${colHeight - 20}px`, 'important');
+            el.style.setProperty('overflow-y', 'auto', 'important');
+            el.classList.add('twt-pagination-scrollable');
+        });
+    }
+    
+    // 5. 校验当前页面，如果超出则重置
+    const cw = chat.getBoundingClientRect().width;
+    if (cw > 0) {
+        const totalPages = Math.ceil(chat.scrollWidth / cw);
+        if (lastUserPage >= totalPages) {
+            lastUserPage = Math.max(0, totalPages - 1);
+            chat.scrollTo({ left: lastUserPage * cw, behavior: 'instant' });
+        }
+    }
+}
+
+function trackInteractedElement(el) {
+    lastInteractedElement = el;
+    lastInteractedMessage = el.closest('.mes');
+    
+    const chat = document.getElementById('chat');
+    if (chat && lastInteractedMessage) {
+        const cw = chat.getBoundingClientRect().width;
+        if (cw > 0) {
+            const chatRect = chat.getBoundingClientRect();
+            const elRect = el.getBoundingClientRect();
+            const msgRect = lastInteractedMessage.getBoundingClientRect();
+            
+            const elAbsLeft = elRect.left - chatRect.left + chat.scrollLeft;
+            const msgAbsLeft = msgRect.left - chatRect.left + chat.scrollLeft;
+            
+            // 点击点相对于消息起点的页面偏移量
+            lastInteractedMessagePageOffset = Math.floor((elAbsLeft - msgAbsLeft) / cw);
+        }
+    }
+    
+    clearTimeout(reflowNavigationTimer);
+    reflowNavigationTimer = setTimeout(() => {
+        navigateToInteractedElement();
+    }, 300);
+}
+
+function navigateToInteractedElement() {
+    clearTimeout(reflowNavigationTimer);
+    if (!document.body.classList.contains('twt-reading-mode')) return;
+    const chat = document.getElementById('chat');
+    if (!chat) return;
+    
+    const cw = chat.getBoundingClientRect().width;
+    if (cw <= 0) return;
+    
+    let targetPage = -1;
+    
+    // 优先使用具体的元素定位
+    if (lastInteractedElement && chat.contains(lastInteractedElement)) {
+        const chatRect = chat.getBoundingClientRect();
+        const elRect = lastInteractedElement.getBoundingClientRect();
+        const absoluteLeft = elRect.left - chatRect.left + chat.scrollLeft;
+        targetPage = Math.floor(absoluteLeft / cw);
+    } 
+    // 如果具体元素没了，使用消息块加偏移量兜底
+    else if (lastInteractedMessage && chat.contains(lastInteractedMessage)) {
+        const chatRect = chat.getBoundingClientRect();
+        const msgRect = lastInteractedMessage.getBoundingClientRect();
+        const msgAbsLeft = msgRect.left - chatRect.left + chat.scrollLeft;
+        const msgStartPage = Math.floor(msgAbsLeft / cw);
+        targetPage = msgStartPage + lastInteractedMessagePageOffset;
+    }
+    
+    if (targetPage >= 0) {
+        const totalPages = Math.ceil(chat.scrollWidth / cw);
+        const validPage = Math.max(0, Math.min(targetPage, totalPages - 1));
+        if (validPage !== lastUserPage) {
+            scrollToPage(chat, validPage, cw);
+        }
+    }
+    
+    lastInteractedElement = null;
+    lastInteractedMessage = null;
+}
+
+function initChatMutationObserver() {
+    const chat = document.getElementById('chat');
+    if (!chat || chatMutationObserver) return;
+    
+    let debounceTimer = null;
+    chatMutationObserver = new MutationObserver(() => {
+        if (!document.body.classList.contains('twt-reading-mode')) return;
+        if (document.body.classList.contains('twt-paragraph-editing')) return;
+        if (isFocusGuardActive) return; // 焦点保护期内跳过，防止键盘弹出时重排
+        
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+            // 临时断开 Observer 避免 containOversizedElements 修改样式引起无限循环
+            if (chatMutationObserver) {
+                chatMutationObserver.disconnect();
+            }
+            
+            containOversizedElements();
+            if (lastInteractedElement || lastInteractedMessage) {
+                navigateToInteractedElement();
+            }
+            
+            // 重新开始监听
+            if (chatMutationObserver) {
+                chatMutationObserver.observe(chat, {
+                    childList: true,
+                    subtree: true,
+                    attributes: true,
+                    attributeFilter: ['open', 'style', 'class']
+                });
+            }
+        }, 150);
+    });
+    
+    chatMutationObserver.observe(chat, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['open', 'style', 'class']
+    });
+}
+
+function disconnectChatMutationObserver() {
+    if (chatMutationObserver) {
+        chatMutationObserver.disconnect();
+        chatMutationObserver = null;
+    }
+}
+
+
 // ---- 虚拟键盘检测（移动端）----
 let isKeyboardOpen = false;
 let frozenChatHeight = 0;
@@ -27,6 +238,15 @@ function initVirtualKeyboardGuard() {
             isKeyboardOpen = true;
             clearTimeout(keyboardRestoreTimer);
 
+            // 恢复被截断的页码（焦点保护可能没完全挡住）
+            if (preKeyboardPage >= 0) {
+                lastUserPage = preKeyboardPage;
+                preKeyboardPage = -1;
+            }
+            // 关闭焦点保护窗口
+            isFocusGuardActive = false;
+            clearTimeout(focusGuardTimer);
+
             const chatContainer = document.getElementById('chat');
             if (chatContainer) {
                 frozenChatHeight = chatContainer.getBoundingClientRect().height;
@@ -34,6 +254,11 @@ function initVirtualKeyboardGuard() {
                     chatContainer.style.setProperty('height', `${frozenChatHeight}px`, 'important');
                     chatContainer.style.setProperty('max-height', `${frozenChatHeight}px`, 'important');
                     chatContainer.style.setProperty('min-height', `${frozenChatHeight}px`, 'important');
+                }
+                // 确保滚动位置留在正确页
+                const cw = chatContainer.getBoundingClientRect().width;
+                if (cw > 0) {
+                    chatContainer.scrollTo({ left: lastUserPage * cw, behavior: 'instant' });
                 }
             }
         }
@@ -75,6 +300,7 @@ export function applyPaginationMode(enabled, settings) {
         initResizeObserver();
         patchScrollIntoView();
         initVirtualKeyboardGuard();
+        initChatMutationObserver();
     } else {
         document.body.classList.remove('twt-reading-mode', 'twt-swipe-disabled', 'twt-message-page');
         window.removeEventListener('resize', handleWindowResize);
@@ -82,12 +308,18 @@ export function applyPaginationMode(enabled, settings) {
             resizeObserver.disconnect();
             resizeObserver = null;
         }
-        // 退出翻页模式时解冻高度
+        disconnectChatMutationObserver();
+        // 退出翻页模式时解冻高度并清除滚动收容样式
         isKeyboardOpen = false;
         frozenChatHeight = 0;
         clearTimeout(keyboardRestoreTimer);
         const chatContainer = document.getElementById('chat');
         if (chatContainer) {
+            chatContainer.querySelectorAll('.twt-pagination-scrollable').forEach(el => {
+                el.style.removeProperty('max-height');
+                el.style.removeProperty('overflow-y');
+                el.classList.remove('twt-pagination-scrollable');
+            });
             chatContainer.style.removeProperty('height');
             chatContainer.style.removeProperty('max-height');
             chatContainer.style.removeProperty('min-height');
@@ -97,7 +329,7 @@ export function applyPaginationMode(enabled, settings) {
 
 // 包装 resize 事件处理：键盘弹出期间跳过 updateColWidth
 function handleWindowResize() {
-    if (isKeyboardOpen) return;
+    if (isKeyboardOpen || isFocusGuardActive) return;
     updateColWidth();
 }
 
@@ -107,6 +339,7 @@ function updateColWidth() {
     const width = chatContainer.getBoundingClientRect().width;
     if (width > 0) {
         chatContainer.style.setProperty('--twt-col-width', `${width}px`, 'important');
+        containOversizedElements();
     }
 }
 
@@ -138,6 +371,7 @@ function updateColWidthWhenReady(retries = 20, interval = 150) {
         }
         // scrollWidth 已稳定，固化列宽并吸附页面
         chatContainer.style.setProperty('--twt-col-width', `${width}px`, 'important');
+        containOversizedElements();
         requestAnimationFrame(() => {
             chatContainer.scrollTo({ left: lastUserPage * width, behavior: 'instant' });
         });
@@ -152,6 +386,7 @@ export function refreshPagination(targetPage = null) {
     const chatContainer = document.getElementById('chat');
     if (!chatContainer || !document.body.classList.contains('twt-reading-mode')) return;
     updateColWidth();
+    containOversizedElements();
     const cw = chatContainer.getBoundingClientRect().width;
     if (cw <= 0) return;
     const totalPages = Math.round(chatContainer.scrollWidth / cw);
@@ -166,7 +401,7 @@ function initResizeObserver() {
     const chatContainer = document.getElementById('chat');
     if (!chatContainer || resizeObserver) return;
     resizeObserver = new ResizeObserver(() => {
-        if (isKeyboardOpen) return; // 键盘打开时忽略，防止二次分页
+        if (isKeyboardOpen || isFocusGuardActive) return; // 键盘或焦点保护期内忽略
         updateColWidth();
     });
     resizeObserver.observe(chatContainer);
@@ -244,6 +479,9 @@ export function resetPaginationBinding(getSettings) {
         resizeObserver = null;
     }
 
+    // 重置 MutationObserver
+    disconnectChatMutationObserver();
+
     if (!document.body.classList.contains('twt-reading-mode')) return;
 
     // 4. 等待新 #chat 就绪后再绑定（CHAT_CHANGED 时 #chat 可能尚未重建）
@@ -253,6 +491,7 @@ export function resetPaginationBinding(getSettings) {
             initResizeObserver();
             bindScrollEvents(getSettings);
             updateColWidthWhenReady();
+            initChatMutationObserver();
         } else if (retries > 0) {
             setTimeout(() => tryBind(retries - 1), 100);
         }
@@ -278,14 +517,25 @@ export function initPaginationEvent(getSettings) {
         const chatContainer = document.getElementById('chat');
         if (!chatContainer?.contains(e.target)) return;
 
-        const baseSelector = 'button, a, input, textarea, select, .mes_button, .swipe-button, .ch_name, .avatar, img, .svg-icon';
+        const baseSelector = 'button, a, input, textarea, select, label, details, summary, [onclick], [role="button"], [tabindex], .mes_button, .swipe-button, .ch_name, .avatar, img, .svg-icon';
         let isInteractive = false;
         if (settings.customWhitelist?.trim()) {
             try { isInteractive = !!e.target.closest(settings.customWhitelist.trim()); }
             catch (err) { console.warn('[TwT] Invalid custom whitelist selector:', err); }
         }
         if (!isInteractive) isInteractive = !!e.target.closest(baseSelector);
-        if (isInteractive) return;
+        
+        // 启发式检测 cursor: pointer 样式，这通常表示可点击元素
+        if (!isInteractive) {
+            try {
+                isInteractive = window.getComputedStyle(e.target).cursor === 'pointer';
+            } catch (err) { /* ignore */ }
+        }
+
+        if (isInteractive) {
+            trackInteractedElement(e.target);
+            return;
+        }
         if (window.getSelection().toString().length > 0) return;
 
         const cw = chatContainer.getBoundingClientRect().width;
@@ -471,13 +721,30 @@ function bindScrollEvents(getSettings) {
         isTouching = false;
     }, { passive: true, signal });
 
-    // 焦点跳转防护：输入框获焦时回到当前页
+    // 焦点保护：输入框获焦时预锚定页码，防止键盘弹出引起的 resize 截断页码
     chatContainer.addEventListener('focusin', (e) => {
         if (!document.body.classList.contains('twt-reading-mode')) return;
         if (e.target && (e.target.classList.contains('twt-p-textarea') || e.target.closest('.twt-p-editor'))) return;
+
+        // 立即保存当前正确页码
+        preKeyboardPage = lastUserPage;
+        isFocusGuardActive = true;
+        clearTimeout(focusGuardTimer);
+        focusGuardTimer = setTimeout(() => {
+            isFocusGuardActive = false;
+            // 500ms 内键盘没弹出，说明不是键盘场景，清除预锚定
+            if (!isKeyboardOpen) {
+                preKeyboardPage = -1;
+            }
+        }, 500);
+
+        // 延迟回到当前页（使用预锚定页码，防止已被截断）
         setTimeout(() => {
             const cw = chatContainer.getBoundingClientRect().width;
-            if (cw > 0) chatContainer.scrollTo({ left: lastUserPage * cw });
+            if (cw > 0) {
+                const page = preKeyboardPage >= 0 ? preKeyboardPage : lastUserPage;
+                chatContainer.scrollTo({ left: page * cw });
+            }
         }, 10);
     }, { signal });
 }
