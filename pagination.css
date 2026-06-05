@@ -119,17 +119,22 @@ body.twt-reading-mode .twt-pagination-scrollable::-webkit-scrollbar {
 
 
 /* 强制所有 HTML 容器和 HTML 折叠组件独占一页/一列，避免折叠展开时影响前后排版 */
-body.twt-reading-mode #chat .mes_text > div:not(.thought-block):not(.mes_reasoning_details):not(.mes_reasoning_details_body),
-body.twt-reading-mode #chat .mes_text > table,
-body.twt-reading-mode #chat .mes_text > section,
-body.twt-reading-mode #chat .mes_text > form,
-body.twt-reading-mode #chat .mes_text > article,
-body.twt-reading-mode #chat .mes_text > details:not(.mes_reasoning_details),
-body.twt-reading-mode #chat .mes_text > iframe {
+body.twt-reading-mode #chat .mes_text > .twt-html-container {
     break-before: column !important;
     break-after: column !important;
-    page-break-before: always !important;
-    page-break-after: always !important;
-    -webkit-column-break-before: always !important;
-    -webkit-column-break-after: always !important;
+}
+
+/* 如果是首个元素，不要在前面断页 */
+body.twt-reading-mode #chat .mes_text > .twt-html-container:first-child {
+    break-before: auto !important;
+}
+
+/* 如果前面紧跟另一个 HTML 容器，不要在前面断页，防止连续的 HTML 块被拆散到多页 */
+body.twt-reading-mode #chat .mes_text > .twt-html-container + .twt-html-container {
+    break-before: auto !important;
+}
+
+/* 如果后面紧跟另一个 HTML 容器，不要在后面断页，防止连续的 HTML 块被拆散到多页 */
+body.twt-reading-mode #chat .mes_text > .twt-html-container:has(+ .twt-html-container) {
+    break-after: auto !important;
 }

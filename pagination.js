@@ -14,6 +14,7 @@ let reflowNavigationTimer = null;
 let preKeyboardPage = -1;
 let focusGuardTimer = null;
 let isFocusGuardActive = false;
+let positionLockRaf = null; // rAF 滚动位置锁
 
 function containOversizedElements() {
     const chat = document.getElementById('chat');
@@ -43,8 +44,23 @@ function containOversizedElements() {
     const toContain = [];
     const excludedTags = new Set(['P', 'SPAN', 'BLOCKQUOTE', 'PRE', 'OL', 'UL', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'A', 'CODE', 'EM', 'STRONG', 'I', 'B']);
     
-    // 3. 读相位 - 扫描超尺寸元素（为了移动端性能，仅扫描消息文本的直属一级子元素）
+    // 3. 读相位 - 扫描并标记 HTML 容器，收集级子元素中的超尺寸元素
     chat.querySelectorAll('.mes_text > *').forEach(el => {
+        const isReasoning = el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body');
+        const isContainerTag = el.tagName === 'DIV' || 
+                               el.tagName === 'TABLE' || 
+                               el.tagName === 'SECTION' || 
+                               el.tagName === 'FORM' || 
+                               el.tagName === 'ARTICLE' || 
+                               el.tagName === 'DETAILS' ||
+                               el.tagName === 'IFRAME';
+        
+        if (isContainerTag && !isReasoning) {
+            el.classList.add('twt-html-container');
+        } else {
+            el.classList.remove('twt-html-container');
+        }
+
         // 跳过已经决定要收容的元素的子元素
         if (toContain.some(parent => parent.contains(el))) return;
         
@@ -52,7 +68,7 @@ function containOversizedElements() {
         if (excludedTags.has(el.tagName)) return;
         
         // 排除思维链/深度思考块，它们是特化组件，应该垂直自然断页而不是收容为内部滚动
-        if (el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')) return;
+        if (isReasoning) return;
         
         // 快速高度检查
         if (el.scrollHeight <= colHeight) return;
@@ -67,14 +83,7 @@ function containOversizedElements() {
             cs.display === 'flow-root'
         );
         
-        const isCommonContainer = el.tagName === 'DIV' || 
-                                  el.tagName === 'TABLE' || 
-                                  el.tagName === 'SECTION' || 
-                                  el.tagName === 'FORM' || 
-                                  el.tagName === 'ARTICLE' || 
-                                  el.tagName === 'DETAILS';
-        
-        if (createsBFC || isCommonContainer) {
+        if (createsBFC || isContainerTag) {
             toContain.push(el);
         }
     });
@@ -220,12 +229,69 @@ let frozenChatHeight = 0;
 let keyboardRestoreTimer = null;
 let isKeyboardGuardInit = false; // 防止重复注册
 
+/**
+ * 精确冻结 #chat 高度，考虑 box-sizing 确保冻结后高度与冻结前像素级一致。
+ * 高度不一致会导致 CSS 多列重排，引发页码跳变。
+ */
+function freezeChatHeight(chatContainer) {
+    const cs = getComputedStyle(chatContainer);
+    // 使用 computedStyle.height 直接获取浏览器已计算好的高度值，
+    // 它已经根据当前 box-sizing 模式给出了正确的 CSS height 属性值。
+    const computedHeight = cs.height;
+    if (computedHeight && computedHeight !== 'auto' && parseFloat(computedHeight) > 0) {
+        frozenChatHeight = parseFloat(computedHeight);
+        chatContainer.style.setProperty('height', computedHeight, 'important');
+        chatContainer.style.setProperty('max-height', computedHeight, 'important');
+        chatContainer.style.setProperty('min-height', computedHeight, 'important');
+    }
+}
+
+function unfreezeChatHeight(chatContainer) {
+    frozenChatHeight = 0;
+    if (chatContainer) {
+        chatContainer.style.removeProperty('height');
+        chatContainer.style.removeProperty('max-height');
+        chatContainer.style.removeProperty('min-height');
+    }
+}
+
+/**
+ * 启动 rAF 滚动位置锁：每帧检查并修正 scrollLeft。
+ * 比 scroll 事件更可靠，因为浏览器原生焦点滚动可能不触发 scroll 事件，
+ * 或者在 scroll 事件之前就完成了布局。
+ */
+function startPositionLock(chatContainer, targetPage) {
+    stopPositionLock();
+    // 缓存列宽：键盘打开期间列宽不变，无需每帧读取
+    const cw = chatContainer.getBoundingClientRect().width;
+    if (cw <= 0) return;
+    const expectedLeft = targetPage * cw;
+    function lock() {
+        if (!isFocusGuardActive && !isKeyboardOpen) {
+            positionLockRaf = null;
+            return;
+        }
+        if (Math.abs(chatContainer.scrollLeft - expectedLeft) > 2) {
+            chatContainer.scrollTo({ left: expectedLeft, behavior: 'instant' });
+        }
+        positionLockRaf = requestAnimationFrame(lock);
+    }
+    positionLockRaf = requestAnimationFrame(lock);
+}
+
+function stopPositionLock() {
+    if (positionLockRaf !== null) {
+        cancelAnimationFrame(positionLockRaf);
+        positionLockRaf = null;
+    }
+}
+
 function initVirtualKeyboardGuard() {
-    if (isKeyboardGuardInit || !window.visualViewport) return;
+    if (isKeyboardGuardInit) return;
     isKeyboardGuardInit = true;
 
     // ---- 文档级焦点监听：任何输入框获焦时立即冻结 #chat 高度 ----
-    // 必须在键盘开始弹出之前冻结，否则 CSS 多列布局会因高度变化自动重排
+    // 注意：此监听器注册不依赖 window.visualViewport，确保所有浏览器都能冻结高度
     document.addEventListener('focusin', (e) => {
         if (!document.body.classList.contains('twt-reading-mode')) return;
         const target = e.target;
@@ -241,6 +307,8 @@ function initVirtualKeyboardGuard() {
         const chatContainer = document.getElementById('chat');
         if (!chatContainer) return;
 
+        console.log('[TwT] focusin 触发, 当前页:', lastUserPage, '目标:', target.tagName, target.id || target.className);
+
         // 立即保存当前正确页码
         preKeyboardPage = lastUserPage;
         isFocusGuardActive = true;
@@ -248,33 +316,27 @@ function initVirtualKeyboardGuard() {
 
         // 立即冻结 #chat 高度（在键盘动画开始之前！）
         if (!isKeyboardOpen) {
-            const currentHeight = chatContainer.getBoundingClientRect().height;
-            if (currentHeight > 0) {
-                frozenChatHeight = currentHeight;
-                chatContainer.style.setProperty('height', `${currentHeight}px`, 'important');
-                chatContainer.style.setProperty('max-height', `${currentHeight}px`, 'important');
-                chatContainer.style.setProperty('min-height', `${currentHeight}px`, 'important');
-            }
+            freezeChatHeight(chatContainer);
+            console.log('[TwT] 高度已冻结:', frozenChatHeight);
         }
 
-        // 锁定滚动位置
-        const cw = chatContainer.getBoundingClientRect().width;
-        if (cw > 0) {
-            chatContainer.scrollTo({ left: lastUserPage * cw, behavior: 'instant' });
-        }
+        // 启动 rAF 滚动位置锁
+        startPositionLock(chatContainer, lastUserPage);
 
         focusGuardTimer = setTimeout(() => {
             isFocusGuardActive = false;
-            // 500ms 内键盘没弹出，说明不是键盘场景，解冻
+            // 800ms 内键盘没弹出，说明不是键盘场景，解冻
             if (!isKeyboardOpen) {
+                console.log('[TwT] 焦点保护超时，解冻');
                 preKeyboardPage = -1;
-                frozenChatHeight = 0;
-                chatContainer.style.removeProperty('height');
-                chatContainer.style.removeProperty('max-height');
-                chatContainer.style.removeProperty('min-height');
+                unfreezeChatHeight(chatContainer);
+                stopPositionLock();
             }
-        }, 500);
+        }, 800);
     });
+
+    // ---- visualViewport 检测（可选，不是所有浏览器都支持）----
+    if (!window.visualViewport) return;
 
     const vv = window.visualViewport;
     let lastVVHeight = vv.height;
@@ -290,12 +352,14 @@ function initVirtualKeyboardGuard() {
             isKeyboardOpen = true;
             clearTimeout(keyboardRestoreTimer);
 
+            console.log('[TwT] 键盘弹出确认, preKeyboardPage:', preKeyboardPage, 'lastUserPage:', lastUserPage);
+
             // 恢复被截断的页码
             if (preKeyboardPage >= 0) {
                 lastUserPage = preKeyboardPage;
                 preKeyboardPage = -1;
             }
-            // 关闭焦点保护窗口
+            // 关闭焦点保护窗口（但保留 rAF 锁直到键盘关闭）
             isFocusGuardActive = false;
             clearTimeout(focusGuardTimer);
 
@@ -303,32 +367,26 @@ function initVirtualKeyboardGuard() {
             if (chatContainer) {
                 // 高度已经在 focusin 时冻结，这里只需确认
                 if (frozenChatHeight <= 0) {
-                    frozenChatHeight = chatContainer.getBoundingClientRect().height;
-                    if (frozenChatHeight > 0) {
-                        chatContainer.style.setProperty('height', `${frozenChatHeight}px`, 'important');
-                        chatContainer.style.setProperty('max-height', `${frozenChatHeight}px`, 'important');
-                        chatContainer.style.setProperty('min-height', `${frozenChatHeight}px`, 'important');
-                    }
+                    freezeChatHeight(chatContainer);
                 }
-                // 确保滚动位置在正确页
+                // 最终修正滚动位置
                 const cw = chatContainer.getBoundingClientRect().width;
                 if (cw > 0) {
                     chatContainer.scrollTo({ left: lastUserPage * cw, behavior: 'instant' });
                 }
+                // 保持 rAF 锁运行（isKeyboardOpen=true 会让它继续）
+                startPositionLock(chatContainer, lastUserPage);
             }
         }
         // 高度明显增大（>100px）视为键盘收起
         else if (heightDiff < -100 && isKeyboardOpen) {
             clearTimeout(keyboardRestoreTimer);
             keyboardRestoreTimer = setTimeout(() => {
+                console.log('[TwT] 键盘收起, 恢复页:', lastUserPage);
                 isKeyboardOpen = false;
-                frozenChatHeight = 0;
+                stopPositionLock();
                 const chatContainer = document.getElementById('chat');
-                if (chatContainer) {
-                    chatContainer.style.removeProperty('height');
-                    chatContainer.style.removeProperty('max-height');
-                    chatContainer.style.removeProperty('min-height');
-                }
+                unfreezeChatHeight(chatContainer);
                 // 解冻后重新校正列宽（保持在当前页）
                 updateColWidth();
                 const cw = chatContainer?.getBoundingClientRect().width;
@@ -366,14 +424,22 @@ export function applyPaginationMode(enabled, settings) {
         disconnectChatMutationObserver();
         // 退出翻页模式时解冻高度并清除滚动收容样式
         isKeyboardOpen = false;
-        frozenChatHeight = 0;
         clearTimeout(keyboardRestoreTimer);
+        // 清理焦点保护状态
+        isFocusGuardActive = false;
+        preKeyboardPage = -1;
+        clearTimeout(focusGuardTimer);
+        stopPositionLock();
         const chatContainer = document.getElementById('chat');
+        unfreezeChatHeight(chatContainer);
         if (chatContainer) {
             chatContainer.querySelectorAll('.twt-pagination-scrollable').forEach(el => {
                 el.style.removeProperty('max-height');
                 el.style.removeProperty('overflow-y');
                 el.classList.remove('twt-pagination-scrollable');
+            });
+            chatContainer.querySelectorAll('.twt-html-container').forEach(el => {
+                el.classList.remove('twt-html-container');
             });
             chatContainer.style.removeProperty('height');
             chatContainer.style.removeProperty('max-height');
@@ -639,6 +705,7 @@ function bindScrollEvents(getSettings) {
 
     const handleScrollSnap = () => {
         if (isProgrammaticScrolling || isTouching) return;
+        if (isFocusGuardActive || isKeyboardOpen) return; // 键盘/焦点保护期内不更新 lastUserPage
         if (!document.body.classList.contains('twt-reading-mode')) return;
         if (document.body.classList.contains('twt-paragraph-editing')) return;
         const cw = chatContainer.getBoundingClientRect().width;
@@ -776,18 +843,6 @@ function bindScrollEvents(getSettings) {
         isTouching = false;
     }, { passive: true, signal });
 
-    // 焦点保护已移至 initVirtualKeyboardGuard 中的文档级 focusin 监听
-    // 这里只处理焦点导致的原生滚动偏移修正（焦点保护窗口期内锁定滚动位置）
-    chatContainer.addEventListener('scroll', () => {
-        if (!isFocusGuardActive) return;
-        // 焦点保护期内，强制锁定滚动位置到预锚定页
-        const cw = chatContainer.getBoundingClientRect().width;
-        if (cw > 0) {
-            const targetPage = preKeyboardPage >= 0 ? preKeyboardPage : lastUserPage;
-            const expectedLeft = targetPage * cw;
-            if (Math.abs(chatContainer.scrollLeft - expectedLeft) > 2) {
-                chatContainer.scrollTo({ left: expectedLeft, behavior: 'instant' });
-            }
-        }
-    }, { signal });
+    // 焦点保护的滚动位置锁已改为 rAF 循环（在 initVirtualKeyboardGuard 中），
+    // 不再依赖 scroll 事件。
 }
