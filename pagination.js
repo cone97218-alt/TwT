@@ -406,6 +406,7 @@ export function applyPaginationMode(enabled, settings) {
         if (settings) {
             document.body.classList.toggle('twt-swipe-disabled', !settings.swipeEnabled);
             document.body.classList.toggle('twt-message-page', !!settings.messagePageEnabled);
+            document.body.classList.toggle('twt-avatar-theme-layout', settings.avatarLayoutMode === 'theme');
         }
         // 延迟+重试等待 DOM 稳定后再初始化列宽
         updateColWidthWhenReady();
@@ -415,7 +416,7 @@ export function applyPaginationMode(enabled, settings) {
         initVirtualKeyboardGuard();
         initChatMutationObserver();
     } else {
-        document.body.classList.remove('twt-reading-mode', 'twt-swipe-disabled', 'twt-message-page');
+        document.body.classList.remove('twt-reading-mode', 'twt-swipe-disabled', 'twt-message-page', 'twt-avatar-theme-layout');
         window.removeEventListener('resize', handleWindowResize);
         if (resizeObserver) {
             resizeObserver.disconnect();

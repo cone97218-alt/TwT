@@ -31,6 +31,7 @@ const defaultSettings = {
     enabled: true,
     swipeEnabled: true,
     messagePageEnabled: false,
+    avatarLayoutMode: 'float',
     customWhitelist: '.mes_reasoning_details, .thought-block',
     menuEnabled: false,
     menuOptRegenerate: true,
@@ -607,6 +608,7 @@ function bindUI() {
     const $enabled = $('#twt_enabled');
     const $swipeEnabled = $('#twt_swipe_enabled');
     const $messagePageEnabled = $('#twt_message_page_enabled');
+    const $avatarLayoutMode = $('#twt_avatar_layout_mode');
     const $customWhitelist = $('#twt_custom_whitelist');
     const $menuEnabled = $('#twt_menu_enabled');
     const $menuInvokeMethod = $('#twt_menu_invoke_method');
@@ -645,6 +647,7 @@ function bindUI() {
     $enabled.prop('checked', extension_settings.twt.enabled);
     $swipeEnabled.prop('checked', extension_settings.twt.swipeEnabled);
     $messagePageEnabled.prop('checked', extension_settings.twt.messagePageEnabled);
+    $avatarLayoutMode.val(extension_settings.twt.avatarLayoutMode || 'float');
     $customWhitelist.val(extension_settings.twt.customWhitelist || '');
     $menuEnabled.prop('checked', extension_settings.twt.menuEnabled);
     $menuInvokeMethod.val(extension_settings.twt.menuInvokeMethod || 'longpress');
@@ -1007,6 +1010,12 @@ function bindUI() {
 
     $messagePageEnabled.on('change', function () {
         extension_settings.twt.messagePageEnabled = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+        applyPaginationMode(extension_settings.twt.enabled, extension_settings.twt);
+    });
+
+    $avatarLayoutMode.on('change', function () {
+        extension_settings.twt.avatarLayoutMode = $(this).val();
         getContext().saveSettingsDebounced();
         applyPaginationMode(extension_settings.twt.enabled, extension_settings.twt);
     });

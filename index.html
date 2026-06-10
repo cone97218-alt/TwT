@@ -75,6 +75,19 @@
                 <div style="font-size: 0.85em; opacity: 0.6; margin-bottom: 15px; margin-top: -2px; padding-left: 2px;">
                     开启后，每条消息将单独占一页，新消息另起一页。
                 </div>
+
+                <div class="twt-setting-row"
+                    style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
+                    <label for="twt_avatar_layout_mode">头像排版兼容</label>
+                    <select id="twt_avatar_layout_mode"
+                        style="background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 4px; flex-shrink: 1;">
+                        <option value="float">文字环绕 (防断页最好)</option>
+                        <option value="theme">沿用主题美化布局</option>
+                    </select>
+                </div>
+                <div style="font-size: 0.85em; opacity: 0.6; margin-bottom: 15px; margin-top: -2px; padding-left: 2px;">
+                    文字环绕适合跨栏阅读；如遇到自定义主题头像位移，可设为沿用主题布局。
+                </div>
                 
                 <div style="border-top: 1px dashed var(--SmartThemeBorderColor); padding-top: 10px; margin-top: 10px;">
                     <div class="twt-setting-row" style="display: flex; flex-direction: column; margin-bottom: 5px;">
