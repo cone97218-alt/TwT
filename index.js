@@ -583,6 +583,10 @@ function initThemeLinkListener() {
     if (themeSelect) {
         $(themeSelect).off('change.twt').on('change.twt', function() {
             handleThemeChange($(this).val());
+            // 切换主题时，实时重新计算不透明背景色并多次延迟重试以确保 CSS 变量已写入
+            updateCommentsBgSolid();
+            setTimeout(updateCommentsBgSolid, 100);
+            setTimeout(updateCommentsBgSolid, 300);
         });
     }
 
@@ -590,6 +594,13 @@ function initThemeLinkListener() {
     if (themeSelect && $(themeSelect).val()) {
         handleThemeChange($(themeSelect).val());
     }
+
+    // 监听 body 和 html 的样式/类名变化，以捕获中途发生的主题变更，实时更新不透明背景色
+    const themeObserver = new MutationObserver(() => {
+        updateCommentsBgSolid();
+    });
+    themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class', 'style'] });
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style'] });
 }
 
 function bindUI() {
@@ -762,11 +773,29 @@ function bindUI() {
         e.stopPropagation();
     });
 
-    $('#twt_preset_save').on('click', function() {
-        const currentName = extension_settings.twt.currentPreset !== 'custom' ? extension_settings.twt.currentPreset : '新预设';
-        const name = prompt('请输入预设名称：', currentName);
+    // 新增预设
+    $('#twt_preset_add').on('click', function() {
+        const name = prompt('请输入新预设名称：', '新预设');
         if (name && name.trim().length > 0) {
-            saveCurrentToPreset(name.trim());
+            const trimmedName = name.trim();
+            if (extension_settings.twt.visualPresets[trimmedName]) {
+                if (!confirm(`预设 "${trimmedName}" 已存在，是否覆盖它？`)) {
+                    return;
+                }
+            }
+            saveCurrentToPreset(trimmedName);
+            toastr.success(`已成功保存为新预设 "${trimmedName}"`, '提示');
+        }
+    });
+
+    // 覆盖当前预设
+    $('#twt_preset_save').on('click', function() {
+        const current = extension_settings.twt.currentPreset;
+        if (current && current !== 'custom') {
+            saveCurrentToPreset(current);
+            toastr.success(`已成功覆盖预设 "${current}"`, '提示');
+        } else {
+            toastr.warning('当前为“自定义”状态，请先点击“新增”创建预设。', '提示');
         }
     });
 
