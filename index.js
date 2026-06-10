@@ -418,6 +418,11 @@ function applyPreset(presetName) {
         $('#twt_padding_bottom').val(extension_settings.twt.paddingBottom);
         $('#twt_padding_left').val(extension_settings.twt.paddingLeft);
         $('#twt_padding_right').val(extension_settings.twt.paddingRight);
+
+        if (preset.avatarLayoutMode !== undefined) extension_settings.twt.avatarLayoutMode = preset.avatarLayoutMode;
+        else extension_settings.twt.avatarLayoutMode = 'float';
+        $('#twt_avatar_layout_mode').val(extension_settings.twt.avatarLayoutMode);
+        applyPaginationMode(extension_settings.twt.enabled, extension_settings.twt);
         
         // Typography
         if (preset.fontSize !== undefined) extension_settings.twt.fontSize = preset.fontSize;
@@ -480,7 +485,8 @@ function saveCurrentToPreset(name) {
         textAlign: extension_settings.twt.textAlign,
         paragraphSpacing: extension_settings.twt.paragraphSpacing,
         letterSpacing: extension_settings.twt.letterSpacing,
-        fontWeight: extension_settings.twt.fontWeight || 'normal'
+        fontWeight: extension_settings.twt.fontWeight || 'normal',
+        avatarLayoutMode: extension_settings.twt.avatarLayoutMode || 'float'
     };
 
     presetData.optimizePatches = {};
@@ -981,15 +987,7 @@ function bindUI() {
         }
     });
 
-    function markAsCustom() {
-        if (extension_settings.twt.currentPreset !== 'custom') {
-            extension_settings.twt.currentPreset = 'custom';
-            $('#twt_visual_preset').val('custom');
-        }
-    }
-
     const handleVisualChange = () => {
-        markAsCustom();
         getContext().saveSettingsDebounced();
         applyVisualMode(extension_settings.twt.visualEnabled, extension_settings.twt);
     };
