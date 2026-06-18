@@ -663,12 +663,32 @@
 
 <!-- 关联全局美化 Modal -->
 <div id="twt-link-theme-modal" class="twt-preview-modal-overlay" style="display: none; z-index: 1000002;">
-    <div style="background: var(--twt-comments-bg-solid, var(--SmartThemeDarkColor)); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 8px; padding: 20px; width: 320px; max-width: 90%; display: flex; flex-direction: column; gap: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.6);">
+    <div id="twt-link-theme-modal-box" style="background: var(--twt-comments-bg-solid, var(--SmartThemeDarkColor)); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 8px; padding: 20px; width: 95%; max-width: 450px; height: 90%; max-height: 800px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.6); box-sizing: border-box;">
         <h4 style="margin: 0; font-size: 1.1em; font-weight: bold; border-bottom: 1px solid var(--SmartThemeBorderColor); padding-bottom: 8px;">关联全局美化</h4>
-        <div style="font-size: 0.9em; opacity: 0.8;">请选择要与预设 <b id="twt-link-preset-name"></b> 关联的全局美化（可多选）：</div>
-        <div id="twt-theme-checkboxes-container" style="max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 5px; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; background: rgba(0,0,0,0.1);">
-            <!-- Checkboxes populated dynamically -->
+        <div style="font-size: 0.9em; opacity: 0.8; margin-bottom: 2px;">请选择要与预设 <b id="twt-link-preset-name"></b> 关联的全局美化（可多选）：</div>
+        
+        <!-- Tab页签切换栏 -->
+        <div id="twt-link-tabs" style="display: flex; border-bottom: 1px solid var(--SmartThemeBorderColor); margin-bottom: 5px;">
+            <div id="twt-tab-themes" style="flex: 1; text-align: center; padding: 6px; cursor: pointer; border-bottom: 2px solid var(--SmartThemeUnderlineColor, #007aff); font-weight: bold;">全局主题</div>
+            <div id="twt-tab-tags" style="flex: 1; text-align: center; padding: 6px; cursor: pointer; opacity: 0.6;">主题标签</div>
         </div>
+
+        <!-- 主题面板 -->
+        <div id="twt-panel-themes" style="display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0;">
+            <input type="text" id="twt-theme-search" placeholder="搜索主题..." style="width: 100%; box-sizing: border-box; font-size: 0.85em; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--SmartThemeBorderColor); background: rgba(0,0,0,0.2); color: inherit;" />
+            <div id="twt-theme-checkboxes-container" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; background: rgba(0,0,0,0.1);">
+                <!-- Checkboxes populated dynamically -->
+            </div>
+        </div>
+        
+        <!-- 标签面板 -->
+        <div id="twt-panel-tags" style="display: none; flex-direction: column; gap: 8px; flex: 1; min-height: 0;">
+            <input type="text" id="twt-tag-search" placeholder="搜索标签..." style="width: 100%; box-sizing: border-box; font-size: 0.85em; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--SmartThemeBorderColor); background: rgba(0,0,0,0.2); color: inherit;" />
+            <div id="twt-tag-checkboxes-container" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; background: rgba(0,0,0,0.1);">
+                <!-- Checkboxes populated dynamically -->
+            </div>
+        </div>
+        
         <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 5px; flex-direction: row; flex-wrap: nowrap;">
             <button id="twt_link_theme_cancel" class="menu_button" style="padding: 6px 16px !important; margin: 0 !important; display: inline-block !important; width: auto !important; height: auto !important; min-height: unset !important; background: rgba(255,255,255,0.1) !important;">取消</button>
             <button id="twt_link_theme_save" class="menu_button" style="padding: 6px 16px !important; margin: 0 !important; display: inline-block !important; width: auto !important; height: auto !important; min-height: unset !important; background: var(--SmartThemeUnderlineColor, #007aff) !important; color: #fff !important;">保存</button>

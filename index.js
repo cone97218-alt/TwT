@@ -67,6 +67,7 @@ const defaultSettings = {
     visualPresets: {}, 
     currentPreset: 'custom',
     presetThemeLinks: {},
+    presetTagLinks: {},
     
     // New Mulu Regex settings
     muluRegexPresets: {
@@ -576,10 +577,32 @@ function getGlobalThemes() {
 function initThemeLinkListener() {
     const handleThemeChange = (themeVal) => {
         if (!themeVal) return;
-        const links = extension_settings.twt.presetThemeLinks || {};
-        const targetPreset = links[themeVal];
+        
+        // 优先检查直接主题关联
+        const themeLinks = extension_settings.twt.presetThemeLinks || {};
+        let targetPreset = themeLinks[themeVal];
+        
+        // 如果没有直接关联且 themeManager 可用，检查该主题绑定的标签关联
+        if (!targetPreset && window.themeManager) {
+            try {
+                const tagIds = window.themeManager.getThemeTags(themeVal);
+                if (tagIds && tagIds.length > 0) {
+                    const tagLinks = extension_settings.twt.presetTagLinks || {};
+                    for (const tagId of tagIds) {
+                        if (tagLinks[tagId] && extension_settings.twt.visualPresets[tagLinks[tagId]]) {
+                            targetPreset = tagLinks[tagId];
+                            logWork(`检测到主题 [${themeVal}] 绑定了标签 [${tagId}]，触发关联预设 [${targetPreset}]`);
+                            break;
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('[TwT] 获取主题关联标签失败:', err);
+            }
+        }
+        
         if (targetPreset && extension_settings.twt.visualPresets[targetPreset]) {
-            logWork(`检测到全局美化切换为 [${themeVal}]，自动载入关联的预设 [${targetPreset}]`);
+            logWork(`载入关联预设 [${targetPreset}]`);
             extension_settings.twt.currentPreset = targetPreset;
             $('#twt_visual_preset').val(targetPreset);
             applyPreset(targetPreset);
@@ -600,6 +623,33 @@ function initThemeLinkListener() {
     // Check initial active theme on startup
     if (themeSelect && $(themeSelect).val()) {
         handleThemeChange($(themeSelect).val());
+    }
+
+    // 监听 themeManager 标签变化事件，以重新计算关联预设
+    const registerTagListener = () => {
+        if (window.themeManager) {
+            window.themeManager.onTagsChanged((latestTags) => {
+                const currentTheme = themeSelect ? $(themeSelect).val() : null;
+                if (currentTheme) {
+                    handleThemeChange(currentTheme);
+                }
+            });
+        }
+    };
+
+    if (window.themeManager) {
+        registerTagListener();
+    } else {
+        let retries = 0;
+        const checkInterval = setInterval(() => {
+            retries++;
+            if (window.themeManager) {
+                clearInterval(checkInterval);
+                registerTagListener();
+            } else if (retries > 25) {
+                clearInterval(checkInterval);
+            }
+        }, 200);
     }
 
     // 监听 body 和 html 的样式/类名变化，以捕获中途发生的主题变更，实时更新不透明背景色
@@ -715,6 +765,48 @@ function bindUI() {
         applyPreset(val);
     });
 
+    // 辅助切换页签方法
+    const switchTab = (activeTab) => {
+        if (activeTab === 'themes') {
+            getEl('#twt-panel-themes').css('display', 'flex');
+            getEl('#twt-panel-tags').css('display', 'none');
+            getEl('#twt-tab-themes').css({
+                'border-bottom': '2px solid var(--SmartThemeUnderlineColor, #007aff)',
+                'font-weight': 'bold',
+                'opacity': '1'
+            });
+            getEl('#twt-tab-tags').css({
+                'border-bottom': 'none',
+                'font-weight': 'normal',
+                'opacity': '0.6'
+            });
+        } else {
+            getEl('#twt-panel-themes').css('display', 'none');
+            getEl('#twt-panel-tags').css('display', 'flex');
+            getEl('#twt-tab-tags').css({
+                'border-bottom': '2px solid var(--SmartThemeUnderlineColor, #007aff)',
+                'font-weight': 'bold',
+                'opacity': '1'
+            });
+            getEl('#twt-tab-themes').css({
+                'border-bottom': 'none',
+                'font-weight': 'normal',
+                'opacity': '0.6'
+            });
+        }
+    };
+
+    // 绑定页签点击事件
+    getEl('#twt-tab-themes').off('click').on('click', function(e) {
+        e.stopPropagation();
+        switchTab('themes');
+    });
+
+    getEl('#twt-tab-tags').off('click').on('click', function(e) {
+        e.stopPropagation();
+        switchTab('tags');
+    });
+
     $('#twt_preset_link').on('click', function() {
         const currentPresetName = extension_settings.twt.currentPreset;
         if (!currentPresetName || currentPresetName === 'custom') {
@@ -723,25 +815,97 @@ function bindUI() {
         }
         
         getEl('#twt-link-preset-name').text(currentPresetName);
-        const $container = getEl('#twt-theme-checkboxes-container');
-        $container.empty();
+        
+        // 渲染主题列表
+        const $themeContainer = getEl('#twt-theme-checkboxes-container');
+        $themeContainer.empty();
+        getEl('#twt-theme-search').val('');
         
         const themes = getGlobalThemes();
         if (themes.length === 0) {
-            $container.append(`<div style="font-size:0.9em; opacity:0.5; text-align:center; padding:10px;">未找到可用的全局美化主题。</div>`);
+            $themeContainer.append(`<div style="font-size:0.9em; opacity:0.5; text-align:center; padding:10px;">未找到可用的全局美化主题。</div>`);
         } else {
             const links = extension_settings.twt.presetThemeLinks || {};
             themes.forEach(theme => {
                 const isChecked = links[theme.val] === currentPresetName;
-                $container.append(`
+                $themeContainer.append(`
                     <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin:0; font-size:0.95em; padding:4px 0; user-select:none;">
                         <input type="checkbox" class="twt-theme-link-cb" value="${theme.val}" ${isChecked ? 'checked' : ''} style="margin:0;" />
-                        <span>${theme.name}</span>
+                        <span class="theme-name-text">${theme.name}</span>
                     </label>
                 `);
             });
         }
+        
+        // 渲染标签列表 (如果 themeManager 可用)
+        const $tagContainer = getEl('#twt-tag-checkboxes-container');
+        $tagContainer.empty();
+        getEl('#twt-tag-search').val('');
+        
+        if (window.themeManager) {
+            getEl('#twt-link-tabs').css('display', 'flex');
+            switchTab('themes'); // 默认展示主题页签
+            
+            try {
+                const tags = window.themeManager.getTags();
+                if (tags.length === 0) {
+                    $tagContainer.append(`<div style="font-size:0.9em; opacity:0.5; text-align:center; padding:10px;">未找到可用的主题标签。</div>`);
+                } else {
+                    const tagLinks = extension_settings.twt.presetTagLinks || {};
+                    tags.forEach(tag => {
+                        const isChecked = tagLinks[tag.id] === currentPresetName;
+                        $tagContainer.append(`
+                            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin:0; font-size:0.95em; padding:4px 0; user-select:none;">
+                                <input type="checkbox" class="twt-tag-link-cb" value="${tag.id}" ${isChecked ? 'checked' : ''} style="margin:0;" />
+                                <span class="tag-name-text">${tag.name}</span>
+                            </label>
+                        `);
+                    });
+                }
+            } catch (err) {
+                console.error('[TwT] 获取主题管理器标签失败:', err);
+                $tagContainer.append(`<div style="font-size:0.9em; opacity:0.5; text-align:center; padding:10px; color:var(--SmartThemeErrorColor);">获取标签失败。</div>`);
+            }
+        } else {
+            // 没有主题管理器，隐藏页签直接展示主题列表
+            getEl('#twt-link-tabs').css('display', 'none');
+            switchTab('themes');
+        }
+        
         getEl('#twt-link-theme-modal').css('display', 'flex');
+    });
+
+    // 搜索过滤事件 (防抖延迟 1000ms 触发)
+    let themeSearchTimeout;
+    getEl('#twt-theme-search').off('input').on('input', function() {
+        clearTimeout(themeSearchTimeout);
+        const query = $(this).val().toLowerCase();
+        themeSearchTimeout = setTimeout(() => {
+            getEl('#twt-theme-checkboxes-container label').each(function() {
+                const text = $(this).find('.theme-name-text').text().toLowerCase();
+                if (text.includes(query)) {
+                    $(this).css('display', 'flex');
+                } else {
+                    $(this).css('display', 'none');
+                }
+            });
+        }, 1000);
+    });
+
+    let tagSearchTimeout;
+    getEl('#twt-tag-search').off('input').on('input', function() {
+        clearTimeout(tagSearchTimeout);
+        const query = $(this).val().toLowerCase();
+        tagSearchTimeout = setTimeout(() => {
+            getEl('#twt-tag-checkboxes-container label').each(function() {
+                const text = $(this).find('.tag-name-text').text().toLowerCase();
+                if (text.includes(query)) {
+                    $(this).css('display', 'flex');
+                } else {
+                    $(this).css('display', 'none');
+                }
+            });
+        }, 1000);
     });
 
     getEl('#twt_link_theme_cancel').off('click').on('click', function(e) {
@@ -754,6 +918,9 @@ function bindUI() {
         const currentPresetName = extension_settings.twt.currentPreset;
         if (!extension_settings.twt.presetThemeLinks) {
             extension_settings.twt.presetThemeLinks = {};
+        }
+        if (!extension_settings.twt.presetTagLinks) {
+            extension_settings.twt.presetTagLinks = {};
         }
         
         const checkedThemes = [];
@@ -769,9 +936,25 @@ function bindUI() {
                 }
             }
         });
+
+        const checkedTags = [];
+        if (window.themeManager) {
+            getEl('#twt-tag-checkboxes-container .twt-tag-link-cb').each(function() {
+                const val = $(this).val();
+                const checked = $(this).prop('checked');
+                if (checked) {
+                    extension_settings.twt.presetTagLinks[val] = currentPresetName;
+                    checkedTags.push(val);
+                } else {
+                    if (extension_settings.twt.presetTagLinks[val] === currentPresetName) {
+                        delete extension_settings.twt.presetTagLinks[val];
+                    }
+                }
+            });
+        }
         
         getContext().saveSettingsDebounced();
-        logWork(`更新预设 [${currentPresetName}] 关联的全局美化：[${checkedThemes.join(', ') || '无'}]`);
+        logWork(`更新预设 [${currentPresetName}] 关联：主题[${checkedThemes.join(', ') || '无'}], 标签[${checkedTags.join(', ') || '无'}]`);
         getEl('#twt-link-theme-modal').css('display', 'none');
     });
 
