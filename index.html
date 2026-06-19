@@ -331,35 +331,32 @@
                         <i class="twt-collapsible-icon fa-solid fa-chevron-down" style="font-size: 0.85em; transition: transform 0.2s; opacity: 0.8;"></i>
                     </div>
                     <div class="twt-collapsible-content" style="display: none; padding-top: 8px;">
-                        <!-- 头部控制栏：新建按钮 -->
-                        <div
-                            style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px solid var(--SmartThemeBorderColor); padding-bottom: 8px;">
+                        <!-- 头部控制栏：新建分类与新建补丁按钮 -->
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px solid var(--SmartThemeBorderColor); padding-bottom: 8px;">
                             <span style="font-weight: bold; font-size: 0.9em;">自定义优化补丁</span>
-                            <button id="twt_optimize_add" class="menu_button"
-                                style="padding: 4px 10px; margin: 0; font-size: 0.85em;" title="新建CSS补丁"><i
-                                    class="fa-solid fa-plus"></i></button>
+                            <div style="display: flex; gap: 6px;">
+                                <button id="twt_optimize_search_toggle" class="menu_button"
+                                    style="padding: 6px 10px; margin: 0; font-size: 0.85em; display: flex; align-items: center; justify-content: center; height: auto !important; min-height: unset !important;" title="搜索分类或补丁"><i
+                                        class="fa-solid fa-magnifying-glass"></i></button>
+                                <button id="twt_optimize_add_folder" class="menu_button"
+                                    style="padding: 6px 10px; margin: 0; font-size: 0.85em; display: flex; align-items: center; justify-content: center; height: auto !important; min-height: unset !important;" title="新建分类文件夹"><i
+                                        class="fa-solid fa-folder-plus"></i></button>
+                                <button id="twt_optimize_add" class="menu_button"
+                                    style="padding: 6px 10px; margin: 0; font-size: 0.85em; display: flex; align-items: center; justify-content: center; height: auto !important; min-height: unset !important;" title="新建CSS补丁"><i
+                                        class="fa-solid fa-plus"></i></button>
+                            </div>
                         </div>
 
+                        <!-- 搜索栏容器 (默认隐藏) -->
+                        <div id="twt_optimize_search_container" style="display: none; margin-bottom: 10px; width: 100%; box-sizing: border-box;">
+                            <input type="text" id="twt_optimize_search_input" placeholder="输入关键字搜索分类或补丁..." 
+                                style="width: 100%; box-sizing: border-box; font-size: 0.85em; padding: 6px 10px; border-radius: 4px; border: 1px solid var(--SmartThemeBorderColor); background: rgba(0,0,0,0.2); color: inherit; outline: none;" />
+                        </div>
+ 
                         <!-- 补丁列表容器 -->
                         <div id="twt_optimize_list"
-                            style="max-height: 250px; overflow-y: auto; margin-bottom: 10px; display: flex; flex-direction: column; gap: 8px; width: 100%;">
+                            style="margin-bottom: 10px; display: flex; flex-direction: column; gap: 8px; width: 100%;">
                             <!-- 动态生成列表项 -->
-                        </div>
-
-                        <!-- 实时 CSS 编辑框区 (默认隐藏) -->
-                        <div id="twt_optimize_editor_container"
-                            style="display: none; border-top: 1px dashed var(--SmartThemeBorderColor); padding-top: 10px; margin-top: 10px; flex-direction: column; width: 100%;">
-                            <div
-                                style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
-                                <span id="twt_optimize_editor_title"
-                                    style="font-size: 0.9em; font-weight: bold; opacity: 0.9;">正在编辑: 未知补丁</span>
-                                <button id="twt_optimize_close_editor" class="menu_button"
-                                    style="padding: 2px 6px; margin: 0; font-size: 0.8em;" title="关闭编辑器"><i
-                                        class="fa-solid fa-xmark"></i></button>
-                            </div>
-                            <textarea id="twt_optimize_code"
-                                placeholder="输入自定义的 CSS 代码，例如：&#10;.mes_text { font-family: 'Outfit'; }"
-                                style="width: 100%; height: 160px; font-family: monospace; font-size: 0.85em; box-sizing: border-box; padding: 8px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; resize: vertical; outline: none;"></textarea>
                         </div>
                     </div>
                 </div>
@@ -692,6 +689,23 @@
         <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 5px; flex-direction: row; flex-wrap: nowrap;">
             <button id="twt_link_theme_cancel" class="menu_button" style="padding: 6px 16px !important; margin: 0 !important; display: inline-block !important; width: auto !important; height: auto !important; min-height: unset !important; background: rgba(255,255,255,0.1) !important;">取消</button>
             <button id="twt_link_theme_save" class="menu_button" style="padding: 6px 16px !important; margin: 0 !important; display: inline-block !important; width: auto !important; height: auto !important; min-height: unset !important; background: var(--SmartThemeUnderlineColor, #007aff) !important; color: #fff !important;">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- CSS 补丁编辑器 Modal -->
+<div id="twt-optimize-editor-modal" class="twt-preview-modal-overlay" style="display: none; z-index: 1000003;">
+    <div style="background: var(--twt-comments-bg-solid, var(--SmartThemeDarkColor)); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 8px; padding: 20px; width: 95%; max-width: 500px; height: 80%; max-height: 600px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.6); box-sizing: border-box;">
+        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--SmartThemeBorderColor); padding-bottom: 8px;">
+            <h4 id="twt_optimize_editor_title" style="margin: 0; font-size: 1.1em; font-weight: bold;">正在编辑补丁</h4>
+            <button id="twt_optimize_close_editor" class="menu_button" style="padding: 4px 8px !important; margin: 0 !important; font-size: 0.85em !important; height: auto !important; min-height: unset !important; display: flex; align-items: center; justify-content: center; line-height: 1 !important;"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div style="flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 0.85em; opacity: 0.7;">请输入自定义 CSS 代码：</span>
+            <textarea id="twt_optimize_code" placeholder="例如：&#10;.mes_text { font-family: 'Outfit'; }" style="flex: 1; width: 100%; font-family: monospace; font-size: 0.85em; box-sizing: border-box; padding: 8px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; resize: none; outline: none;"></textarea>
+        </div>
+        <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 5px;">
+            <button id="twt_optimize_save_editor" class="menu_button" style="padding: 6px 16px !important; margin: 0 !important; display: inline-block !important; width: auto !important; height: auto !important; min-height: unset !important;">保存并应用</button>
         </div>
     </div>
 </div>

@@ -83,6 +83,7 @@ const defaultSettings = {
     // CSS Custom Optimization settings
     optimizeEnabled: false,
     optimizePatches: {},
+    optimizeFolders: ['界面调整', '手势与选择'],
 
     // Comments settings
     commentsEnabled: true,
@@ -112,22 +113,27 @@ const defaultSettings = {
 const defaultPatches = {
     '隐藏滚动条': {
         active: false,
+        folder: '界面调整',
         code: `/* 隐藏全局滚动条及聊天区域滚动条 */\n::-webkit-scrollbar {\n    display: none !important;\n    width: 0 !important;\n    height: 0 !important;\n}\nbody, html, #chat, #chat-container, .twt-mulu-list {\n    scrollbar-width: none !important; /* Firefox */\n    -ms-overflow-style: none !important; /* IE/Edge */\n}`
     },
     '禁用聊天区域长按菜单': {
         active: false,
+        folder: '手势与选择',
         code: `/* 禁用聊天区域文本选中与移动端长按呼出菜单 */\n#chat {\n    -webkit-touch-callout: none !important; /* 禁用iOS长按菜单 */\n    -webkit-user-select: none !important;   /* 禁用选中 */\n    user-select: none !important;\n}\n/* 如果有输入框在聊天区内，允许选中 */\n#chat input, #chat textarea {\n    -webkit-touch-callout: default !important;\n    -webkit-user-select: text !important;\n    user-select: text !important;\n}`
     },
     '收藏栏左侧图标缩小': {
         active: false,
+        folder: '界面调整',
         code: `/* 收藏栏左侧图标缩小 */\nbody #rm_button_characters {\n    font-size: 16px !important;\n    width: 32px !important;\n    height: 32px !important;\n    display: flex;\n    align-items: center;\n    justify-content: center;\n}`
     },
     '收藏栏下方空隙缩小': {
         active: false,
+        folder: '界面调整',
         code: `/* 收藏栏下方空隙缩小 */\nbody #CharListButtonAndHotSwaps {\n    margin-bottom: -20px;\n}`
     },
     'Spreset': {
         active: false,
+        folder: '界面调整',
         code: `.spreset-button-container {\n  display: none;\n}`
     }
 };
@@ -154,6 +160,8 @@ if (!extension_settings.twt) {
     for (const [key, val] of Object.entries(defaultPatches)) {
         if (extension_settings.twt.optimizePatches[key] === undefined) {
             extension_settings.twt.optimizePatches[key] = Object.assign({}, val);
+        } else if (extension_settings.twt.optimizePatches[key].folder === undefined && val.folder) {
+            extension_settings.twt.optimizePatches[key].folder = val.folder;
         }
     }
     if (!extension_settings.twt.commentsApis) {
@@ -306,12 +314,16 @@ function updateParagraphSubOptionsVisibility() {
 }
 
 let currentlyEditingPatchName = null;
+const collapsedFolders = {};
+let optimizeSearchTimeout = null;
+let currentOptimizeSearchQuery = '';
 
 function renderOptimizePatchList() {
     const $list = $('#twt_optimize_list');
     $list.empty();
 
     const patches = extension_settings.twt.optimizePatches || {};
+    const folders = extension_settings.twt.optimizeFolders || [];
     const patchNames = Object.keys(patches);
 
     if (patchNames.length === 0) {
@@ -323,23 +335,152 @@ function renderOptimizePatchList() {
         return;
     }
 
-    for (const name of patchNames) {
-        const patch = patches[name];
+    // Helper function to build a patch item element
+    const buildPatchItemHtml = (name, patch) => {
         const isEditingThis = currentlyEditingPatchName === name;
-        const $item = $(`
-            <div class="twt-optimize-item" data-name="${name}" style="display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.15); padding: 6px 10px; border-radius: 6px; border: 1px solid ${isEditingThis ? 'var(--SmartThemeUnderlineColor)' : 'var(--SmartThemeBorderColor)'}; gap: 10px; width: 100%; box-sizing: border-box; box-shadow: none !important;">
-                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; flex: 1; min-width: 0; margin: 0; user-select: none; box-shadow: none !important;">
-                    <input type="checkbox" class="twt-patch-checkbox" ${patch.active ? 'checked' : ''} style="margin: 0; flex-shrink: 0; box-shadow: none !important;" />
-                    <span class="twt-patch-name" style="text-overflow: ellipsis; overflow: hidden; white-space: nowrap; font-size: 0.95em; ${isEditingThis ? 'font-weight: bold; color: var(--SmartThemeUnderlineColor, #fff);' : ''}">${name}</span>
-                </label>
-                <div style="display: flex; gap: 4px; align-items: center; flex-shrink: 0; box-shadow: none !important;">
-                    <button class="twt-patch-edit" style="padding: 4px 6px; margin: 0; font-size: 0.85em; background: ${isEditingThis ? 'var(--SmartThemeUnderlineColor)' : 'rgba(255, 255, 255, 0.08)'}; color: ${isEditingThis ? 'var(--SmartThemeDarkColor)' : 'var(--SmartThemeBodyColor)'}; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; cursor: pointer; box-shadow: none !important; transition: all 0.15s ease;" title="编辑代码"><i class="fa-solid fa-code"></i></button>
-                    <button class="twt-patch-rename" style="padding: 4px 6px; margin: 0; font-size: 0.85em; background: rgba(255, 255, 255, 0.08); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; cursor: pointer; box-shadow: none !important; transition: all 0.15s ease;" title="重命名补丁"><i class="fa-solid fa-pen"></i></button>
-                    <button class="twt-patch-delete" style="padding: 4px 6px; margin: 0; font-size: 0.85em; background: rgba(255, 255, 255, 0.08); color: #ff4444; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; cursor: pointer; box-shadow: none !important; transition: all 0.15s ease;" title="删除补丁"><i class="fa-solid fa-trash"></i></button>
+        return `
+            <div class="twt-optimize-item" data-name="${escapeHtml(name)}" style="display: flex; flex-direction: column; background: rgba(0,0,0,0.15); padding: 8px 10px; border-radius: 6px; border: 1px solid ${isEditingThis ? 'var(--SmartThemeUnderlineColor)' : 'var(--SmartThemeBorderColor)'}; gap: 6px; width: 100%; box-sizing: border-box; box-shadow: none !important;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; box-shadow: none !important;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; flex: 1; min-width: 0; margin: 0; user-select: none; box-shadow: none !important;">
+                        <input type="checkbox" class="twt-patch-checkbox" ${patch.active ? 'checked' : ''} style="margin: 0; flex-shrink: 0; box-shadow: none !important;" />
+                        <span class="twt-patch-name" style="text-overflow: ellipsis; overflow: hidden; white-space: nowrap; font-size: 0.95em; ${isEditingThis ? 'font-weight: bold; color: var(--SmartThemeUnderlineColor, #fff);' : ''}">${escapeHtml(name)}</span>
+                    </label>
+                    <div style="display: flex; gap: 4px; align-items: center; flex-shrink: 0; box-shadow: none !important;">
+                        <div style="position: relative; display: inline-block; box-shadow: none !important;">
+                            <button class="twt-patch-move menu_button" style="padding: 3px 6px; margin: 0; font-size: 0.8em; background: rgba(255, 255, 255, 0.08); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; cursor: pointer; box-shadow: none !important; display: flex; align-items: center; justify-content: center;" title="移动分类">
+                                <i class="fa-solid fa-folder"></i>
+                            </button>
+                            <select class="twt-patch-folder-select" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; margin: 0; padding: 0; border: none; outline: none; -webkit-appearance: none; -moz-appearance: none; appearance: none;">
+                                <option value="" ${!patch.folder ? 'selected' : ''}>未分类</option>
+                                ${folders.map(f => `<option value="${escapeHtml(f)}" ${patch.folder === f ? 'selected' : ''}>${escapeHtml(f)}</option>`).join('')}
+                            </select>
+                        </div>
+                        <button class="twt-patch-edit" style="padding: 3px 6px; margin: 0; font-size: 0.8em; background: ${isEditingThis ? 'var(--SmartThemeUnderlineColor)' : 'rgba(255, 255, 255, 0.08)'}; color: ${isEditingThis ? 'var(--SmartThemeDarkColor)' : 'var(--SmartThemeBodyColor)'}; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; cursor: pointer; box-shadow: none !important;" title="编辑代码"><i class="fa-solid fa-code"></i></button>
+                        <button class="twt-patch-rename" style="padding: 3px 6px; margin: 0; font-size: 0.8em; background: rgba(255, 255, 255, 0.08); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; cursor: pointer; box-shadow: none !important;" title="重命名补丁"><i class="fa-solid fa-pen"></i></button>
+                        <button class="twt-patch-delete" style="padding: 3px 6px; margin: 0; font-size: 0.8em; background: rgba(255, 255, 255, 0.08); color: #ff4444; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; cursor: pointer; box-shadow: none !important;" title="删除补丁"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                </div>
+            </div>
+        `;
+    };
+
+    // Group patches by folder
+    const folderGroups = {};
+    const uncategorizedPatches = [];
+
+    // Initialize groups
+    folders.forEach(f => {
+        folderGroups[f] = [];
+    });
+
+    Object.keys(patches).forEach(name => {
+        const patch = patches[name];
+        if (patch.folder && folderGroups[patch.folder]) {
+            folderGroups[patch.folder].push({ name, patch });
+        } else {
+            uncategorizedPatches.push({ name, patch });
+        }
+    });
+
+    let hasAnyMatch = false;
+
+    // Render defined folders
+    folders.forEach(folderName => {
+        let listItems = folderGroups[folderName];
+        let isFolderMatched = false;
+        if (currentOptimizeSearchQuery) {
+            isFolderMatched = folderName.toLowerCase().includes(currentOptimizeSearchQuery);
+            if (!isFolderMatched) {
+                listItems = listItems.filter(item => item.name.toLowerCase().includes(currentOptimizeSearchQuery));
+            }
+        }
+
+        if (currentOptimizeSearchQuery && !isFolderMatched && listItems.length === 0) {
+            return; // skip rendering this folder
+        }
+
+        hasAnyMatch = true;
+        const isCollapsed = currentOptimizeSearchQuery ? false : (collapsedFolders[folderName] !== false);
+        const patchCount = listItems.length;
+        
+        const $folderEl = $(`
+            <div class="twt-optimize-folder" data-folder="${escapeHtml(folderName)}" style="display: flex; flex-direction: column; gap: 6px; width: 100%; box-sizing: border-box; margin-bottom: 4px;">
+                <div class="twt-optimize-folder-header" style="display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.05); padding: 6px 10px; border-radius: 6px; cursor: pointer; user-select: none; border: 1px solid rgba(255,255,255,0.08);">
+                    <div class="twt-folder-title-wrap" style="display: flex; align-items: center; gap: 8px;">
+                        <i class="fa-solid fa-chevron-down twt-folder-chevron" style="font-size: 0.8em; transition: transform 0.2s; ${isCollapsed ? 'transform: rotate(-90deg);' : ''}"></i>
+                        <i class="fa-solid ${isCollapsed ? 'fa-folder' : 'fa-folder-open'} twt-folder-icon" style="color: #e0a96d; font-size: 0.95em;"></i>
+                        <span style="font-weight: bold; font-size: 0.9em;">${escapeHtml(folderName)}</span>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <span class="twt-folder-count" style="font-size: 0.8em; opacity: 0.5;">(${patchCount})</span>
+                        <button class="twt-folder-rename menu_button" style="padding: 2px 5px !important; margin: 0 !important; font-size: 0.75em !important; height: auto !important; min-height: unset !important;" title="重命名分类"><i class="fa-solid fa-pen"></i></button>
+                        <button class="twt-folder-delete menu_button" style="padding: 2px 5px !important; margin: 0 !important; font-size: 0.75em !important; height: auto !important; min-height: unset !important; color: #ff4444 !important;" title="删除分类"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                </div>
+                <div class="twt-optimize-folder-content" style="display: ${isCollapsed ? 'none' : 'flex'}; flex-direction: column; gap: 6px; padding: 4px 0 4px 12px; border-left: 1px dashed rgba(255,255,255,0.15); margin-left: 14px;">
+                    <!-- Items will be placed here -->
                 </div>
             </div>
         `);
-        $list.append($item);
+        
+        const $content = $folderEl.find('.twt-optimize-folder-content');
+        if (listItems.length === 0) {
+            $content.append(`<div style="font-size:0.85em; opacity:0.35; padding: 4px;">无补丁</div>`);
+        } else {
+            listItems.forEach(item => {
+                $content.append(buildPatchItemHtml(item.name, item.patch));
+            });
+        }
+        $list.append($folderEl);
+    });
+
+    // Render Uncategorized section (only if there are uncategorized patches or folders are empty)
+    let filteredUncat = uncategorizedPatches;
+    let isUncatMatched = false;
+    if (currentOptimizeSearchQuery) {
+        isUncatMatched = "未分类".includes(currentOptimizeSearchQuery);
+        if (!isUncatMatched) {
+            filteredUncat = filteredUncat.filter(item => item.name.toLowerCase().includes(currentOptimizeSearchQuery));
+        }
+    }
+
+    if (filteredUncat.length > 0 || (folders.length === 0 && !currentOptimizeSearchQuery)) {
+        hasAnyMatch = true;
+        const isCollapsed = currentOptimizeSearchQuery ? false : (collapsedFolders[''] !== false);
+        const patchCount = filteredUncat.length;
+        const $uncatEl = $(`
+            <div class="twt-optimize-folder" data-folder="" style="display: flex; flex-direction: column; gap: 6px; width: 100%; box-sizing: border-box; margin-bottom: 4px;">
+                <div class="twt-optimize-folder-header" style="display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.05); padding: 6px 10px; border-radius: 6px; cursor: pointer; user-select: none; border: 1px solid rgba(255,255,255,0.08);">
+                    <div class="twt-folder-title-wrap" style="display: flex; align-items: center; gap: 8px;">
+                        <i class="fa-solid fa-chevron-down twt-folder-chevron" style="font-size: 0.8em; transition: transform 0.2s; ${isCollapsed ? 'transform: rotate(-90deg);' : ''}"></i>
+                        <i class="fa-solid ${isCollapsed ? 'fa-folder' : 'fa-folder-open'} twt-folder-icon" style="color: #a0a0a0; font-size: 0.95em;"></i>
+                        <span style="font-weight: bold; font-size: 0.9em; opacity: 0.85;">未分类</span>
+                    </div>
+                    <span class="twt-folder-count" style="font-size: 0.8em; opacity: 0.5;">(${patchCount})</span>
+                </div>
+                <div class="twt-optimize-folder-content" style="display: ${isCollapsed ? 'none' : 'flex'}; flex-direction: column; gap: 6px; padding: 4px 0 4px 12px; border-left: 1px dashed rgba(255,255,255,0.15); margin-left: 14px;">
+                    <!-- Items will be placed here -->
+                </div>
+            </div>
+        `);
+        
+        const $content = $uncatEl.find('.twt-optimize-folder-content');
+        if (uncategorizedPatches.length === 0) {
+            $content.append(`<div style="font-size:0.85em; opacity:0.35; padding: 4px;">无补丁</div>`);
+        } else {
+            filteredUncat.forEach(item => {
+                $content.append(buildPatchItemHtml(item.name, item.patch));
+            });
+        }
+        $list.append($uncatEl);
+    }
+
+    if (currentOptimizeSearchQuery && !hasAnyMatch) {
+        $list.append(`
+            <div id="twt_optimize_no_results" style="text-align: center; opacity: 0.5; padding: 15px; font-size: 0.9em; border: 1px dashed var(--SmartThemeBorderColor); border-radius: 6px; width: 100%; box-sizing: border-box;">
+                未找到与 “${escapeHtml(currentOptimizeSearchQuery)}” 相关的补丁或分类
+            </div>
+        `);
     }
 }
 
@@ -349,16 +490,16 @@ function openOptimizeEditor(name) {
     if (!patch) return;
 
     currentlyEditingPatchName = name;
-    $('#twt_optimize_editor_title').text(`正在编辑: ${name}`);
-    $('#twt_optimize_code').val(patch.code || '');
-    $('#twt_optimize_editor_container').css('display', 'flex');
+    getEl('#twt_optimize_editor_title').text(`正在编辑: ${name}`);
+    getEl('#twt_optimize_code').val(patch.code || '');
+    getEl('#twt-optimize-editor-modal').css('display', 'flex');
     
     renderOptimizePatchList();
 }
 
 function closeOptimizeEditor() {
     currentlyEditingPatchName = null;
-    $('#twt_optimize_editor_container').css('display', 'none');
+    getEl('#twt-optimize-editor-modal').css('display', 'none');
     renderOptimizePatchList();
 }
 
@@ -1078,6 +1219,30 @@ function bindUI() {
         getContext().saveSettingsDebounced();
     });
 
+    // 搜索补丁与分类绑定
+    $('#twt_optimize_search_toggle').on('click', function(e) {
+        e.preventDefault();
+        const $container = $('#twt_optimize_search_container');
+        $container.slideToggle(150, function() {
+            if ($container.is(':hidden')) {
+                $('#twt_optimize_search_input').val('');
+                currentOptimizeSearchQuery = '';
+                renderOptimizePatchList();
+            } else {
+                $('#twt_optimize_search_input').focus();
+            }
+        });
+    });
+
+    $('#twt_optimize_search_input').on('input', function() {
+        clearTimeout(optimizeSearchTimeout);
+        const query = $(this).val().trim().toLowerCase();
+        optimizeSearchTimeout = setTimeout(() => {
+            currentOptimizeSearchQuery = query;
+            renderOptimizePatchList();
+        }, 1000); // 1s debounce
+    });
+
     // 优化补丁事件绑定
     $('#twt_optimize_add').on('click', function() {
         const name = prompt('请输入新补丁名称：');
@@ -1090,7 +1255,7 @@ function bindUI() {
             if (!extension_settings.twt.optimizePatches) {
                 extension_settings.twt.optimizePatches = {};
             }
-            extension_settings.twt.optimizePatches[trimmedName] = { code: '', active: true };
+            extension_settings.twt.optimizePatches[trimmedName] = { code: '', active: true, folder: '' };
             getContext().saveSettingsDebounced();
             renderOptimizePatchList();
             openOptimizeEditor(trimmedName);
@@ -1098,8 +1263,160 @@ function bindUI() {
         }
     });
 
-    $('#twt_optimize_close_editor').on('click', function() {
+    // 新建分类文件夹
+    $('#twt_optimize_add_folder').on('click', function() {
+        const name = prompt('请输入新分类/文件夹名称：');
+        if (name && name.trim().length > 0) {
+            const trimmedName = name.trim();
+            if (!extension_settings.twt.optimizeFolders) {
+                extension_settings.twt.optimizeFolders = [];
+            }
+            if (extension_settings.twt.optimizeFolders.includes(trimmedName)) {
+                toastr.warning('同名分类已存在！', '提示');
+                return;
+            }
+            extension_settings.twt.optimizeFolders.push(trimmedName);
+            getContext().saveSettingsDebounced();
+            renderOptimizePatchList();
+        }
+    });
+
+    // 绑定分类文件夹重命名
+    $('#twt_optimize_list').on('click', '.twt-folder-rename', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const $folder = $(this).closest('.twt-optimize-folder');
+        const oldName = $folder.attr('data-folder');
+        if (!oldName) return; // 未分类不能重命名
+        
+        const newName = prompt('请输入新的分类名称：', oldName);
+        if (newName && newName.trim().length > 0 && newName.trim() !== oldName) {
+            const trimmed = newName.trim();
+            if (!extension_settings.twt.optimizeFolders) {
+                extension_settings.twt.optimizeFolders = [];
+            }
+            if (extension_settings.twt.optimizeFolders.includes(trimmed)) {
+                toastr.warning('同名分类已存在！', '提示');
+                return;
+            }
+            
+            const idx = extension_settings.twt.optimizeFolders.indexOf(oldName);
+            if (idx !== -1) {
+                extension_settings.twt.optimizeFolders[idx] = trimmed;
+            }
+            
+            // 更新补丁引用
+            const patches = extension_settings.twt.optimizePatches || {};
+            for (const key of Object.keys(patches)) {
+                if (patches[key] && patches[key].folder === oldName) {
+                    patches[key].folder = trimmed;
+                }
+            }
+            
+            // 迁移折叠记录
+            if (oldName in collapsedFolders) {
+                collapsedFolders[trimmed] = collapsedFolders[oldName];
+                delete collapsedFolders[oldName];
+            }
+            
+            getContext().saveSettingsDebounced();
+            renderOptimizePatchList();
+        }
+    });
+
+    // 绑定分类文件夹删除
+    $('#twt_optimize_list').on('click', '.twt-folder-delete', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const $folder = $(this).closest('.twt-optimize-folder');
+        const folderName = $folder.attr('data-folder');
+        if (!folderName) return; // 未分类不能删除
+        
+        if (confirm(`确定要删除分类 "${folderName}" 吗？该分类下的补丁将移至“未分类”。`)) {
+            const idx = extension_settings.twt.optimizeFolders.indexOf(folderName);
+            if (idx !== -1) {
+                extension_settings.twt.optimizeFolders.splice(idx, 1);
+            }
+            
+            // 将此分类下补丁的 folder 清空
+            const patches = extension_settings.twt.optimizePatches || {};
+            for (const key of Object.keys(patches)) {
+                if (patches[key] && patches[key].folder === folderName) {
+                    patches[key].folder = '';
+                }
+            }
+            
+            if (folderName in collapsedFolders) {
+                delete collapsedFolders[folderName];
+            }
+            
+            getContext().saveSettingsDebounced();
+            renderOptimizePatchList();
+        }
+    });
+
+    // 绑定分类文件夹收起/折叠点击
+    $('#twt_optimize_list').on('click', '.twt-optimize-folder-header', function(e) {
+        if ($(e.target).closest('button').length) return; // 忽略对操作按钮的点击
+        const $folder = $(this).closest('.twt-optimize-folder');
+        const folderName = $folder.attr('data-folder') || '';
+        const $content = $folder.find('.twt-optimize-folder-content');
+        const $chevron = $(this).find('.twt-folder-chevron');
+        const $folderIcon = $(this).find('.twt-folder-icon');
+        
+        $content.slideToggle(150, () => {
+            const isHidden = $content.is(':hidden');
+            collapsedFolders[folderName] = isHidden;
+            if (isHidden) {
+                $chevron.css('transform', 'rotate(-90deg)');
+                $folderIcon.removeClass('fa-folder-open').addClass('fa-folder');
+            } else {
+                $chevron.css('transform', 'none');
+                $folderIcon.removeClass('fa-folder').addClass('fa-folder-open');
+            }
+        });
+    });
+
+    // 移动补丁至新分类
+    $('#twt_optimize_list').on('change', '.twt-patch-folder-select', function() {
+        const $item = $(this).closest('.twt-optimize-item');
+        const patchName = $item.data('name');
+        const targetFolder = $(this).val();
+        
+        if (extension_settings.twt.optimizePatches[patchName]) {
+            extension_settings.twt.optimizePatches[patchName].folder = targetFolder;
+            getContext().saveSettingsDebounced();
+            renderOptimizePatchList();
+        }
+    });
+
+    getEl('#twt_optimize_close_editor').off('click').on('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
         closeOptimizeEditor();
+    });
+
+    getEl('#twt_optimize_save_editor').off('click').on('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (currentlyEditingPatchName) {
+            const name = currentlyEditingPatchName;
+            const code = getEl('#twt_optimize_code').val();
+            if (extension_settings.twt.optimizePatches[name]) {
+                extension_settings.twt.optimizePatches[name].code = code;
+                getContext().saveSettingsDebounced();
+                updateInjectedStyles();
+            }
+        }
+        closeOptimizeEditor();
+    });
+
+    getEl('#twt-optimize-editor-modal').off('click mousedown mouseup pointerdown pointerup touchstart').on('click mousedown mouseup pointerdown pointerup touchstart', function(e) {
+        e.stopPropagation();
+        if ($(e.target).is('#twt-optimize-editor-modal')) {
+            e.preventDefault();
+            closeOptimizeEditor();
+        }
     });
 
     $('#twt_optimize_list').on('change', '.twt-patch-checkbox', function() {
@@ -1135,7 +1452,7 @@ function bindUI() {
             delete extension_settings.twt.optimizePatches[current];
             if (currentlyEditingPatchName === current) {
                 currentlyEditingPatchName = trimmedName;
-                $('#twt_optimize_editor_title').text(`正在编辑: ${trimmedName}`);
+                getEl('#twt_optimize_editor_title').text(`正在编辑: ${trimmedName}`);
             }
             getContext().saveSettingsDebounced();
             renderOptimizePatchList();
@@ -1155,18 +1472,6 @@ function bindUI() {
             getContext().saveSettingsDebounced();
             renderOptimizePatchList();
             updateInjectedStyles();
-        }
-    });
-
-    $('#twt_optimize_code').on('input', function() {
-        if (currentlyEditingPatchName) {
-            const name = currentlyEditingPatchName;
-            const code = $(this).val();
-            if (extension_settings.twt.optimizePatches[name]) {
-                extension_settings.twt.optimizePatches[name].code = code;
-                getContext().saveSettingsDebounced();
-                updateInjectedStyles();
-            }
         }
     });
 
@@ -2274,6 +2579,7 @@ jQuery(async () => {
     $('#twt-comments-preview-modal').appendTo(parentDoc.body);
     $('#twt-comments-help-modal').appendTo(parentDoc.body);
     $('#twt-link-theme-modal').appendTo(parentDoc.body);
+    $('#twt-optimize-editor-modal').appendTo(parentDoc.body);
 
     updateCommentsBgSolid();
     bindUI();
