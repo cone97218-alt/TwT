@@ -170,6 +170,21 @@
                     <label for="twt_menu_opt_excerpt">摘抄 (暂未实现)</label>
                     <input type="checkbox" id="twt_menu_opt_excerpt" />
                 </div>
+                <!-- Excerpt sub-options -->
+                <div id="twt_excerpt_sub_options" style="margin-left: 20px; border-left: 2px solid var(--SmartThemeBorderColor); padding-left: 10px; margin-bottom: 8px;">
+                    <div class="twt-setting-row"
+                        style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                        <label for="twt_excerpt_top_offset">悬浮条顶距 (px)</label>
+                        <input type="number" id="twt_excerpt_top_offset" min="0" max="1000" step="1"
+                            style="width: 80px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 4px; text-align: center;" />
+                    </div>
+                    <div class="twt-setting-row"
+                        style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                        <label for="twt_excerpt_font_size">悬浮条字号 (px)</label>
+                        <input type="number" id="twt_excerpt_font_size" min="8" max="30" step="1"
+                            style="width: 80px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 4px; text-align: center;" />
+                    </div>
+                </div>
                 <div class="twt-setting-row"
                     style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
                     <label for="twt_menu_opt_fullscreen">长按菜单显示全屏选项</label>

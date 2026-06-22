@@ -44,6 +44,8 @@ const defaultSettings = {
     paragraphXmlWhitelist: 'thought, TavernThought, reasoning, details',
     menuOptEditFiltered: false,
     menuOptExcerpt: false,
+    excerptTopOffset: 0,
+    excerptFontSize: 12,
     menuOptFullscreen: true,
     isFullscreen: false,
     menuInvokeMethod: 'longpress',
@@ -311,6 +313,32 @@ function updateParagraphSubOptionsVisibility() {
         $subOptions.show();
     } else {
         $subOptions.hide();
+    }
+}
+
+function updateExcerptSubOptionsVisibility() {
+    const $subOptions = $('#twt_excerpt_sub_options');
+    if (extension_settings.twt.menuOptExcerpt) {
+        $subOptions.show();
+    } else {
+        $subOptions.hide();
+    }
+}
+
+function updateLiveExcerptBar() {
+    const bar = parentDoc.getElementById('twt-excerpt-float-bar');
+    if (bar) {
+        const topOffset = extension_settings.twt.excerptTopOffset !== undefined ? extension_settings.twt.excerptTopOffset : 0;
+        const fontSize = extension_settings.twt.excerptFontSize !== undefined ? extension_settings.twt.excerptFontSize : 12;
+        bar.style.top = `${topOffset}px`;
+        bar.style.fontSize = `${fontSize}px`;
+        if (topOffset === 0) {
+            bar.style.borderTop = 'none';
+            bar.style.borderRadius = '0 0 10px 10px';
+        } else {
+            bar.style.borderTop = '1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.15))';
+            bar.style.borderRadius = '10px';
+        }
     }
 }
 
@@ -824,6 +852,8 @@ function bindUI() {
     const $paragraphXmlWhitelist = $('#twt_paragraph_xml_whitelist');
     const $menuOptEditFiltered = $('#twt_menu_opt_edit_filtered');
     const $menuOptExcerpt = $('#twt_menu_opt_excerpt');
+    const $excerptTopOffset = $('#twt_excerpt_top_offset');
+    const $excerptFontSize = $('#twt_excerpt_font_size');
     const $menuOptFullscreen = $('#twt_menu_opt_fullscreen');
     const $visualEnabled = $('#twt_visual_enabled');
     const $muluEnabled = $('#twt_mulu_enabled');
@@ -863,9 +893,12 @@ function bindUI() {
     $paragraphXmlWhitelist.val(extension_settings.twt.paragraphXmlWhitelist !== undefined ? extension_settings.twt.paragraphXmlWhitelist : 'thought, TavernThought, reasoning, details');
     $menuOptEditFiltered.prop('checked', extension_settings.twt.menuOptEditFiltered ?? false);
     $menuOptExcerpt.prop('checked', extension_settings.twt.menuOptExcerpt);
+    $excerptTopOffset.val(extension_settings.twt.excerptTopOffset !== undefined ? extension_settings.twt.excerptTopOffset : 0);
+    $excerptFontSize.val(extension_settings.twt.excerptFontSize !== undefined ? extension_settings.twt.excerptFontSize : 12);
     $menuOptFullscreen.prop('checked', extension_settings.twt.menuOptFullscreen);
     
     updateParagraphSubOptionsVisibility();
+    updateExcerptSubOptionsVisibility();
     
     const updateLongpressDelayRow = () => {
         if ($menuInvokeMethod.val() === 'longpress') {
@@ -1599,6 +1632,25 @@ function bindUI() {
     $menuOptExcerpt.on('change', function () {
         extension_settings.twt.menuOptExcerpt = $(this).prop('checked');
         getContext().saveSettingsDebounced();
+        updateExcerptSubOptionsVisibility();
+    });
+
+    $excerptTopOffset.on('input', function () {
+        const val = parseInt($(this).val());
+        if (!isNaN(val)) {
+            extension_settings.twt.excerptTopOffset = val;
+            getContext().saveSettingsDebounced();
+            updateLiveExcerptBar();
+        }
+    });
+
+    $excerptFontSize.on('input', function () {
+        const val = parseInt($(this).val());
+        if (!isNaN(val)) {
+            extension_settings.twt.excerptFontSize = val;
+            getContext().saveSettingsDebounced();
+            updateLiveExcerptBar();
+        }
     });
 
 

@@ -7,12 +7,14 @@ let longpressTimeout = null;
 let touchStartX = 0;
 let touchStartY = 0;
 let toggleExcerptCallback = null;
+let getSettingsCallback = null;
 
 export function applyMenuMode(enabled, settings) {
     // Handles runtime state updates if any
 }
 
 export function initMenu(getSettings, onToggleExcerpt) {
+    getSettingsCallback = getSettings;
     toggleExcerptCallback = onToggleExcerpt;
     const chatContainer = $('#chat');
     if (!chatContainer.length) return;
@@ -722,6 +724,7 @@ function getParentDoc() {
 }
 
 function startExcerptLinkage() {
+    const settings = getSettingsCallback ? getSettingsCallback() : {};
     const parentDoc = getParentDoc();
     const oldBar = parentDoc.getElementById('twt-excerpt-float-bar');
     if (oldBar) oldBar.remove();
@@ -729,6 +732,20 @@ function startExcerptLinkage() {
     const bar = parentDoc.createElement('div');
     bar.id = 'twt-excerpt-float-bar';
     
+    // Apply user settings dynamically
+    const topOffset = settings.excerptTopOffset !== undefined ? settings.excerptTopOffset : 0;
+    const fontSize = settings.excerptFontSize !== undefined ? settings.excerptFontSize : 12;
+    
+    bar.style.top = `${topOffset}px`;
+    bar.style.fontSize = `${fontSize}px`;
+    if (topOffset === 0) {
+        bar.style.borderTop = 'none';
+        bar.style.borderRadius = '0 0 10px 10px';
+    } else {
+        bar.style.borderTop = '1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.15))';
+        bar.style.borderRadius = '10px';
+    }
+
     const textSpan = parentDoc.createElement('span');
     textSpan.className = 'twt-excerpt-text';
     textSpan.innerHTML = '摘抄模式已开启';
