@@ -6,12 +6,14 @@ import { openParagraphEditor } from './paragraph.js';
 let longpressTimeout = null;
 let touchStartX = 0;
 let touchStartY = 0;
+let toggleExcerptCallback = null;
 
 export function applyMenuMode(enabled, settings) {
     // Handles runtime state updates if any
 }
 
-export function initMenu(getSettings) {
+export function initMenu(getSettings, onToggleExcerpt) {
+    toggleExcerptCallback = onToggleExcerpt;
     const chatContainer = $('#chat');
     if (!chatContainer.length) return;
 
@@ -168,6 +170,18 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
         hasItems = true;
     }
 
+    // Add Excerpt (摘抄) -> 摘抄
+    if (settings.menuOptExcerpt) {
+        const $item = $('<div class="twt-menu-item"><i class="fa-regular fa-bookmark"></i><span>摘抄</span></div>');
+        $item.on('click', (evt) => {
+            evt.stopPropagation();
+            $menu.hide();
+            startExcerptLinkage();
+        });
+        $menu.append($item);
+        hasItems = true;
+    }
+
     // Add Fullscreen (全屏模式) -> 全屏 / 退出
     if (settings.menuOptFullscreen) {
         const isCurrentlyFullscreen = settings.isFullscreen;
@@ -222,22 +236,7 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
         $menu.append($deleteItem);
     }
 
-    // Add placeholders
-    const placeholders = [
-        { key: 'menuOptExcerpt', label: '摘抄', icon: 'fa-regular fa-bookmark' }
-    ];
 
-    placeholders.forEach(opt => {
-        if (settings[opt.key]) {
-            const $item = $(`<div class="twt-menu-item twt-menu-disabled"><i class="${opt.icon}"></i><span>${opt.label}</span></div>`);
-            $item.on('click', (evt) => {
-                evt.stopPropagation();
-                $menu.hide();
-            });
-            $menu.append($item);
-            hasItems = true;
-        }
-    });
 
     if (!hasItems) return;
 
@@ -708,4 +707,47 @@ export function openMessageManagerModal(mesId) {
             repositionModal();
         }
     });
+}
+
+function getParentDoc() {
+    let doc = document;
+    try {
+        if (window.parent && window.parent.document) {
+            doc = window.parent.document;
+        }
+    } catch (e) {
+        console.warn("TwT: Cannot access window.parent.document", e);
+    }
+    return doc;
+}
+
+function startExcerptLinkage() {
+    const parentDoc = getParentDoc();
+    const oldBar = parentDoc.getElementById('twt-excerpt-float-bar');
+    if (oldBar) oldBar.remove();
+
+    const bar = parentDoc.createElement('div');
+    bar.id = 'twt-excerpt-float-bar';
+    
+    const textSpan = parentDoc.createElement('span');
+    textSpan.className = 'twt-excerpt-text';
+    textSpan.innerHTML = '摘抄模式已开启';
+    bar.appendChild(textSpan);
+
+    const closeBtn = parentDoc.createElement('button');
+    closeBtn.className = 'twt-excerpt-close-btn';
+    closeBtn.innerText = '关闭';
+    closeBtn.addEventListener('click', () => {
+        bar.remove();
+        if (toggleExcerptCallback) {
+            toggleExcerptCallback(false);
+        }
+    });
+    bar.appendChild(closeBtn);
+
+    parentDoc.body.appendChild(bar);
+
+    if (toggleExcerptCallback) {
+        toggleExcerptCallback(true);
+    }
 }

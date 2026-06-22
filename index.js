@@ -13,6 +13,7 @@ try {
 } catch (e) {
     console.warn("TwT: Cannot access window.parent.document", e);
 }
+let isExcerptModeActive = false;
 
 function getEl(selector) {
     return $(parentDoc).find(selector);
@@ -528,6 +529,9 @@ export function updateInjectedStyles() {
     const patches = extension_settings.twt.optimizePatches || {};
     for (const [name, patch] of Object.entries(patches)) {
         if (patch && patch.active && patch.code) {
+            if (name === '禁用聊天区域长按菜单' && isExcerptModeActive) {
+                continue;
+            }
             css += `/* Patch: ${name} */\n${patch.code}\n\n`;
         }
     }
@@ -2597,10 +2601,13 @@ jQuery(async () => {
     initMulu();
     initThemeLinkListener();
     initPaginationEvent(() => extension_settings.twt);
-    initMenu(() => extension_settings.twt);
+    initMenu(() => extension_settings.twt, (active) => {
+        isExcerptModeActive = active;
+        updateInjectedStyles();
+    });
     parentDoc.addEventListener('contextmenu', (e) => {
         const patches = extension_settings.twt.optimizePatches || {};
-        const isEnabled = extension_settings.twt.visualEnabled && patches['禁用聊天区域长按菜单']?.active;
+        const isEnabled = extension_settings.twt.visualEnabled && patches['禁用聊天区域长按菜单']?.active && !isExcerptModeActive;
         if (!isEnabled) return;
 
         const chat = parentDoc.getElementById('chat');
