@@ -19,12 +19,35 @@ export function initMenu(getSettings, onToggleExcerpt) {
     const chatContainer = $('#chat');
     if (!chatContainer.length) return;
 
-    // Block default context menu when the extension menu is enabled
+    let lastTouchTime = 0;
+
+    // Handle PC right click (contextmenu) and block default context menu
     chatContainer.on('contextmenu', (e) => {
         const settings = getSettings();
-        if (settings && settings.menuEnabled) {
-            e.preventDefault();
+        if (!settings || !settings.menuEnabled) return;
+
+        // Block native menu
+        e.preventDefault();
+
+        // Check if this contextmenu event was triggered by mobile touch.
+        // If so, let touch listeners handle it.
+        const oe = e.originalEvent;
+        const isTouch = (Date.now() - lastTouchTime < 1000) || (oe && (oe.pointerType === 'touch' || (oe.touches && oe.touches.length > 0)));
+        if (isTouch) {
+            return;
         }
+
+        // PC right click:
+        const target = e.target;
+        // Avoid launching menu when interacting with already interactive controls
+        if ($(target).closest('button, a, input, textarea, select, .mes_button, .swipe-button, .ch_name, .avatar, img, .svg-icon').length) {
+            return;
+        }
+
+        const $mes = $(target).closest('.mes');
+        if (!$mes.length) return;
+
+        showContextMenu(e, $mes, e.clientX, e.clientY, settings);
     });
 
     const handleStart = (e, clientX, clientY) => {
@@ -64,8 +87,9 @@ export function initMenu(getSettings, onToggleExcerpt) {
         longpressTimeout = null;
     };
 
-    // Bind touch gestures
+    // Bind touch gestures for mobile
     chatContainer.on('touchstart', (e) => {
+        lastTouchTime = Date.now();
         if (e.touches.length === 1) {
             handleStart(e, e.touches[0].clientX, e.touches[0].clientY);
         }
@@ -78,21 +102,6 @@ export function initMenu(getSettings, onToggleExcerpt) {
     });
 
     chatContainer.on('touchend touchcancel', () => {
-        handleEnd();
-    });
-
-    // Bind mouse events
-    chatContainer.on('mousedown', (e) => {
-        if (e.button === 0) { // Left click only
-            handleStart(e, e.clientX, e.clientY);
-        }
-    });
-
-    chatContainer.on('mousemove', (e) => {
-        handleMove(e.clientX, e.clientY);
-    });
-
-    chatContainer.on('mouseup mouseleave', () => {
         handleEnd();
     });
 
@@ -123,122 +132,145 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
 
     let hasItems = false;
 
-    // Add Regenerate
-    if (settings.menuOptRegenerate && isLatestAi) {
-        const $item = $('<div class="twt-menu-item"><i class="fa-solid fa-rotate-right"></i><span>重新生成</span></div>');
-        $item.on('click', (evt) => {
-            evt.stopPropagation();
-            $menu.hide();
-            $('#option_regenerate').trigger('click');
-        });
-        $menu.append($item);
-        hasItems = true;
-    }
+    const order = settings.menuOrder || [
+        'menuOptRegenerate',
+        'menuOptSwipe',
+        'menuOptManage',
+        'menuOptEdit',
+        'menuOptExcerpt',
+        'menuOptFullscreen',
+        'menuOptApi'
+    ];
 
-    // Add Swipe
-    if (settings.menuOptSwipe && isLatestAi) {
-        const $item = $('<div class="twt-menu-item"><i class="fa-solid fa-chevron-right"></i><span>滑动</span></div>');
-        $item.on('click', (evt) => {
-            evt.stopPropagation();
-            $menu.hide();
-            $('.last_mes .swipe_right').trigger('click');
-        });
-        $menu.append($item);
-        hasItems = true;
-    }
+    for (const key of order) {
+        if (key === 'menuOptRegenerate' && settings.menuOptRegenerate && isLatestAi) {
+            const $item = $('<div class="twt-menu-item"><i class="fa-solid fa-rotate-right"></i><span>重新生成</span></div>');
+            $item.on('click', (evt) => {
+                evt.stopPropagation();
+                $menu.hide();
+                $('#option_regenerate').trigger('click');
+            });
+            $menu.append($item);
+            hasItems = true;
+        }
 
-    // Add Paragraph Comment (小说段评) -> 段评
-    if (settings.commentsEnabled) {
-        const $item = $('<div class="twt-menu-item"><i class="fa-regular fa-comment-dots"></i><span>段评</span></div>');
-        $item.on('click', async (evt) => {
-            evt.stopPropagation();
-            $menu.hide();
-            const { triggerBatchCommentsForMessage } = await import('./paragraph.js');
-            await triggerBatchCommentsForMessage(mesId);
-        });
-        $menu.append($item);
-        hasItems = true;
-    }
-
-    // Add Paragraph Edit (分段编辑) -> 编辑
-    if (settings.menuOptEdit) {
-        const $item = $('<div class="twt-menu-item"><i class="fa-regular fa-pen-to-square"></i><span>编辑</span></div>');
-        $item.on('click', (evt) => {
-            evt.stopPropagation();
-            $menu.hide();
-            openParagraphEditor(mesId, clientX, clientY);
-        });
-        $menu.append($item);
-        hasItems = true;
-    }
-
-    // Add Excerpt (摘抄) -> 摘抄
-    if (settings.menuOptExcerpt) {
-        const $item = $('<div class="twt-menu-item"><i class="fa-regular fa-bookmark"></i><span>摘抄</span></div>');
-        $item.on('click', (evt) => {
-            evt.stopPropagation();
-            $menu.hide();
-            startExcerptLinkage();
-        });
-        $menu.append($item);
-        hasItems = true;
-    }
-
-    // Add Fullscreen (全屏模式) -> 全屏 / 退出
-    if (settings.menuOptFullscreen) {
-        const isCurrentlyFullscreen = settings.isFullscreen;
-        const label = isCurrentlyFullscreen ? '退出' : '全屏';
-        const icon = isCurrentlyFullscreen ? 'fa-solid fa-compress' : 'fa-solid fa-expand';
-        const $item = $(`<div class="twt-menu-item"><i class="${icon}"></i><span>${label}</span></div>`);
-        $item.on('click', (evt) => {
-            evt.stopPropagation();
-            $menu.hide();
-            settings.isFullscreen = !isCurrentlyFullscreen;
-            applyFullscreenMode(settings.isFullscreen);
-            getContext().saveSettingsDebounced();
-        });
-        $menu.append($item);
-        hasItems = true;
-    }
-
-    // Add Manage Messages (管理消息) -> 管理
-    if (settings.menuOptManage) {
-        const $item = $('<div class="twt-menu-item"><i class="fa-solid fa-list-check"></i><span>管理</span></div>');
-        $item.on('click', (evt) => {
-            evt.stopPropagation();
-            $menu.hide();
-            openMessageManagerModal(mesId);
-        });
-        $menu.append($item);
-        hasItems = true;
-
-        // Add Hide Current Message (隐藏/显示本条) Shortcut -> 隐藏 / 显示
-        const currentMsg = getContext().chat[mesId];
-        const isCurrentHidden = currentMsg ? (currentMsg.is_system || currentMsg.extra?.is_system) : false;
-        const hideLabel = isCurrentHidden ? '显示' : '隐藏';
-        const hideIcon = isCurrentHidden ? 'fa-regular fa-eye' : 'fa-regular fa-eye-slash';
-        
-        const $hideItem = $(`<div class="twt-menu-item"><i class="${hideIcon}"></i><span>${hideLabel}</span></div>`);
-        $hideItem.on('click', async (evt) => {
-            evt.stopPropagation();
-            $menu.hide();
-            await hideChatMessageRange(mesId, mesId, isCurrentHidden);
-        });
-        $menu.append($hideItem);
-
-        // Add Delete Current Message (删除本条消息) Shortcut -> 删除
-        const $deleteItem = $('<div class="twt-menu-item" style="color: #ff4444;"><i class="fa-regular fa-trash-can"></i><span>删除</span></div>');
-        $deleteItem.on('click', async (evt) => {
-            evt.stopPropagation();
-            $menu.hide();
-            if (confirm('确定要删除这条消息吗？')) {
-                await getContext().deleteMessage(mesId, undefined, false);
+        if (key === 'menuOptSwipe') {
+            if (settings.menuOptSwipe && isLatestAi) {
+                const $item = $('<div class="twt-menu-item"><i class="fa-solid fa-chevron-right"></i><span>滑动</span></div>');
+                $item.on('click', (evt) => {
+                    evt.stopPropagation();
+                    $menu.hide();
+                    $('.last_mes .swipe_right').trigger('click');
+                });
+                $menu.append($item);
+                hasItems = true;
             }
-        });
-        $menu.append($deleteItem);
+            // Add Paragraph Comment (小说段评) right after Swipe
+            if (settings.commentsEnabled) {
+                const $item = $('<div class="twt-menu-item"><i class="fa-regular fa-comment-dots"></i><span>段评</span></div>');
+                $item.on('click', async (evt) => {
+                    evt.stopPropagation();
+                    $menu.hide();
+                    const { triggerBatchCommentsForMessage } = await import('./paragraph.js');
+                    await triggerBatchCommentsForMessage(mesId);
+                });
+                $menu.append($item);
+                hasItems = true;
+            }
+        }
+
+        if (key === 'menuOptManage' && settings.menuOptManage) {
+            const $item = $('<div class="twt-menu-item"><i class="fa-solid fa-list-check"></i><span>管理</span></div>');
+            $item.on('click', (evt) => {
+                evt.stopPropagation();
+                $menu.hide();
+                openMessageManagerModal(mesId);
+            });
+            $menu.append($item);
+            hasItems = true;
+
+            // Add Hide Current Message (隐藏/显示本条) Shortcut -> 隐藏 / 显示
+            const currentMsg = getContext().chat[mesId];
+            const isCurrentHidden = currentMsg ? (currentMsg.is_system || currentMsg.extra?.is_system) : false;
+            const hideLabel = isCurrentHidden ? '显示' : '隐藏';
+            const hideIcon = isCurrentHidden ? 'fa-regular fa-eye' : 'fa-regular fa-eye-slash';
+            
+            const $hideItem = $(`<div class="twt-menu-item"><i class="${hideIcon}"></i><span>${hideLabel}</span></div>`);
+            $hideItem.on('click', async (evt) => {
+                evt.stopPropagation();
+                $menu.hide();
+                await hideChatMessageRange(mesId, mesId, isCurrentHidden);
+            });
+            $menu.append($hideItem);
+
+            // Add Delete Current Message (删除本条消息) Shortcut -> 删除
+            const $deleteItem = $('<div class="twt-menu-item" style="color: #ff4444;"><i class="fa-regular fa-trash-can"></i><span>删除</span></div>');
+            $deleteItem.on('click', async (evt) => {
+                evt.stopPropagation();
+                $menu.hide();
+                if (confirm('确定要删除这条消息吗？')) {
+                    await getContext().deleteMessage(mesId, undefined, false);
+                }
+            });
+            $menu.append($deleteItem);
+        }
+
+        if (key === 'menuOptEdit' && settings.menuOptEdit) {
+            const $item = $('<div class="twt-menu-item"><i class="fa-regular fa-pen-to-square"></i><span>编辑</span></div>');
+            $item.on('click', (evt) => {
+                evt.stopPropagation();
+                $menu.hide();
+                openParagraphEditor(mesId, clientX, clientY);
+            });
+            $menu.append($item);
+            hasItems = true;
+        }
+
+        if (key === 'menuOptExcerpt' && settings.menuOptExcerpt) {
+            const $item = $('<div class="twt-menu-item"><i class="fa-regular fa-bookmark"></i><span>摘抄</span></div>');
+            $item.on('click', (evt) => {
+                evt.stopPropagation();
+                $menu.hide();
+                startExcerptLinkage();
+            });
+            $menu.append($item);
+            hasItems = true;
+        }
+
+        if (key === 'menuOptFullscreen' && settings.menuOptFullscreen) {
+            const isCurrentlyFullscreen = settings.isFullscreen;
+            const label = isCurrentlyFullscreen ? '退出' : '全屏';
+            const icon = isCurrentlyFullscreen ? 'fa-solid fa-compress' : 'fa-solid fa-expand';
+            const $item = $(`<div class="twt-menu-item"><i class="${icon}"></i><span>${label}</span></div>`);
+            $item.on('click', (evt) => {
+                evt.stopPropagation();
+                $menu.hide();
+                settings.isFullscreen = !isCurrentlyFullscreen;
+                applyFullscreenMode(settings.isFullscreen);
+                getContext().saveSettingsDebounced();
+            });
+            $menu.append($item);
+            hasItems = true;
+        }
+
+        if (key === 'menuOptApi' && settings.menuOptApi) {
+            const $item = $('<div class="twt-menu-item"><i class="fa-solid fa-plug"></i><span>API</span></div>');
+            $item.on('click', (evt) => {
+                evt.stopPropagation();
+                $menu.hide();
+                if (window.ApiConfigManager && typeof window.ApiConfigManager.show === 'function') {
+                    window.ApiConfigManager.show();
+                } else {
+                    console.error('API 配置管理器扩展未加载或未启用');
+                    if (typeof toastr !== 'undefined') {
+                        toastr.warning('API 配置管理器扩展未加载或未启用', '提示');
+                    }
+                }
+            });
+            $menu.append($item);
+            hasItems = true;
+        }
     }
-
-
 
     if (!hasItems) return;
 

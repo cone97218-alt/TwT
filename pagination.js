@@ -15,6 +15,10 @@ let preKeyboardPage = -1;
 let focusGuardTimer = null;
 let isFocusGuardActive = false;
 let positionLockRaf = null; // rAF 滚动位置锁
+// WeakMap 缓存上次测量到的元素高度，用于检测未知折叠组件的高度突变
+const elementPrevHeights = new WeakMap();
+// 高度突变阈值（px）：超过此值视为折叠展开事件，强制断页保护
+const HEIGHT_SURGE_THRESHOLD = 80;
 
 function containOversizedElements() {
     const chat = document.getElementById('chat');
@@ -41,10 +45,11 @@ function containOversizedElements() {
         chat.scrollHeight; 
     }
 
-    const toContain = [];
+    const toScrollable = [];  // 需要被收容为内部滚动的超大容器
+    const toBreak = [];       // 需要强制断页（但不一定收容）的元素
     const excludedTags = new Set(['P', 'SPAN', 'BLOCKQUOTE', 'PRE', 'OL', 'UL', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'A', 'CODE', 'EM', 'STRONG', 'I', 'B']);
     
-    // 3. 读相位 - 扫描并标记 HTML 容器，收集级子元素中的超尺寸元素
+    // 3. 读相位 - 扫描并标记 HTML 容器
     chat.querySelectorAll('.mes_text > *').forEach(el => {
         const isReasoning = el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body');
         const isContainerTag = el.tagName === 'DIV' || 
@@ -59,45 +64,81 @@ function containOversizedElements() {
             el.classList.add('twt-html-container');
         } else {
             el.classList.remove('twt-html-container');
+            el.classList.remove('twt-html-needs-break');
         }
 
         // 跳过已经决定要收容的元素的子元素
-        if (toContain.some(parent => parent.contains(el))) return;
+        if (toScrollable.some(parent => parent.contains(el))) return;
         
         // 排除普通文本类标签，它们可以跨列自然流动
         if (excludedTags.has(el.tagName)) return;
         
         // 排除思维链/深度思考块，它们是特化组件，应该垂直自然断页而不是收容为内部滚动
         if (isReasoning) return;
-        
-        // 快速高度检查
-        if (el.scrollHeight <= colHeight) return;
-        
-        // 检查是否创建 BFC 或者是常见的自定义容器标签
-        const cs = window.getComputedStyle(el);
-        const createsBFC = (
-            (cs.overflow !== 'visible' && cs.overflow !== '') ||
-            cs.display === 'flex' || cs.display === 'inline-flex' ||
-            cs.display === 'grid' || cs.display === 'inline-grid' ||
-            cs.position === 'absolute' || cs.position === 'fixed' ||
-            cs.display === 'flow-root'
-        );
-        
-        if (createsBFC || isContainerTag) {
-            toContain.push(el);
+
+        const currentHeight = el.scrollHeight;
+
+        // ---- 第一级：原生折叠元素 ----
+        // <details> 无论大小都必须：
+        //   1. 强制断页（break-before）：确保从页顶开始，有整列空间可用
+        //   2. 预设 max-height（toScrollable）：在用户展开之前就限制高度，
+        //      防止展开瞬间 CSS Column 重排跳页——这是消灭时序漏洞的关键
+        if (el.tagName === 'DETAILS') {
+            toBreak.push(el);
+            toScrollable.push(el); // 始终预设，不依赖当前是否已展开
+            elementPrevHeights.set(el, currentHeight);
+            return;
         }
+
+        // ---- 检测未知折叠组件：高度突变检测 ----
+        // 如果缓存中有上次高度，且本次高度增加超过阈值，视为折叠组件展开
+        const prevHeight = elementPrevHeights.get(el);
+        const hasSurged = prevHeight !== undefined && (currentHeight - prevHeight) > HEIGHT_SURGE_THRESHOLD;
+
+        // 更新高度缓存
+        elementPrevHeights.set(el, currentHeight);
+
+        // ---- 第二级：超高容器 或 刚刚高度突变的未知折叠组件 ----
+        if (currentHeight > colHeight || hasSurged) {
+            // 快速检查是否是创建 BFC 的真实容器或已知容器标签
+            const cs = window.getComputedStyle(el);
+            const createsBFC = (
+                (cs.overflow !== 'visible' && cs.overflow !== '') ||
+                cs.display === 'flex' || cs.display === 'inline-flex' ||
+                cs.display === 'grid' || cs.display === 'inline-grid' ||
+                cs.position === 'absolute' || cs.position === 'fixed' ||
+                cs.display === 'flow-root'
+            );
+            
+            if (createsBFC || isContainerTag) {
+                toBreak.push(el);
+                toScrollable.push(el);
+            }
+            return;
+        }
+
+        // ---- 第三级：小型静态容器 ----
+        // 高度在列高内且无突变，自然流动，清除断页标记即可（写相位统一处理）
     });
 
-    // 4. 写相位 - 应用收容样式
-    if (toContain.length > 0) {
-        toContain.forEach(el => {
+    // 4. 写相位 - 应用断页标记（先清除所有，再按需打标）
+    chat.querySelectorAll('.twt-html-needs-break').forEach(el => {
+        el.classList.remove('twt-html-needs-break');
+    });
+    toBreak.forEach(el => {
+        el.classList.add('twt-html-needs-break');
+    });
+
+    // 5. 写相位 - 应用收容样式
+    if (toScrollable.length > 0) {
+        toScrollable.forEach(el => {
             el.style.setProperty('max-height', `${colHeight - 20}px`, 'important');
             el.style.setProperty('overflow-y', 'auto', 'important');
             el.classList.add('twt-pagination-scrollable');
         });
     }
     
-    // 5. 校验当前页面，如果超出则重置
+    // 6. 校验当前页面，如果超出则重置
     const cw = chat.getBoundingClientRect().width;
     if (cw > 0) {
         const totalPages = Math.ceil(chat.scrollWidth / cw);
@@ -442,6 +483,9 @@ export function applyPaginationMode(enabled, settings) {
             chatContainer.querySelectorAll('.twt-html-container').forEach(el => {
                 el.classList.remove('twt-html-container');
             });
+            chatContainer.querySelectorAll('.twt-html-needs-break').forEach(el => {
+                el.classList.remove('twt-html-needs-break');
+            });
             chatContainer.style.removeProperty('height');
             chatContainer.style.removeProperty('max-height');
             chatContainer.style.removeProperty('min-height');
@@ -622,6 +666,30 @@ export function resetPaginationBinding(getSettings) {
 }
 
 export function initPaginationEvent(getSettings) {
+    // ---- <summary> 点击捕获拦截器 ----
+    // 在事件捕获阶段（浏览器处理 <details> 展开之前）同步设置 max-height。
+    // 这是消灭时序漏洞的最后防线：即使新消息刚到、containOversizedElements
+    // 还在 150ms 防抖等待中，点击展开也不会触发列重排跳页。
+    document.addEventListener('click', (e) => {
+        if (!document.body.classList.contains('twt-reading-mode')) return;
+        const summary = e.target.closest('summary');
+        if (!summary) return;
+        const details = summary.closest('details');
+        if (!details) return;
+        // 只处理 #chat 内的 <details>
+        const chat = document.getElementById('chat');
+        if (!chat || !chat.contains(details)) return;
+        // 如果 max-height 尚未设置（containOversizedElements 还没跑），立即补设
+        if (!details.style.maxHeight) {
+            const colHeight = chat.clientHeight;
+            if (colHeight > 0) {
+                details.style.setProperty('max-height', `${colHeight - 20}px`, 'important');
+                details.style.setProperty('overflow-y', 'auto', 'important');
+                details.classList.add('twt-pagination-scrollable');
+            }
+        }
+    }, true); // capture: true — 在浏览器默认行为之前执行
+
     // 点击翻页（全局委托，无需随 #chat 重建）
     document.addEventListener('click', function(e) {
         const settings = getSettings();

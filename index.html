@@ -119,76 +119,110 @@
                 <div style="border-top: 1px dashed var(--SmartThemeBorderColor); margin-top: 10px; padding-top: 10px; margin-bottom: 10px;">
                     <span style="font-weight: bold; font-size: 0.95em;">菜单功能开关</span>
                 </div>
-                
-                <div class="twt-setting-row"
-                    style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                    <label for="twt_menu_opt_regenerate">重新生成 (仅最新AI消息)</label>
-                    <input type="checkbox" id="twt_menu_opt_regenerate" />
-                </div>
-                <div class="twt-setting-row"
-                    style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                    <label for="twt_menu_opt_swipe">滑动 (仅最新AI消息)</label>
-                    <input type="checkbox" id="twt_menu_opt_swipe" />
-                </div>
-                <div class="twt-setting-row"
-                    style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                    <label for="twt_menu_opt_manage">管理消息 (包含删除、隐藏与显示等功能)</label>
-                    <input type="checkbox" id="twt_menu_opt_manage" />
-                </div>
-                <div class="twt-setting-row"
-                    style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                    <label for="twt_menu_opt_edit">分段编辑</label>
-                    <input type="checkbox" id="twt_menu_opt_edit" />
-                </div>
-                <div id="twt_paragraph_edit_sub_options" style="display: none; padding-left: 15px; border-left: 2px solid var(--SmartThemeBorderColor); margin-bottom: 8px; margin-left: 5px;">
-                    <div class="twt-setting-row" id="twt_paragraph_toolbar_bottom_row"
-                        style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                        <label for="twt_paragraph_toolbar_bottom">分段工具栏距底部高度 (px)</label>
-                        <input type="number" id="twt_paragraph_toolbar_bottom" min="0" max="600" step="5"
-                            style="width: 80px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 4px; text-align: center;" />
+
+                <div class="inline-drawer" style="margin-bottom: 10px;">
+                    <div class="inline-drawer-toggle inline-drawer-header">
+                        <b>默认功能</b>
+                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
                     </div>
-                    <div class="twt-setting-row" id="twt_paragraph_icon_size_row"
-                        style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                        <label for="twt_paragraph_icon_size">分段工具栏图标大小 (px)</label>
-                        <input type="number" id="twt_paragraph_icon_size" min="10" max="100" step="1"
-                            style="width: 80px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 4px; text-align: center;" />
-                    </div>
-                    <div class="twt-setting-row" id="twt_menu_opt_edit_filtered_row"
-                        style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                        <label for="twt_menu_opt_edit_filtered">分段编辑应用正则过滤 (只显示用户可见文本)</label>
-                        <input type="checkbox" id="twt_menu_opt_edit_filtered" />
-                    </div>
-                    <div class="twt-setting-row" id="twt_paragraph_xml_whitelist_row"
-                        style="display: flex; flex-direction: column; margin-bottom: 8px; align-items: flex-start;">
-                        <label for="twt_paragraph_xml_whitelist" style="margin-bottom: 5px; font-size: 0.95em;">分段编辑 XML 标签白名单 (逗号分隔)</label>
-                        <input type="text" id="twt_paragraph_xml_whitelist" placeholder="例如：thought, TavernThought, reasoning, details"
-                            style="width: 100%; box-sizing: border-box; padding: 6px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px;" />
-                    </div>
-                </div>
-                <div class="twt-setting-row"
-                    style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                    <label for="twt_menu_opt_excerpt">摘抄 (暂未实现)</label>
-                    <input type="checkbox" id="twt_menu_opt_excerpt" />
-                </div>
-                <!-- Excerpt sub-options -->
-                <div id="twt_excerpt_sub_options" style="margin-left: 20px; border-left: 2px solid var(--SmartThemeBorderColor); padding-left: 10px; margin-bottom: 8px;">
-                    <div class="twt-setting-row"
-                        style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                        <label for="twt_excerpt_top_offset">悬浮条顶距 (px)</label>
-                        <input type="number" id="twt_excerpt_top_offset" min="0" max="1000" step="1"
-                            style="width: 80px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 4px; text-align: center;" />
-                    </div>
-                    <div class="twt-setting-row"
-                        style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                        <label for="twt_excerpt_font_size">悬浮条字号 (px)</label>
-                        <input type="number" id="twt_excerpt_font_size" min="8" max="30" step="1"
-                            style="width: 80px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 4px; text-align: center;" />
+                    <div class="inline-drawer-content" style="display: none; padding: 10px 5px 5px 5px;">
+                        <div class="twt-setting-row"
+                            style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                            <label for="twt_menu_opt_regenerate">重新生成 (仅最新AI消息)</label>
+                            <input type="checkbox" id="twt_menu_opt_regenerate" />
+                        </div>
+                        <div class="twt-setting-row"
+                            style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                            <label for="twt_menu_opt_swipe">滑动 (仅最新AI消息)</label>
+                            <input type="checkbox" id="twt_menu_opt_swipe" />
+                        </div>
+                        <div class="twt-setting-row"
+                            style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                            <label for="twt_menu_opt_manage">管理消息 (包含删除、隐藏与显示等功能)</label>
+                            <input type="checkbox" id="twt_menu_opt_manage" />
+                        </div>
+                        <div class="twt-setting-row"
+                            style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                            <label for="twt_menu_opt_edit">分段编辑</label>
+                            <input type="checkbox" id="twt_menu_opt_edit" />
+                        </div>
+                        <div id="twt_paragraph_edit_sub_options" style="display: none; padding-left: 15px; border-left: 2px solid var(--SmartThemeBorderColor); margin-bottom: 8px; margin-left: 5px;">
+                            <div class="twt-setting-row" id="twt_paragraph_toolbar_bottom_row"
+                                style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                                <label for="twt_paragraph_toolbar_bottom">分段工具栏距底部高度 (px)</label>
+                                <input type="number" id="twt_paragraph_toolbar_bottom" min="0" max="600" step="5"
+                                    style="width: 80px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 4px; text-align: center;" />
+                            </div>
+                            <div class="twt-setting-row" id="twt_paragraph_icon_size_row"
+                                style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                                <label for="twt_paragraph_icon_size">分段工具栏图标大小 (px)</label>
+                                <input type="number" id="twt_paragraph_icon_size" min="10" max="100" step="1"
+                                    style="width: 80px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 4px; text-align: center;" />
+                            </div>
+                            <div class="twt-setting-row" id="twt_menu_opt_edit_filtered_row"
+                                style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                                <label for="twt_menu_opt_edit_filtered">分段编辑应用正则过滤 (只显示用户可见文本)</label>
+                                <input type="checkbox" id="twt_menu_opt_edit_filtered" />
+                            </div>
+                            <div class="twt-setting-row" id="twt_paragraph_xml_whitelist_row"
+                                style="display: flex; flex-direction: column; margin-bottom: 8px; align-items: flex-start;">
+                                <label for="twt_paragraph_xml_whitelist" style="margin-bottom: 5px; font-size: 0.95em;">分段编辑 XML 标签白名单 (逗号分隔)</label>
+                                <input type="text" id="twt_paragraph_xml_whitelist" placeholder="例如：thought, TavernThought, reasoning, details"
+                                    style="width: 100%; box-sizing: border-box; padding: 6px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px;" />
+                            </div>
+                        </div>
+                        <div class="twt-setting-row"
+                            style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                            <label for="twt_menu_opt_fullscreen">长按菜单显示全屏选项</label>
+                            <input type="checkbox" id="twt_menu_opt_fullscreen" />
+                        </div>
                     </div>
                 </div>
-                <div class="twt-setting-row"
-                    style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                    <label for="twt_menu_opt_fullscreen">长按菜单显示全屏选项</label>
-                    <input type="checkbox" id="twt_menu_opt_fullscreen" />
+
+                <div class="inline-drawer" style="margin-bottom: 10px;">
+                    <div class="inline-drawer-toggle inline-drawer-header">
+                        <b>外部接口</b>
+                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                    </div>
+                    <div class="inline-drawer-content" style="display: none; padding: 10px 5px 5px 5px;">
+                        <div class="twt-setting-row"
+                            style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                            <label for="twt_menu_opt_excerpt">摘抄 (暂未实现)</label>
+                            <input type="checkbox" id="twt_menu_opt_excerpt" />
+                        </div>
+                        <!-- Excerpt sub-options -->
+                        <div id="twt_excerpt_sub_options" style="margin-left: 20px; border-left: 2px solid var(--SmartThemeBorderColor); padding-left: 10px; margin-bottom: 8px;">
+                            <div class="twt-setting-row"
+                                style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                                <label for="twt_excerpt_top_offset">悬浮条顶距 (px)</label>
+                                <input type="number" id="twt_excerpt_top_offset" min="0" max="1000" step="1"
+                                    style="width: 80px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 4px; text-align: center;" />
+                            </div>
+                            <div class="twt-setting-row"
+                                style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                                <label for="twt_excerpt_font_size">悬浮条字号 (px)</label>
+                                <input type="number" id="twt_excerpt_font_size" min="8" max="30" step="1"
+                                    style="width: 80px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 4px; text-align: center;" />
+                            </div>
+                        </div>
+                        <div class="twt-setting-row"
+                            style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                            <label for="twt_menu_opt_api">API</label>
+                            <input type="checkbox" id="twt_menu_opt_api" />
+                        </div>
+                    </div>
+                </div>
+
+                <div class="inline-drawer" style="margin-bottom: 15px;">
+                    <div class="inline-drawer-toggle inline-drawer-header">
+                        <b>菜单项排序 (点击 ▲/▼ 调整顺序)</b>
+                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                    </div>
+                    <div class="inline-drawer-content" style="display: none; padding: 10px 5px 5px 5px;">
+                        <div id="twt_menu_order_list" style="display: flex; flex-direction: column; gap: 5px;">
+                            <!-- Dynamically rendered -->
+                        </div>
+                    </div>
                 </div>
             </div>
 

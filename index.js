@@ -47,6 +47,16 @@ const defaultSettings = {
     excerptTopOffset: 0,
     excerptFontSize: 12,
     menuOptFullscreen: true,
+    menuOptApi: false,
+    menuOrder: [
+        'menuOptRegenerate',
+        'menuOptSwipe',
+        'menuOptManage',
+        'menuOptEdit',
+        'menuOptExcerpt',
+        'menuOptFullscreen',
+        'menuOptApi'
+    ],
     isFullscreen: false,
     menuInvokeMethod: 'longpress',
     menuLongpressDelay: 500,
@@ -204,6 +214,16 @@ if (!extension_settings.twt) {
     }
     if (extension_settings.twt.commentsDrawerWidth === undefined) {
         extension_settings.twt.commentsDrawerWidth = defaultSettings.commentsDrawerWidth;
+    }
+
+    if (!extension_settings.twt.menuOrder) {
+        extension_settings.twt.menuOrder = [...defaultSettings.menuOrder];
+    } else {
+        defaultSettings.menuOrder.forEach(key => {
+            if (!extension_settings.twt.menuOrder.includes(key)) {
+                extension_settings.twt.menuOrder.push(key);
+            }
+        });
     }
 }
 
@@ -855,6 +875,7 @@ function bindUI() {
     const $excerptTopOffset = $('#twt_excerpt_top_offset');
     const $excerptFontSize = $('#twt_excerpt_font_size');
     const $menuOptFullscreen = $('#twt_menu_opt_fullscreen');
+    const $menuOptApi = $('#twt_menu_opt_api');
     const $visualEnabled = $('#twt_visual_enabled');
     const $muluEnabled = $('#twt_mulu_enabled');
     
@@ -896,6 +917,7 @@ function bindUI() {
     $excerptTopOffset.val(extension_settings.twt.excerptTopOffset !== undefined ? extension_settings.twt.excerptTopOffset : 0);
     $excerptFontSize.val(extension_settings.twt.excerptFontSize !== undefined ? extension_settings.twt.excerptFontSize : 12);
     $menuOptFullscreen.prop('checked', extension_settings.twt.menuOptFullscreen);
+    $menuOptApi.prop('checked', extension_settings.twt.menuOptApi);
     
     updateParagraphSubOptionsVisibility();
     updateExcerptSubOptionsVisibility();
@@ -1660,6 +1682,11 @@ function bindUI() {
         getContext().saveSettingsDebounced();
     });
 
+    $menuOptApi.on('change', function () {
+        extension_settings.twt.menuOptApi = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+    });
+
     $visualEnabled.on('change', function () {
         extension_settings.twt.visualEnabled = $(this).prop('checked');
         getContext().saveSettingsDebounced();
@@ -1790,6 +1817,75 @@ function bindUI() {
     // Wire up comments settings overlay button
     $('#twt_comments_open_editor_btn').on('click', () => {
         initCommentsEditor();
+    });
+
+    renderMenuOrderList();
+}
+
+function renderMenuOrderList() {
+    const $container = $('#twt_menu_order_list');
+    if (!$container.length) return;
+    $container.empty();
+
+    const order = extension_settings.twt.menuOrder || [
+        'menuOptRegenerate',
+        'menuOptSwipe',
+        'menuOptManage',
+        'menuOptEdit',
+        'menuOptExcerpt',
+        'menuOptFullscreen',
+        'menuOptApi'
+    ];
+
+    const labels = {
+        menuOptRegenerate: '重新生成',
+        menuOptSwipe: '滑动',
+        menuOptManage: '管理消息',
+        menuOptEdit: '分段编辑',
+        menuOptExcerpt: '摘抄',
+        menuOptFullscreen: '全屏',
+        menuOptApi: 'API'
+    };
+
+    order.forEach((key, index) => {
+        const label = labels[key] || key;
+        const $row = $(`
+            <div class="twt-order-row" data-key="${key}" style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; background: var(--SmartThemeDarkColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; margin-bottom: 5px;">
+                <span>${label}</span>
+                <div style="display: flex; gap: 8px;">
+                    <button class="twt-order-up menu_button" style="padding: 2px 6px; font-size: 0.85em; cursor: pointer;" ${index === 0 ? 'disabled' : ''}>▲</button>
+                    <button class="twt-order-down menu_button" style="padding: 2px 6px; font-size: 0.85em; cursor: pointer;" ${index === order.length - 1 ? 'disabled' : ''}>▼</button>
+                </div>
+            </div>
+        `);
+
+        $row.find('.twt-order-up').on('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (index > 0) {
+                const temp = order[index];
+                order[index] = order[index - 1];
+                order[index - 1] = temp;
+                extension_settings.twt.menuOrder = order;
+                getContext().saveSettingsDebounced();
+                renderMenuOrderList();
+            }
+        });
+
+        $row.find('.twt-order-down').on('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (index < order.length - 1) {
+                const temp = order[index];
+                order[index] = order[index + 1];
+                order[index + 1] = temp;
+                extension_settings.twt.menuOrder = order;
+                getContext().saveSettingsDebounced();
+                renderMenuOrderList();
+            }
+        });
+
+        $container.append($row);
     });
 }
 
