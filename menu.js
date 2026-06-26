@@ -2,6 +2,7 @@
 import { getContext } from '../../../extensions.js';
 import { hideChatMessageRange } from '../../../chats.js';
 import { openParagraphEditor } from './paragraph.js';
+import { scrollPageLeft, scrollPageRight } from './pagination.js';
 
 let longpressTimeout = null;
 let touchStartX = 0;
@@ -9,8 +10,23 @@ let touchStartY = 0;
 let toggleExcerptCallback = null;
 let getSettingsCallback = null;
 
+function isExcerptActive() {
+    const parentDoc = getParentDoc();
+    return document.body.classList.contains('twt-excerpt-active') || 
+           (parentDoc && parentDoc.body && parentDoc.body.classList.contains('twt-excerpt-active'));
+}
+
 export function applyMenuMode(enabled, settings) {
-    // Handles runtime state updates if any
+    if (!enabled) {
+        const parentDoc = getParentDoc();
+        const bar = parentDoc.getElementById('twt-excerpt-float-bar');
+        if (bar) {
+            bar.remove();
+            if (toggleExcerptCallback) {
+                toggleExcerptCallback(false);
+            }
+        }
+    }
 }
 
 export function initMenu(getSettings, onToggleExcerpt) {
@@ -23,6 +39,7 @@ export function initMenu(getSettings, onToggleExcerpt) {
 
     // Handle PC right click (contextmenu) and block default context menu
     chatContainer.on('contextmenu', (e) => {
+        if (isExcerptActive()) return;
         const settings = getSettings();
         if (!settings || !settings.menuEnabled) return;
 
@@ -51,6 +68,7 @@ export function initMenu(getSettings, onToggleExcerpt) {
     });
 
     const handleStart = (e, clientX, clientY) => {
+        if (isExcerptActive()) return;
         const settings = getSettings();
         if (!settings || !settings.menuEnabled || settings.menuInvokeMethod !== 'longpress') return;
 
@@ -778,10 +796,30 @@ function startExcerptLinkage() {
         bar.style.borderRadius = '10px';
     }
 
+    const prevBtn = parentDoc.createElement('button');
+    prevBtn.className = 'twt-excerpt-nav-btn';
+    prevBtn.innerHTML = '<i class="fa-solid fa-chevron-left"></i>';
+    prevBtn.title = '上一页';
+    prevBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        scrollPageLeft();
+    });
+    bar.appendChild(prevBtn);
+
     const textSpan = parentDoc.createElement('span');
     textSpan.className = 'twt-excerpt-text';
     textSpan.innerHTML = '摘抄模式已开启';
     bar.appendChild(textSpan);
+
+    const nextBtn = parentDoc.createElement('button');
+    nextBtn.className = 'twt-excerpt-nav-btn';
+    nextBtn.innerHTML = '<i class="fa-solid fa-chevron-right"></i>';
+    nextBtn.title = '下一页';
+    nextBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        scrollPageRight();
+    });
+    bar.appendChild(nextBtn);
 
     const closeBtn = parentDoc.createElement('button');
     closeBtn.className = 'twt-excerpt-close-btn';

@@ -704,6 +704,10 @@ export function initPaginationEvent(getSettings) {
             return;
         }
 
+        if (document.body.classList.contains('twt-excerpt-active')) {
+            return;
+        }
+
         const chatContainer = document.getElementById('chat');
         if (!chatContainer?.contains(e.target)) return;
 
@@ -816,6 +820,7 @@ function bindScrollEvents(getSettings) {
     chatContainer.addEventListener('touchstart', (e) => {
         if (!document.body.classList.contains('twt-reading-mode')) return;
         if (document.body.classList.contains('twt-paragraph-editing')) return;
+        if (document.body.classList.contains('twt-excerpt-active')) return;
         const settings = getSettings();
         if (!settings?.enabled || !settings.swipeEnabled) return;
 
@@ -835,6 +840,7 @@ function bindScrollEvents(getSettings) {
     chatContainer.addEventListener('touchmove', (e) => {
         if (!isTouchTracking) return;
         if (!document.body.classList.contains('twt-reading-mode')) return;
+        if (document.body.classList.contains('twt-excerpt-active')) return;
         const settings = getSettings();
         if (!settings?.enabled || !settings.swipeEnabled) return;
 
@@ -859,6 +865,7 @@ function bindScrollEvents(getSettings) {
 
         if (!document.body.classList.contains('twt-reading-mode')) return;
         if (document.body.classList.contains('twt-paragraph-editing')) return;
+        if (document.body.classList.contains('twt-excerpt-active')) return;
         const settings = getSettings();
         if (!settings?.enabled || !settings.swipeEnabled) return;
 

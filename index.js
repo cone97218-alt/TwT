@@ -2751,6 +2751,10 @@ jQuery(async () => {
     initPaginationEvent(() => extension_settings.twt);
     initMenu(() => extension_settings.twt, (active) => {
         isExcerptModeActive = active;
+        document.body.classList.toggle('twt-excerpt-active', active);
+        if (parentDoc && parentDoc.body) {
+            parentDoc.body.classList.toggle('twt-excerpt-active', active);
+        }
         updateInjectedStyles();
     });
     parentDoc.addEventListener('contextmenu', (e) => {
