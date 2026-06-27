@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { extension_settings } from '../../../extensions.js';
 let resizeObserver = null;
 let lastUserPage = 0;
 let isProgrammaticScrolling = false;
@@ -9,6 +10,7 @@ let lastInteractedElement = null;
 let lastInteractedMessage = null;
 let lastInteractedMessagePageOffset = 0;
 let reflowNavigationTimer = null;
+let isUserTouchActive = false; // 用于告知 containOversizedElements 当前是否正在滑动
 
 // ---- 焦点保护窗口（防止键盘弹出时 ResizeObserver 抢先重排导致跳页）----
 let preKeyboardPage = -1;
@@ -20,36 +22,38 @@ const elementPrevHeights = new WeakMap();
 // 高度突变阈值（px）：超过此值视为折叠展开事件，强制断页保护
 const HEIGHT_SURGE_THRESHOLD = 80;
 
+/**
+ * 根据元素在当前页面的起始 top 偏移，自适应地计算当前页面剩下空间的高度限制
+ */
+function getAdaptiveMaxHeight(el, chat, colHeight, isPageBreakEnabled) {
+    if (isPageBreakEnabled) {
+        return colHeight - 20;
+    }
+    const chatRect = chat.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const offsetTop = elRect.top - chatRect.top;
+    if (offsetTop > 0 && offsetTop < colHeight) {
+        const remaining = colHeight - offsetTop;
+        // 如果页面下半部分所剩空间大于 150px，我们就限制其 max-height 缩进到剩余空间内滚动；
+        // 否则如果太靠近页尾了（所剩太少），允许它占有微量跨页流动（最少 150px 高度限制），防止缩得太小无法阅读。
+        return remaining > 150 ? (remaining - 20) : Math.max(150, Math.min(200, colHeight - 20));
+    }
+    return colHeight - 20;
+}
+
 function containOversizedElements() {
     const chat = document.getElementById('chat');
     if (!chat || !document.body.classList.contains('twt-reading-mode')) return;
     
     const colHeight = chat.clientHeight;
     if (colHeight <= 0) return;
+    const isPageBreakEnabled = extension_settings?.twt?.htmlPageBreakEnabled !== false;
     
-    // 1. 读相位 - 收集需要清理的元素
-    const toRemove = [];
-    chat.querySelectorAll('.twt-pagination-scrollable').forEach(el => {
-        toRemove.push(el);
-    });
-
-    // 2. 写相位 - 临时清除样式，以便准确测量
-    if (toRemove.length > 0) {
-        toRemove.forEach(el => {
-            el.style.removeProperty('max-height');
-            el.style.removeProperty('overflow-y');
-            el.classList.remove('twt-pagination-scrollable');
-        });
-        // 强制回流一次，确保后续测量准确
-        // eslint-disable-next-line no-unused-expressions
-        chat.scrollHeight; 
-    }
-
-    const toScrollable = [];  // 需要被收容为内部滚动的超大容器
+    const toScrollable = [];  // 需要被收容为内部滚动的新超大容器，存储为 { el, maxHeight } 结构
     const toBreak = [];       // 需要强制断页（但不一定收容）的元素
     const excludedTags = new Set(['P', 'SPAN', 'BLOCKQUOTE', 'PRE', 'OL', 'UL', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'A', 'CODE', 'EM', 'STRONG', 'I', 'B']);
     
-    // 3. 读相位 - 扫描并标记 HTML 容器
+    // 读相位 - 扫描并标记 HTML 容器
     chat.querySelectorAll('.mes_text > *').forEach(el => {
         const isReasoning = el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body');
         const isContainerTag = el.tagName === 'DIV' || 
@@ -67,8 +71,18 @@ function containOversizedElements() {
             el.classList.remove('twt-html-needs-break');
         }
 
+        // 优化：已标记为收容的元素，直接保留并计算自适应的高度限制，无需临时清除样式和测量
+        if (el.classList.contains('twt-pagination-scrollable')) {
+            const maxHeight = getAdaptiveMaxHeight(el, chat, colHeight, isPageBreakEnabled);
+            toScrollable.push({ el, maxHeight });
+            if (isPageBreakEnabled) {
+                toBreak.push(el);
+            }
+            return;
+        }
+
         // 跳过已经决定要收容的元素的子元素
-        if (toScrollable.some(parent => parent.contains(el))) return;
+        if (toScrollable.some(item => item.el.contains(el))) return;
         
         // 排除普通文本类标签，它们可以跨列自然流动
         if (excludedTags.has(el.tagName)) return;
@@ -78,15 +92,38 @@ function containOversizedElements() {
 
         const currentHeight = el.scrollHeight;
 
+        // 计算当前位置的剩余空间
+        const chatRect = chat.getBoundingClientRect();
+        const elRect = el.getBoundingClientRect();
+        const offsetTop = elRect.top - chatRect.top;
+        const remainingSpace = (offsetTop > 0 && offsetTop < colHeight) ? (colHeight - offsetTop) : colHeight;
+
         // ---- 第一级：原生折叠元素 ----
-        // <details> 无论大小都必须：
-        //   1. 强制断页（break-before）：确保从页顶开始，有整列空间可用
-        //   2. 预设 max-height（toScrollable）：在用户展开之前就限制高度，
-        //      防止展开瞬间 CSS Column 重排跳页——这是消灭时序漏洞的关键
         if (el.tagName === 'DETAILS') {
-            toBreak.push(el);
-            toScrollable.push(el); // 始终预设，不依赖当前是否已展开
-            elementPrevHeights.set(el, currentHeight);
+            const wasOpen = el.open;
+            if (!wasOpen) {
+                el.open = true;
+            }
+            let estimatedExpandedHeight = 0;
+            for (const child of el.children) {
+                estimatedExpandedHeight += child.scrollHeight;
+            }
+            if (!wasOpen) {
+                el.open = false;
+            }
+            
+            if (estimatedExpandedHeight > remainingSpace) {
+                if (isPageBreakEnabled) {
+                    toBreak.push(el);
+                    if (estimatedExpandedHeight > colHeight) {
+                        toScrollable.push({ el, maxHeight: colHeight - 20 });
+                    }
+                } else {
+                    const maxHeight = remainingSpace > 150 ? (remainingSpace - 20) : Math.max(150, Math.min(200, colHeight - 20));
+                    toScrollable.push({ el, maxHeight });
+                }
+            }
+            elementPrevHeights.set(el, el.scrollHeight);
             return;
         }
 
@@ -99,7 +136,7 @@ function containOversizedElements() {
         elementPrevHeights.set(el, currentHeight);
 
         // ---- 第二级：超高容器 或 刚刚高度突变的未知折叠组件 ----
-        if (currentHeight > colHeight || hasSurged) {
+        if (currentHeight > remainingSpace || hasSurged) {
             // 快速检查是否是创建 BFC 的真实容器或已知容器标签
             const cs = window.getComputedStyle(el);
             const createsBFC = (
@@ -111,40 +148,48 @@ function containOversizedElements() {
             );
             
             if (createsBFC || isContainerTag) {
-                toBreak.push(el);
-                toScrollable.push(el);
+                if (isPageBreakEnabled) {
+                    toBreak.push(el);
+                    if (currentHeight > colHeight || hasSurged) {
+                        toScrollable.push({ el, maxHeight: colHeight - 20 });
+                    }
+                } else {
+                    const maxHeight = remainingSpace > 150 ? (remainingSpace - 20) : Math.max(150, Math.min(200, colHeight - 20));
+                    toScrollable.push({ el, maxHeight });
+                }
             }
             return;
         }
-
-        // ---- 第三级：小型静态容器 ----
-        // 高度在列高内且无突变，自然流动，清除断页标记即可（写相位统一处理）
     });
 
-    // 4. 写相位 - 应用断页标记（先清除所有，再按需打标）
+    // 写相位 - 应用断页标记（先清除所有不在 toBreak 中的断页标记）
     chat.querySelectorAll('.twt-html-needs-break').forEach(el => {
-        el.classList.remove('twt-html-needs-break');
+        if (!toBreak.includes(el)) {
+            el.classList.remove('twt-html-needs-break');
+        }
     });
     toBreak.forEach(el => {
         el.classList.add('twt-html-needs-break');
     });
 
-    // 5. 写相位 - 应用收容样式
+    // 写相位 - 应用收容样式
     if (toScrollable.length > 0) {
-        toScrollable.forEach(el => {
-            el.style.setProperty('max-height', `${colHeight - 20}px`, 'important');
+        toScrollable.forEach(({ el, maxHeight }) => {
+            el.style.setProperty('max-height', `${maxHeight}px`, 'important');
             el.style.setProperty('overflow-y', 'auto', 'important');
             el.classList.add('twt-pagination-scrollable');
         });
     }
     
-    // 6. 校验当前页面，如果超出则重置
-    const cw = chat.getBoundingClientRect().width;
-    if (cw > 0) {
-        const totalPages = Math.ceil(chat.scrollWidth / cw);
-        if (lastUserPage >= totalPages) {
-            lastUserPage = Math.max(0, totalPages - 1);
-            chat.scrollTo({ left: lastUserPage * cw, behavior: 'instant' });
+    // 6. 校验当前页面，如果超出则重置（但滑动期间跳过，避免因重排短暂导致 scrollWidth 变化而引发误跳页）
+    if (!isUserTouchActive) {
+        const cw = chat.getBoundingClientRect().width;
+        if (cw > 0) {
+            const totalPages = Math.ceil(chat.scrollWidth / cw);
+            if (lastUserPage >= totalPages) {
+                lastUserPage = Math.max(0, totalPages - 1);
+                chat.scrollTo({ left: lastUserPage * cw, behavior: 'instant' });
+            }
         }
     }
 }
@@ -225,7 +270,14 @@ function initChatMutationObserver() {
         if (isFocusGuardActive) return; // 焦点保护期内跳过，防止键盘弹出时重排
         
         clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
+        
+        const runCheck = () => {
+            if (isUserTouchActive) {
+                // 如果用户正在滑动，推迟到滑动结束后执行，避免滑动中重排引起跳页
+                debounceTimer = setTimeout(runCheck, 150);
+                return;
+            }
+            
             // 临时断开 Observer 避免 containOversizedElements 修改样式引起无限循环
             if (chatMutationObserver) {
                 chatMutationObserver.disconnect();
@@ -245,7 +297,9 @@ function initChatMutationObserver() {
                     attributeFilter: ['open', 'style', 'class']
                 });
             }
-        }, 150);
+        };
+        
+        debounceTimer = setTimeout(runCheck, 150);
     });
     
     chatMutationObserver.observe(chat, {
@@ -331,7 +385,7 @@ function initVirtualKeyboardGuard() {
     if (isKeyboardGuardInit) return;
     isKeyboardGuardInit = true;
 
-    // ---- 文档级焦点监听：任何输入框获焦时立即冻结 #chat 高度 ----
+    // ---- 文档级焦点监听：任何输入框获获焦时立即冻结 #chat 高度 ----
     // 注意：此监听器注册不依赖 window.visualViewport，确保所有浏览器都能冻结高度
     document.addEventListener('focusin', (e) => {
         if (!document.body.classList.contains('twt-reading-mode')) return;
@@ -424,16 +478,29 @@ function initVirtualKeyboardGuard() {
             clearTimeout(keyboardRestoreTimer);
             keyboardRestoreTimer = setTimeout(() => {
                 console.log('[TwT] 键盘收起, 恢复页:', lastUserPage);
-                isKeyboardOpen = false;
-                stopPositionLock();
                 const chatContainer = document.getElementById('chat');
-                unfreezeChatHeight(chatContainer);
-                // 解冻后重新校正列宽（保持在当前页）
-                updateColWidth();
-                const cw = chatContainer?.getBoundingClientRect().width;
-                if (cw > 0) {
-                    chatContainer.scrollTo({ left: lastUserPage * cw, behavior: 'instant' });
+                
+                // 1. 先对焦点输入框执行 blur()，切断原生焦点滚动行为，防止重排时 scrollLeft 漂移
+                const activeEl = document.activeElement;
+                if (activeEl && chatContainer?.contains(activeEl)) {
+                    if (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable) {
+                        activeEl.blur();
+                    }
                 }
+                
+                // 2. 解冻高度并更新列宽（此时 isKeyboardOpen 仍为 true，rAF 锁继续保持正确位置）
+                unfreezeChatHeight(chatContainer);
+                updateColWidth();
+                
+                // 3. 在下一帧（重排完成）将页面定位至 lastUserPage，然后安全释放键盘锁定
+                requestAnimationFrame(() => {
+                    const cw = chatContainer?.getBoundingClientRect().width;
+                    if (cw > 0) {
+                        chatContainer.scrollTo({ left: lastUserPage * cw, behavior: 'instant' });
+                    }
+                    isKeyboardOpen = false;
+                    stopPositionLock();
+                });
             }, 300);
         }
 
@@ -679,11 +746,19 @@ export function initPaginationEvent(getSettings) {
         // 只处理 #chat 内的 <details>
         const chat = document.getElementById('chat');
         if (!chat || !chat.contains(details)) return;
-        // 如果 max-height 尚未设置（containOversizedElements 还没跑），立即补设
-        if (!details.style.maxHeight) {
+        
+        if (details.open) {
+            // 正在折叠收起：立即同步移除高度限制与滚动样式，防止收起瞬间有布局残留和二次重排
+            details.style.removeProperty('max-height');
+            details.style.removeProperty('overflow-y');
+            details.classList.remove('twt-pagination-scrollable');
+        } else {
+            // 正在展开：立即同步计算并应用自适应高度限制，消灭时序漏洞，防止展开瞬间触发列重排跳页
             const colHeight = chat.clientHeight;
             if (colHeight > 0) {
-                details.style.setProperty('max-height', `${colHeight - 20}px`, 'important');
+                const isPageBreakEnabled = extension_settings?.twt?.htmlPageBreakEnabled !== false;
+                const maxHeight = getAdaptiveMaxHeight(details, chat, colHeight, isPageBreakEnabled);
+                details.style.setProperty('max-height', `${maxHeight}px`, 'important');
                 details.style.setProperty('overflow-y', 'auto', 'important');
                 details.classList.add('twt-pagination-scrollable');
             }
@@ -711,7 +786,8 @@ export function initPaginationEvent(getSettings) {
         const chatContainer = document.getElementById('chat');
         if (!chatContainer?.contains(e.target)) return;
 
-        const baseSelector = 'button, a, input, textarea, select, label, details, summary, [onclick], [role="button"], [tabindex], .mes_button, .swipe-button, .ch_name, .avatar, img, .svg-icon';
+        // 移除 details 以避免将点击 details 内容区域误判为点击了交互元素（summary 仍保留以保护折叠/展开区域）
+        const baseSelector = 'button, a, input, textarea, select, label, summary, [onclick], [role="button"], [tabindex], .mes_button, .swipe-button, .ch_name, .avatar, img, .svg-icon';
         let isInteractive = false;
         if (settings.customWhitelist?.trim()) {
             try { isInteractive = !!e.target.closest(settings.customWhitelist.trim()); }
@@ -758,7 +834,7 @@ export function initPaginationEvent(getSettings) {
 
 /**
  * 绑定 #chat 上的 scroll / touch 事件。
- * 每次聊天切换后都需要重新调用，以重新绑定到新的 #chat 元素。
+ * 每次聊天切换后都需要重新调用，以重新绑定 to 新的 #chat 元素。
  * 通过 AbortController 管理事件生命周期，防止在旧元素上积累无效监听器。
  */
 function bindScrollEvents(getSettings) {
@@ -826,6 +902,7 @@ function bindScrollEvents(getSettings) {
 
         clearTimeout(touchCooldownTimer);
         isTouching = true;
+        isUserTouchActive = true; // 开启触摸滑动标记
         clearTimeout(snapDebounce);
 
         touchStartX = e.touches[0].clientX;
@@ -871,14 +948,22 @@ function bindScrollEvents(getSettings) {
 
         if (!touchIsHorizontal) {
             isProgrammaticScrolling = false;
-            touchCooldownTimer = setTimeout(() => { isTouching = false; }, 150);
+            touchCooldownTimer = setTimeout(() => { 
+                isTouching = false; 
+                isUserTouchActive = false; // 清理滑动标记
+            }, 150);
             return;
         }
 
         const deltaX = e.changedTouches[0].clientX - touchStartX;
         const deltaTime = Date.now() - touchStartTime;
         const cw = chatContainer.getBoundingClientRect().width;
-        if (cw <= 0) { isProgrammaticScrolling = false; isTouching = false; return; }
+        if (cw <= 0) { 
+            isProgrammaticScrolling = false; 
+            isTouching = false; 
+            isUserTouchActive = false; // 清理滑动标记
+            return; 
+        }
 
         const startPage = Math.round(touchStartScrollLeft / cw);
         let targetPage = startPage;
@@ -899,6 +984,7 @@ function bindScrollEvents(getSettings) {
 
         const onSnapEnd = () => {
             isTouching = false;
+            isUserTouchActive = false; // 清理滑动标记
             isProgrammaticScrolling = false;
             chatContainer.removeEventListener('scrollend', onSnapEnd);
             clearTimeout(touchCooldownTimer);
@@ -906,6 +992,7 @@ function bindScrollEvents(getSettings) {
         chatContainer.addEventListener('scrollend', onSnapEnd);
         touchCooldownTimer = setTimeout(() => {
             isTouching = false;
+            isUserTouchActive = false; // 清理滑动标记
             isProgrammaticScrolling = false;
             chatContainer.removeEventListener('scrollend', onSnapEnd);
         }, 600);
@@ -917,8 +1004,6 @@ function bindScrollEvents(getSettings) {
         isProgrammaticScrolling = false;
         clearTimeout(touchCooldownTimer);
         isTouching = false;
+        isUserTouchActive = false; // 清理滑动标记
     }, { passive: true, signal });
-
-    // 焦点保护的滚动位置锁已改为 rAF 循环（在 initVirtualKeyboardGuard 中），
-    // 不再依赖 scroll 事件。
 }
