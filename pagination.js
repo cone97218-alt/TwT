@@ -266,6 +266,41 @@ function doSnap(chat) {
 }
 
 // ============================================================
+// 屏幕调试条（临时，用于诊断 App 端键盘跳页问题）
+// ============================================================
+let _dbgBar = null;
+let _dbgTimer = null;
+
+function initDebugBar() {
+    if (_dbgBar) return;
+    _dbgBar = document.createElement('div');
+    _dbgBar.style.cssText = [
+        'position:fixed', 'top:0', 'left:0', 'right:0', 'z-index:2147483647',
+        'background:rgba(0,0,0,0.85)', 'color:#0f0', 'font:11px monospace',
+        'padding:4px 6px', 'pointer-events:none', 'white-space:pre',
+        'line-height:1.4',
+    ].join(';');
+    document.body.appendChild(_dbgBar);
+    _dbgTimer = setInterval(() => {
+        const chat = getChat();
+        if (!chat) return;
+        const r = chat.getBoundingClientRect();
+        _dbgBar.textContent = [
+            `page=${lastUserPage} sl=${Math.round(chat.scrollLeft)} cw=${Math.round(r.width)}`,
+            `chatH=${Math.round(r.height)} stable=${Math.round(stableHeight)} frozen=${Math.round(frozenHeight)}`,
+            `winH=${window.innerHeight} kbd=${isKeyboardOpen} guard=${isFocusGuarding}`,
+            `sw=${chat.scrollWidth}`,
+        ].join('\n');
+    }, 300);
+}
+
+function destroyDebugBar() {
+    clearInterval(_dbgTimer);
+    _dbgBar?.remove();
+    _dbgBar = null;
+}
+
+// ============================================================
 // 列宽初始化：等待 scrollWidth 稳定
 // ============================================================
 function updateColWidth() {
@@ -518,6 +553,7 @@ export function applyPaginationMode(enabled, settings) {
         patchScrollIntoView();
         initVirtualKeyboardGuard();
         initMutationObserver();
+        initDebugBar(); // 临时调试条，确认原因后移除
     } else {
         document.body.classList.remove(
             'twt-reading-mode', 'twt-swipe-disabled',
@@ -534,6 +570,7 @@ export function applyPaginationMode(enabled, settings) {
         clearTimeout(keyboardRestoreTimer);
         clearTimeout(focusGuardTimer);
         stopPositionLock();
+        destroyDebugBar(); // 临时调试条
 
         const chat = getChat();
         unfreezeHeight(chat);
