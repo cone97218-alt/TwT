@@ -72,7 +72,7 @@ function startPositionLock(chat) {
     // 快照调用时的页码——锁定期间 lastUserPage 可能被浏览器原生 focus-scroll 污染，
     // 所以每帧不仅修正 scrollLeft，还把 lastUserPage 写回快照值，防止后续 doSnap 读到脏值
     const lockedPage = lastUserPage;
-    const expected   = lockedPage * cw;
+    const expected   = Math.round(lockedPage * cw); // Math.round 将浮点误差消除，防止轻微横向偏移
     function lock() {
         if (!isKeyboardOpen && !isFocusGuarding) { positionLockRaf = null; return; }
         if (Math.abs(chat.scrollLeft - expected) > 2) {
@@ -358,8 +358,30 @@ function disconnectMutationObserver() {
 function initResizeObserver() {
     const chat = getChat();
     if (!chat || resizeObserver) return;
-    resizeObserver = new ResizeObserver(() => {
-        if (isKeyboardOpen || isFocusGuarding) return;
+    resizeObserver = new ResizeObserver(entries => {
+        if (isFocusGuarding) return;
+        if (isKeyboardOpen) return; // 已处理，跳过（冻结导致的二次触发）
+
+        // 键盘检测：#chat 高度骤降超过 100px
+        // ResizeObserver 在《重排后、绘制前》触发，
+        // 在此冻结高度可以在用户看到画面之前就把列宽恢复正确，实现真正的《无闪烁》防跟页。
+        // 这也是覆盖 App 端 window.resize 不触发场景的关键触发源。
+        const entry = entries[entries.length - 1];
+        if (entry && stableHeight > 0) {
+            const currentH = entry.contentRect.height;
+            if (stableHeight - currentH > 100) {
+                isKeyboardOpen = true;
+                clearTimeout(keyboardRestoreTimer);
+                isFocusGuarding = false;
+                clearTimeout(focusGuardTimer);
+                freezeHeight(chat); // 使用 stableHeight，加内联样式将高度击回键盘弹出前的正确值
+                const cw = chat.getBoundingClientRect().width;
+                if (cw > 0) chat.scrollLeft = Math.round(lastUserPage * cw);
+                startPositionLock(chat);
+                return;
+            }
+        }
+
         updateColWidth();
     });
     resizeObserver.observe(chat);
@@ -469,7 +491,7 @@ function initVirtualKeyboardGuard() {
 
                 requestAnimationFrame(() => {
                     const cw = chat?.getBoundingClientRect().width;
-                    if (cw > 0) chat.scrollLeft = lastUserPage * cw;
+                    if (cw > 0) chat.scrollLeft = Math.round(lastUserPage * cw);
                 });
             }, 300);
         }
@@ -721,9 +743,19 @@ function bindScrollEvents(getSettings) {
     }
 
     chat.addEventListener('scroll', () => {
+        // 键盘或焦点保护期间：如果 scrollLeft 被浏览器自动滚动行为拨动，立即拨回
+        if (isKeyboardOpen || isFocusGuarding) {
+            const cw = chat.getBoundingClientRect().width;
+            if (cw > 0) {
+                const expected = Math.round(lastUserPage * cw);
+                if (Math.abs(chat.scrollLeft - expected) > 5) {
+                    chat.scrollLeft = expected;
+                }
+            }
+            return;
+        }
         if (isScrolling || isTouching) return;
         if (document.body.classList.contains('twt-paragraph-editing')) return;
-        if (isFocusGuarding || isKeyboardOpen) return;
 
         clearTimeout(snapTimer);
         if (!supportsScrollend) {
