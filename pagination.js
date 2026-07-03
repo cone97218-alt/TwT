@@ -388,15 +388,69 @@ function disconnectMutationObserver() {
 }
 
 // ============================================================
-// ResizeObserver
+// ResizeObserver（含键盘全生命周期检测）
 // ============================================================
+let _afterFreezeTimer = null; // 冻结后短暂锁定，防止把「我们自己的冻结」误判为「键盘收起」
+
 function initResizeObserver() {
     const chat = getChat();
     if (!chat || resizeObserver) return;
-    resizeObserver = new ResizeObserver(() => {
-        if (isKeyboardOpen || isFocusGuarding) return;
-        updateColWidth();
+
+    resizeObserver = new ResizeObserver(entries => {
+        if (isFocusGuarding) return;
+        // 忽略由我们自己的 freezeHeight 触发的二次回调
+        if (_afterFreezeTimer) return;
+
+        const entry = entries[entries.length - 1];
+        const currentH = entry?.contentRect.height ?? 0;
+
+        if (!isKeyboardOpen) {
+            // ── 检测键盘弹出：高度骤降 > 100px ──
+            // （App 端用 dvh CSS 单位，window.resize / vv.resize 均不触发，
+            //   ResizeObserver 是唯一可靠的检测点）
+            if (stableHeight > 0 && stableHeight - currentH > 100) {
+                isKeyboardOpen = true;
+                clearTimeout(keyboardRestoreTimer);
+                clearTimeout(focusGuardTimer);
+                isFocusGuarding = false;
+                // 用 stableHeight（污染前的正确值）冻结，
+                // inline !important 可覆盖 dvh 等 CSS，强制 #chat 保持原高度
+                freezeHeight(chat);
+                // 锁定 500ms，忽略冻结本身触发的 ResizeObserver 回调
+                _afterFreezeTimer = setTimeout(() => { _afterFreezeTimer = null; }, 500);
+                const cw = chat.getBoundingClientRect().width;
+                if (cw > 0) chat.scrollLeft = Math.round(lastUserPage * cw);
+                startPositionLock(chat);
+                return; // 绝对不调用 updateColWidth，保护 stableHeight
+            }
+            // 正常高度变化（窗口旋转等）
+            updateColWidth();
+        } else {
+            // ── 检测键盘收起：高度恢复到接近 stableHeight ──
+            if (currentH >= stableHeight - 50) {
+                clearTimeout(keyboardRestoreTimer);
+                keyboardRestoreTimer = setTimeout(() => {
+                    const active = document.activeElement;
+                    if (chat.contains(active) && (
+                        active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable
+                    )) active.blur();
+
+                    unfreezeHeight(chat);
+                    isKeyboardOpen = false;
+                    stopPositionLock();
+
+                    // 先解冻再更新列宽，saveStableHeight 可以记录正确的恢复高度
+                    requestAnimationFrame(() => {
+                        updateColWidth();
+                        const cw = chat.getBoundingClientRect().width;
+                        if (cw > 0) chat.scrollLeft = Math.round(lastUserPage * cw);
+                    });
+                }, 200);
+            }
+            // 高度变化但键盘仍开着 → 忽略，等待收起
+        }
     });
+
     resizeObserver.observe(chat);
 }
 
