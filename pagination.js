@@ -53,12 +53,16 @@ function startPositionLock(chat) {
     stopPositionLock();
     const cw = chat.getBoundingClientRect().width;
     if (cw <= 0) return;
-    const expected = lastUserPage * cw;
+    // 快照调用时的页码——锁定期间 lastUserPage 可能被浏览器原生 focus-scroll 污染，
+    // 所以每帧不仅修正 scrollLeft，还把 lastUserPage 写回快照值，防止后续 doSnap 读到脏值
+    const lockedPage = lastUserPage;
+    const expected   = lockedPage * cw;
     function lock() {
         if (!isKeyboardOpen && !isFocusGuarding) { positionLockRaf = null; return; }
         if (Math.abs(chat.scrollLeft - expected) > 2) {
             chat.scrollLeft = expected;
         }
+        lastUserPage = lockedPage; // 持续写回，防止漂移
         positionLockRaf = requestAnimationFrame(lock);
     }
     positionLockRaf = requestAnimationFrame(lock);
@@ -379,10 +383,20 @@ function initVirtualKeyboardGuard() {
 
         const chat = getChat();
         if (!chat) return;
+        const cw = chat.getBoundingClientRect().width;
 
+        // ① 先标记保护，阻止 doSnap / scroll 处理器更新 lastUserPage
         isFocusGuarding = true;
         clearTimeout(focusGuardTimer);
+
+        // ② 同步冻结高度（在浏览器键盘动画开始之前）
         if (!isKeyboardOpen) freezeHeight(chat);
+
+        // ③ 同步修正 scrollLeft：浏览器可能在 focusin 之前已经把焦点元素滚动入视，
+        //    这里立即拨回正确位置，然后再交给 rAF 锁持续看守
+        if (cw > 0) chat.scrollLeft = lastUserPage * cw;
+
+        // ④ 启动 rAF 位置锁（内部会快照 lastUserPage，每帧写回防漂移）
         startPositionLock(chat);
 
         // 800ms 内键盘没确认弹出，解除保护
