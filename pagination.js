@@ -393,30 +393,8 @@ function disconnectMutationObserver() {
 function initResizeObserver() {
     const chat = getChat();
     if (!chat || resizeObserver) return;
-    resizeObserver = new ResizeObserver(entries => {
-        if (isFocusGuarding) return;
-        if (isKeyboardOpen) return; // 已处理，跳过（冻结导致的二次触发）
-
-        // 键盘检测：#chat 高度骤降超过 100px
-        // ResizeObserver 在《重排后、绘制前》触发，
-        // 在此冻结高度可以在用户看到画面之前就把列宽恢复正确，实现真正的《无闪烁》防跟页。
-        // 这也是覆盖 App 端 window.resize 不触发场景的关键触发源。
-        const entry = entries[entries.length - 1];
-        if (entry && stableHeight > 0) {
-            const currentH = entry.contentRect.height;
-            if (stableHeight - currentH > 100) {
-                isKeyboardOpen = true;
-                clearTimeout(keyboardRestoreTimer);
-                isFocusGuarding = false;
-                clearTimeout(focusGuardTimer);
-                freezeHeight(chat); // 使用 stableHeight，加内联样式将高度击回键盘弹出前的正确值
-                const cw = chat.getBoundingClientRect().width;
-                if (cw > 0) chat.scrollLeft = Math.round(lastUserPage * cw);
-                startPositionLock(chat);
-                return;
-            }
-        }
-
+    resizeObserver = new ResizeObserver(() => {
+        if (isKeyboardOpen || isFocusGuarding) return;
         updateColWidth();
     });
     resizeObserver.observe(chat);
