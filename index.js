@@ -578,9 +578,6 @@ export function updateInjectedStyles() {
     const patches = extension_settings.twt.optimizePatches || {};
     for (const [name, patch] of Object.entries(patches)) {
         if (patch && patch.active && patch.code) {
-            if (name === '禁用聊天区域长按菜单' && isExcerptModeActive) {
-                continue;
-            }
             css += `/* Patch: ${name} */\n${patch.code}\n\n`;
         }
     }
@@ -2768,7 +2765,7 @@ jQuery(async () => {
     });
     parentDoc.addEventListener('contextmenu', (e) => {
         const patches = extension_settings.twt.optimizePatches || {};
-        const isEnabled = extension_settings.twt.visualEnabled && patches['禁用聊天区域长按菜单']?.active && !isExcerptModeActive;
+        const isEnabled = extension_settings.twt.visualEnabled && patches['禁用聊天区域长按菜单']?.active;
         if (!isEnabled) return;
 
         const chat = parentDoc.getElementById('chat');

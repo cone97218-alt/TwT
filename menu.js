@@ -821,6 +821,22 @@ function startExcerptLinkage() {
     });
     bar.appendChild(nextBtn);
 
+    const rectBtn = parentDoc.createElement('button');
+    rectBtn.className = 'twt-excerpt-nav-btn';
+    rectBtn.innerHTML = '<i class="fa-solid fa-vector-square"></i>';
+    rectBtn.title = '使用矩形选框框选文字进行摘抄';
+    rectBtn.style.marginRight = '10px';
+    rectBtn.style.marginLeft = '10px';
+    rectBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (typeof window.twtOpenRectSelector === 'function') {
+            window.twtOpenRectSelector();
+        } else {
+            console.error("twtOpenRectSelector is not defined on window.");
+        }
+    });
+    bar.appendChild(rectBtn);
+
     const closeBtn = parentDoc.createElement('button');
     closeBtn.className = 'twt-excerpt-close-btn';
     closeBtn.innerText = '关闭';
