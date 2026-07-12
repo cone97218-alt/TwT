@@ -342,6 +342,6 @@ body.twt-fullscreen-mode #topbar {
 
 /* 开启书摘/摘抄模式时禁用横向滚动 */
 body.twt-reading-mode.twt-excerpt-active #chat {
-    overflow-x: hidden !important;
+    touch-action: pan-y !important;
 }
 
