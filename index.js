@@ -1,9 +1,9 @@
 // @ts-nocheck
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
-import { applyPaginationMode, initPaginationEvent, resetPaginationBinding } from './pagination.js';
-import { applyVisualMode } from './visual.js';
-import { initMulu, applyMuluSettings } from './mulu.js';
-import { initMenu, applyMenuMode, applyFullscreenMode } from './menu.js';
+import { applyPaginationMode, initPaginationEvent, resetPaginationBinding } from './src/pagination/pagination.js';
+import { applyVisualMode } from './src/visual/visual.js';
+import { initMulu, applyMuluSettings } from './src/mulu/mulu.js';
+import { initMenu, applyMenuMode, applyFullscreenMode } from './src/menu/menu.js';
 
 let parentDoc = document;
 try {
@@ -49,6 +49,8 @@ const defaultSettings = {
     excerptFontSize: 12,
     menuOptFullscreen: true,
     menuOptApi: false,
+    menuOptPurifier: false,
+    menuOptPurifierDiff: false,
     menuOrder: [
         'menuOptRegenerate',
         'menuOptSwipe',
@@ -56,12 +58,15 @@ const defaultSettings = {
         'menuOptEdit',
         'menuOptExcerpt',
         'menuOptFullscreen',
-        'menuOptApi'
+        'menuOptApi',
+        'menuOptPurifier',
+        'menuOptPurifierDiff'
     ],
     isFullscreen: false,
     menuInvokeMethod: 'longpress',
     menuLongpressDelay: 500,
     menuDirection: 'bottom-right',
+    menuStyle: 'grid',
     visualEnabled: false, 
     muluEnabled: false,
     muluBtnStart: true,
@@ -875,6 +880,9 @@ function bindUI() {
     const $excerptFontSize = $('#twt_excerpt_font_size');
     const $menuOptFullscreen = $('#twt_menu_opt_fullscreen');
     const $menuOptApi = $('#twt_menu_opt_api');
+    const $menuOptPurifier = $('#twt_menu_opt_purifier');
+    const $menuOptPurifierDiff = $('#twt_menu_opt_purifier_diff');
+    const $menuStyle = $('#twt_menu_style');
     const $visualEnabled = $('#twt_visual_enabled');
     const $muluEnabled = $('#twt_mulu_enabled');
     
@@ -918,6 +926,9 @@ function bindUI() {
     $excerptFontSize.val(extension_settings.twt.excerptFontSize !== undefined ? extension_settings.twt.excerptFontSize : 12);
     $menuOptFullscreen.prop('checked', extension_settings.twt.menuOptFullscreen);
     $menuOptApi.prop('checked', extension_settings.twt.menuOptApi);
+    $menuOptPurifier.prop('checked', extension_settings.twt.menuOptPurifier);
+    $menuOptPurifierDiff.prop('checked', extension_settings.twt.menuOptPurifierDiff);
+    $menuStyle.val(extension_settings.twt.menuStyle || 'grid');
     
     updateParagraphSubOptionsVisibility();
     updateExcerptSubOptionsVisibility();
@@ -1693,6 +1704,21 @@ function bindUI() {
         getContext().saveSettingsDebounced();
     });
 
+    $menuOptPurifier.on('change', function () {
+        extension_settings.twt.menuOptPurifier = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+    });
+
+    $menuOptPurifierDiff.on('change', function () {
+        extension_settings.twt.menuOptPurifierDiff = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+    });
+
+    $menuStyle.on('change', function () {
+        extension_settings.twt.menuStyle = $(this).val();
+        getContext().saveSettingsDebounced();
+    });
+
     $visualEnabled.on('change', function () {
         extension_settings.twt.visualEnabled = $(this).prop('checked');
         getContext().saveSettingsDebounced();
@@ -1840,7 +1866,9 @@ function renderMenuOrderList() {
         'menuOptEdit',
         'menuOptExcerpt',
         'menuOptFullscreen',
-        'menuOptApi'
+        'menuOptApi',
+        'menuOptPurifier',
+        'menuOptPurifierDiff'
     ];
 
     const labels = {
@@ -1850,7 +1878,9 @@ function renderMenuOrderList() {
         menuOptEdit: '分段编辑',
         menuOptExcerpt: '摘抄',
         menuOptFullscreen: '全屏',
-        menuOptApi: 'API'
+        menuOptApi: 'API',
+        menuOptPurifier: '净化词汇映射',
+        menuOptPurifierDiff: '净化前文透视'
     };
 
     order.forEach((key, index) => {

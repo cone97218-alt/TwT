@@ -1,5 +1,5 @@
-@import url("./pagination.css");
-@import url("./visual.css");
-@import url("./menu.css");
-@import url("./paragraph.css");
+@import url("./src/pagination/pagination.css");
+@import url("./src/visual/visual.css");
+@import url("./src/menu/menu.css");
+@import url("./src/paragraph/paragraph.css");
 

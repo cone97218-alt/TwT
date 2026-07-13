@@ -1,0 +1,981 @@
+// @ts-nocheck
+import { getContext } from '../../../../../extensions.js';
+import { hideChatMessageRange } from '../../../../../chats.js';
+import { openParagraphEditor } from '../paragraph/paragraph.js';
+import { scrollPageLeft, scrollPageRight } from '../pagination/pagination.js';
+
+let longpressTimeout = null;
+let touchStartX = 0;
+let touchStartY = 0;
+let toggleExcerptCallback = null;
+let getSettingsCallback = null;
+
+function isExcerptActive() {
+    const parentDoc = getParentDoc();
+    return document.body.classList.contains('twt-excerpt-active') || 
+           (parentDoc && parentDoc.body && parentDoc.body.classList.contains('twt-excerpt-active'));
+}
+
+export function applyMenuMode(enabled, settings) {
+    if (!enabled) {
+        const parentDoc = getParentDoc();
+        const bar = parentDoc.getElementById('twt-excerpt-float-bar');
+        if (bar) {
+            bar.remove();
+            if (toggleExcerptCallback) {
+                toggleExcerptCallback(false);
+            }
+        }
+    }
+}
+
+export function initMenu(getSettings, onToggleExcerpt) {
+    getSettingsCallback = getSettings;
+    toggleExcerptCallback = onToggleExcerpt;
+    const chatContainer = $('#chat');
+    if (!chatContainer.length) return;
+
+    let lastTouchTime = 0;
+
+    // Handle PC right click (contextmenu) and block default context menu
+    chatContainer.on('contextmenu', (e) => {
+        if (isExcerptActive()) return;
+        const settings = getSettings();
+        if (!settings || !settings.menuEnabled) return;
+
+        // Block native menu
+        e.preventDefault();
+
+        // Check if this contextmenu event was triggered by mobile touch.
+        // If so, let touch listeners handle it.
+        const oe = e.originalEvent;
+        const isTouch = (Date.now() - lastTouchTime < 1000) || (oe && (oe.pointerType === 'touch' || (oe.touches && oe.touches.length > 0)));
+        if (isTouch) {
+            return;
+        }
+
+        // PC right click:
+        const target = e.target;
+        // Avoid launching menu when interacting with already interactive controls
+        if ($(target).closest('button, a, input, textarea, select, .mes_button, .swipe-button, .ch_name, .avatar, img, .svg-icon').length) {
+            return;
+        }
+
+        const $mes = $(target).closest('.mes');
+        if (!$mes.length) return;
+
+        showContextMenu(e, $mes, e.clientX, e.clientY, settings);
+    });
+
+    const handleStart = (e, clientX, clientY) => {
+        if (isExcerptActive()) return;
+        const settings = getSettings();
+        if (!settings || !settings.menuEnabled || settings.menuInvokeMethod !== 'longpress') return;
+
+        const target = e.target;
+        // Avoid launching menu when interacting with already interactive controls
+        if ($(target).closest('button, a, input, textarea, select, .mes_button, .swipe-button, .ch_name, .avatar, img, .svg-icon').length) {
+            return;
+        }
+
+        const $mes = $(target).closest('.mes');
+        if (!$mes.length) return;
+
+        touchStartX = clientX;
+        touchStartY = clientY;
+
+        clearTimeout(longpressTimeout);
+        longpressTimeout = setTimeout(() => {
+            showContextMenu(e, $mes, clientX, clientY, settings);
+        }, settings.menuLongpressDelay || 500);
+    };
+
+    const handleMove = (clientX, clientY) => {
+        if (longpressTimeout) {
+            const dist = Math.hypot(clientX - touchStartX, clientY - touchStartY);
+            if (dist > 10) {
+                clearTimeout(longpressTimeout);
+                longpressTimeout = null;
+            }
+        }
+    };
+
+    const handleEnd = () => {
+        clearTimeout(longpressTimeout);
+        longpressTimeout = null;
+    };
+
+    // Bind touch gestures for mobile
+    chatContainer.on('touchstart', (e) => {
+        lastTouchTime = Date.now();
+        if (e.touches.length === 1) {
+            handleStart(e, e.touches[0].clientX, e.touches[0].clientY);
+        }
+    });
+
+    chatContainer.on('touchmove', (e) => {
+        if (e.touches.length === 1) {
+            handleMove(e.touches[0].clientX, e.touches[0].clientY);
+        }
+    });
+
+    chatContainer.on('touchend touchcancel', () => {
+        handleEnd();
+    });
+
+    // Close menu when clicking outside
+    $(document).on('click.twt-menu touchstart.twt-menu', function() {
+        const $menu = $('#twt-custom-menu');
+        if ($menu.is(':visible')) {
+            setTimeout(() => {
+                $menu.hide();
+            }, 0);
+        }
+    });
+}
+
+function showContextMenu(e, $mes, clientX, clientY, settings) {
+    if (e.cancelable) e.preventDefault();
+
+    const mesId = Number($mes.attr('mesid'));
+    const isLatest = $mes.hasClass('last_mes');
+    const isUser = $mes.attr('is_user') === 'true';
+    const isLatestAi = isLatest && !isUser;
+
+    let $menu = $('#twt-custom-menu');
+    if (!$menu.length) {
+        $menu = $('<div id="twt-custom-menu"></div>').appendTo('body');
+    }
+    $menu.empty();
+
+    const useGridLayout = settings.menuStyle === 'grid';
+    if (useGridLayout) {
+        $menu.addClass('twt-menu-grid-layout');
+    } else {
+        $menu.removeClass('twt-menu-grid-layout');
+    }
+
+    const $gridBar = useGridLayout ? $('<div class="twt-menu-grid-row"></div>') : null;
+    const $listContainer = useGridLayout ? $('<div class="twt-menu-list-row"></div>') : null;
+    let hasItems = false;
+
+    const order = settings.menuOrder || [
+        'menuOptRegenerate',
+        'menuOptSwipe',
+        'menuOptManage',
+        'menuOptEdit',
+        'menuOptExcerpt',
+        'menuOptFullscreen',
+        'menuOptApi',
+        'menuOptPurifier',
+        'menuOptPurifierDiff'
+    ];
+
+    for (const key of order) {
+        if (key === 'menuOptRegenerate' && settings.menuOptRegenerate && isLatestAi) {
+            if (useGridLayout) {
+                const $item = $('<div class="twt-menu-grid-item" title="重新生成"><i class="fa-solid fa-rotate-right"></i><span>生成</span></div>');
+                $item.on('click', (evt) => {
+                    evt.stopPropagation();
+                    $menu.hide();
+                    $('#option_regenerate').trigger('click');
+                });
+                $gridBar.append($item);
+                hasItems = true;
+            } else {
+                const $item = $('<div class="twt-menu-item"><i class="fa-solid fa-rotate-right"></i><span>重新生成</span></div>');
+                $item.on('click', (evt) => {
+                    evt.stopPropagation();
+                    $menu.hide();
+                    $('#option_regenerate').trigger('click');
+                });
+                $menu.append($item);
+                hasItems = true;
+            }
+        }
+
+        if (key === 'menuOptSwipe') {
+            if (settings.menuOptSwipe && isLatestAi) {
+                if (useGridLayout) {
+                    const $item = $('<div class="twt-menu-grid-item" title="滑动"><i class="fa-solid fa-chevron-right"></i><span>滑动</span></div>');
+                    $item.on('click', (evt) => {
+                        evt.stopPropagation();
+                        $menu.hide();
+                        $('.last_mes .swipe_right').trigger('click');
+                    });
+                    $gridBar.append($item);
+                    hasItems = true;
+                } else {
+                    const $item = $('<div class="twt-menu-item"><i class="fa-solid fa-chevron-right"></i><span>滑动</span></div>');
+                    $item.on('click', (evt) => {
+                        evt.stopPropagation();
+                        $menu.hide();
+                        $('.last_mes .swipe_right').trigger('click');
+                    });
+                    $menu.append($item);
+                    hasItems = true;
+                }
+            }
+            // Add Paragraph Comment (小说段评) right after Swipe
+            if (settings.commentsEnabled) {
+                if (useGridLayout) {
+                    const $item = $('<div class="twt-menu-grid-item" title="小说段评"><i class="fa-regular fa-comment-dots"></i><span>段评</span></div>');
+                    $item.on('click', async (evt) => {
+                        evt.stopPropagation();
+                        $menu.hide();
+                        const { triggerBatchCommentsForMessage } = await import('../paragraph/paragraph.js');
+                        await triggerBatchCommentsForMessage(mesId);
+                    });
+                    $gridBar.append($item);
+                    hasItems = true;
+                } else {
+                    const $item = $('<div class="twt-menu-item"><i class="fa-regular fa-comment-dots"></i><span>段评</span></div>');
+                    $item.on('click', async (evt) => {
+                        evt.stopPropagation();
+                        $menu.hide();
+                        const { triggerBatchCommentsForMessage } = await import('../paragraph/paragraph.js');
+                        await triggerBatchCommentsForMessage(mesId);
+                    });
+                    $menu.append($item);
+                    hasItems = true;
+                }
+            }
+        }
+
+        if (key === 'menuOptManage' && settings.menuOptManage) {
+            const $item = $('<div class="twt-menu-item"><i class="fa-solid fa-list-check"></i><span>管理</span></div>');
+            $item.on('click', (evt) => {
+                evt.stopPropagation();
+                $menu.hide();
+                openMessageManagerModal(mesId);
+            });
+            if (useGridLayout) {
+                $listContainer.append($item);
+            } else {
+                $menu.append($item);
+            }
+            hasItems = true;
+
+            // Add Hide Current Message (隐藏/显示本条) Shortcut -> 隐藏 / 显示
+            const currentMsg = getContext().chat[mesId];
+            const isCurrentHidden = currentMsg ? (currentMsg.is_system || currentMsg.extra?.is_system) : false;
+            const hideLabel = isCurrentHidden ? '显示' : '隐藏';
+            const hideIcon = isCurrentHidden ? 'fa-regular fa-eye' : 'fa-regular fa-eye-slash';
+            
+            if (useGridLayout) {
+                const $hideItem = $(`<div class="twt-menu-grid-item" title="${hideLabel}消息"><i class="${hideIcon}"></i><span>${hideLabel}</span></div>`);
+                $hideItem.on('click', async (evt) => {
+                    evt.stopPropagation();
+                    $menu.hide();
+                    await hideChatMessageRange(mesId, mesId, isCurrentHidden);
+                });
+                $gridBar.append($hideItem);
+
+                const $deleteItem = $('<div class="twt-menu-grid-item twt-danger" title="删除消息"><i class="fa-regular fa-trash-can"></i><span>删除</span></div>');
+                $deleteItem.on('click', async (evt) => {
+                    evt.stopPropagation();
+                    $menu.hide();
+                    if (confirm('确定要删除这条消息吗？')) {
+                        await getContext().deleteMessage(mesId, undefined, false);
+                    }
+                });
+                $gridBar.append($deleteItem);
+            } else {
+                const $hideItem = $(`<div class="twt-menu-item"><i class="${hideIcon}"></i><span>${hideLabel}</span></div>`);
+                $hideItem.on('click', async (evt) => {
+                    evt.stopPropagation();
+                    $menu.hide();
+                    await hideChatMessageRange(mesId, mesId, isCurrentHidden);
+                });
+                $menu.append($hideItem);
+
+                const $deleteItem = $('<div class="twt-menu-item" style="color: #ff4444;"><i class="fa-regular fa-trash-can"></i><span>删除</span></div>');
+                $deleteItem.on('click', async (evt) => {
+                    evt.stopPropagation();
+                    $menu.hide();
+                    if (confirm('确定要删除这条消息吗？')) {
+                        await getContext().deleteMessage(mesId, undefined, false);
+                    }
+                });
+                $menu.append($deleteItem);
+            }
+        }
+
+        if (key === 'menuOptEdit' && settings.menuOptEdit) {
+            if (useGridLayout) {
+                const $item = $('<div class="twt-menu-grid-item" title="分段编辑"><i class="fa-regular fa-pen-to-square"></i><span>编辑</span></div>');
+                $item.on('click', (evt) => {
+                    evt.stopPropagation();
+                    $menu.hide();
+                    openParagraphEditor(mesId, clientX, clientY);
+                });
+                $gridBar.append($item);
+                hasItems = true;
+            } else {
+                const $item = $('<div class="twt-menu-item"><i class="fa-regular fa-pen-to-square"></i><span>编辑</span></div>');
+                $item.on('click', (evt) => {
+                    evt.stopPropagation();
+                    $menu.hide();
+                    openParagraphEditor(mesId, clientX, clientY);
+                });
+                $menu.append($item);
+                hasItems = true;
+            }
+        }
+
+        if (key === 'menuOptExcerpt' && settings.menuOptExcerpt) {
+            const $item = $('<div class="twt-menu-item"><i class="fa-regular fa-bookmark"></i><span>摘抄</span></div>');
+            $item.on('click', (evt) => {
+                evt.stopPropagation();
+                $menu.hide();
+                startExcerptLinkage();
+            });
+            if (useGridLayout) {
+                $listContainer.append($item);
+            } else {
+                $menu.append($item);
+            }
+            hasItems = true;
+        }
+
+        if (key === 'menuOptFullscreen' && settings.menuOptFullscreen) {
+            const isCurrentlyFullscreen = settings.isFullscreen;
+            const label = isCurrentlyFullscreen ? '退出' : '全屏';
+            const icon = isCurrentlyFullscreen ? 'fa-solid fa-compress' : 'fa-solid fa-expand';
+            const $item = $(`<div class="twt-menu-item"><i class="${icon}"></i><span>${label}</span></div>`);
+            $item.on('click', (evt) => {
+                evt.stopPropagation();
+                $menu.hide();
+                settings.isFullscreen = !isCurrentlyFullscreen;
+                applyFullscreenMode(settings.isFullscreen);
+                getContext().saveSettingsDebounced();
+            });
+            if (useGridLayout) {
+                $listContainer.append($item);
+            } else {
+                $menu.append($item);
+            }
+            hasItems = true;
+        }
+
+        if (key === 'menuOptApi' && settings.menuOptApi) {
+            const $item = $('<div class="twt-menu-item"><i class="fa-solid fa-plug"></i><span>API</span></div>');
+            $item.on('click', (evt) => {
+                evt.stopPropagation();
+                $menu.hide();
+                if (window.ApiConfigManager && typeof window.ApiConfigManager.show === 'function') {
+                    window.ApiConfigManager.show();
+                } else {
+                    console.error('API 配置管理器扩展未加载或未启用');
+                    if (typeof toastr !== 'undefined') {
+                        toastr.warning('API 配置管理器扩展未加载或未启用', '提示');
+                    }
+                }
+            });
+            if (useGridLayout) {
+                $listContainer.append($item);
+            } else {
+                $menu.append($item);
+            }
+            hasItems = true;
+        }
+
+        if (key === 'menuOptPurifier' && settings.menuOptPurifier) {
+            const $item = $('<div class="twt-menu-item"><i class="fa-solid fa-language"></i><span>词汇映射</span></div>');
+            $item.on('click', (evt) => {
+                evt.stopPropagation();
+                $menu.hide();
+                const $btn = $('#bl-wand-btn');
+                if ($btn.length) {
+                    $btn.trigger('click');
+                } else {
+                    const $btnPanel = $('#bl-wand-btn-panel');
+                    if ($btnPanel.length) {
+                        $btnPanel.trigger('click');
+                    } else {
+                        const $popup = $('#bl-purifier-popup');
+                        if ($popup.length) {
+                            $popup.css('display', 'flex').hide().fadeIn(200);
+                        } else {
+                            if (typeof toastr !== 'undefined') {
+                                toastr.warning('屏蔽词净化助手扩展未加载或未启用', '提示');
+                            }
+                        }
+                    }
+                }
+            });
+            if (useGridLayout) {
+                $listContainer.append($item);
+            } else {
+                $menu.append($item);
+            }
+            hasItems = true;
+        }
+
+        if (key === 'menuOptPurifierDiff' && settings.menuOptPurifierDiff) {
+            const $item = $('<div class="twt-menu-item"><i class="fa-solid fa-eye"></i><span>净化前文</span></div>');
+            $item.on('click', (evt) => {
+                evt.stopPropagation();
+                $menu.hide();
+                const $diffBtn = $(`.bl-diff-btn[data-index="${mesId}"]`);
+                if ($diffBtn.length) {
+                    $diffBtn.trigger('click');
+                } else {
+                    if (typeof toastr !== 'undefined') {
+                        toastr.warning('该消息未被修改或没有净化记录', '提示');
+                    }
+                }
+            });
+            if (useGridLayout) {
+                $listContainer.append($item);
+            } else {
+                $menu.append($item);
+            }
+            hasItems = true;
+        }
+    }
+
+    if (useGridLayout) {
+        if ($listContainer && $listContainer.children().length > 0) {
+            $menu.append($listContainer);
+        }
+        if ($gridBar && $gridBar.children().length > 0) {
+            $menu.prepend($gridBar);
+        }
+    }
+
+    if (!hasItems) return;
+
+    // Show menu offscreen first to measure dimensions
+    $menu.css({
+        visibility: 'hidden',
+        display: 'block',
+        left: '0px',
+        top: '0px'
+    });
+
+    const menuWidth = $menu.outerWidth() || 130;
+    const menuHeight = $menu.outerHeight() || 100;
+    const screenWidth = window.innerWidth;
+    const screenHeight = window.innerHeight;
+
+    const direction = settings.menuDirection || 'bottom-right';
+    let posX = clientX;
+    let posY = clientY;
+
+    if (direction === 'top-left') {
+        posX = clientX - menuWidth;
+        posY = clientY - menuHeight;
+    } else if (direction === 'top-right') {
+        posX = clientX;
+        posY = clientY - menuHeight;
+    } else if (direction === 'bottom-left') {
+        posX = clientX - menuWidth;
+        posY = clientY;
+    } else { // 'bottom-right'
+        posX = clientX;
+        posY = clientY;
+    }
+
+    // Clamp to screen boundaries (with scroll offset)
+    posX = Math.max(10, Math.min(posX, screenWidth - menuWidth - 10)) + window.scrollX;
+    posY = Math.max(10, Math.min(posY, screenHeight - menuHeight - 10)) + window.scrollY;
+
+    $menu.css({
+        left: posX + 'px',
+        top: posY + 'px',
+        visibility: 'visible'
+    });
+
+    // Stop propagation inside menu to prevent close trigger
+    $menu.off('mousedown mouseup click touchstart').on('mousedown mouseup click touchstart', (evt) => {
+        evt.stopPropagation();
+    });
+}
+
+export function applyFullscreenMode(enabled) {
+    let docs = [document];
+    try {
+        if (window.parent && window.parent.document) {
+            docs.push(window.parent.document);
+        }
+    } catch (e) {
+        console.warn("TwT: Cannot access window.parent.document for applyFullscreenMode.", e);
+    }
+    
+    docs.forEach(doc => {
+        if (enabled) {
+            $(doc.body).addClass('twt-fullscreen-mode');
+        } else {
+            $(doc.body).removeClass('twt-fullscreen-mode');
+        }
+    });
+}
+
+export function openMessageManagerModal(mesId) {
+    const context = getContext();
+    const chat = context.chat;
+    if (!chat || !chat.length) return;
+
+    const currentMsg = chat[mesId];
+    if (!currentMsg) return;
+
+    // Sync theme variables from parent to iframe if applicable
+    try {
+        if (window.parent && window.parent.document) {
+            document.documentElement.setAttribute('style',
+                window.parent.document.documentElement.getAttribute('style')
+            );
+        }
+    } catch (e) {
+        console.warn("TwT: Cannot sync style attribute from parent.", e);
+    }
+
+    // Resolve opaque background color based on SmartThemeBlurTintColor
+    let opaqueBgColor = '';
+    try {
+        const temp = document.createElement('div');
+        temp.style.color = 'var(--SmartThemeBlurTintColor)';
+        document.body.appendChild(temp);
+        const style = window.getComputedStyle(temp).color;
+        document.body.removeChild(temp);
+        const match = style.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/);
+        if (match) {
+            opaqueBgColor = `rgb(${match[1]}, ${match[2]}, ${match[3]})`;
+        }
+    } catch (e) {
+        console.error("TwT: Failed to resolve opaque background color", e);
+    }
+
+    let docs = [document];
+    try {
+        if (window.parent && window.parent.document) {
+            docs.push(window.parent.document);
+        }
+    } catch (e) {
+        console.warn("TwT: Cannot access window.parent.document for modal creation.", e);
+    }
+    const parentDoc = docs[docs.length - 1];
+
+    const oldModal = parentDoc.getElementById('twt-range-modal');
+    if (oldModal) oldModal.remove();
+
+    const modalEl = parentDoc.createElement('div');
+    modalEl.id = 'twt-range-modal';
+    modalEl.className = 'twt-range-modal-overlay';
+    
+    // Fixed viewport centering. Zero resize/scroll event overhead on mobile.
+    modalEl.style.cssText = 'position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; z-index: 999999; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center;';
+
+    const buildListHtml = () => {
+        let html = '';
+        const currentChat = context.chat || [];
+        currentChat.forEach((msg, idx) => {
+            const name = msg.name || (msg.is_user ? 'User' : 'AI');
+            const mes = msg.mes || '';
+            const clean = mes.replace(/[\r\n]+/g, ' ').trim();
+            const excerpt = clean.substring(0, 30);
+            const preview = `${name}: ${excerpt}${clean.length > 30 ? '...' : ''}`;
+            const isHidden = msg.is_system || msg.extra?.is_system;
+            const statusText = isHidden ? ' [已隐藏]' : '';
+            const itemClass = isHidden ? 'twt-range-item twt-item-hidden' : 'twt-range-item';
+            
+            html += `
+                <div class="${itemClass}" data-id="${idx}">
+                    <input type="checkbox" class="twt-range-item-checkbox" data-id="${idx}" />
+                    <span class="twt-range-item-label">#${idx}${statusText} - ${preview}</span>
+                </div>
+            `;
+        });
+        return html;
+    };
+
+    const listItemsHtml = buildListHtml();
+
+    const boxStyle = opaqueBgColor ? `background-color: ${opaqueBgColor} !important;` : '';
+
+    modalEl.innerHTML = `
+        <div class="twt-range-modal-box" style="${boxStyle}">
+            <div class="twt-range-modal-header">管理消息</div>
+            
+            <div class="twt-range-list-container">
+                <div class="twt-range-list-actions">
+                    <button class="twt-range-list-btn" id="twt-select-all" type="button" title="全选"><i class="fa-solid fa-check-double"></i></button>
+                    <button class="twt-range-list-btn" id="twt-invert-select" type="button" title="反选"><i class="fa-solid fa-repeat"></i></button>
+                    <button class="twt-range-list-btn" id="twt-clear-select" type="button" title="清空"><i class="fa-solid fa-eraser"></i></button>
+                    <button class="twt-range-list-btn" id="twt-select-range" type="button" title="连选"><i class="fa-solid fa-arrows-up-down"></i></button>
+                    <button class="twt-range-list-btn" id="twt-select-current" type="button" title="仅选当前"><i class="fa-solid fa-bullseye"></i></button>
+                    <button class="twt-range-list-btn" id="twt-select-current-to-end" type="button" title="选当前及以后"><i class="fa-solid fa-angles-down"></i></button>
+                </div>
+                <div class="twt-range-list" id="twt-range-list-scroll">
+                    ${listItemsHtml}
+                </div>
+            </div>
+            
+            <div class="twt-range-modal-actions">
+                <button class="twt-range-btn cancel">取消</button>
+                <button class="twt-range-btn btn-show confirm-show" title="显示">
+                    <i class="fa-regular fa-eye"></i>
+                </button>
+                <button class="twt-range-btn btn-hide confirm-hide" title="隐藏">
+                    <i class="fa-regular fa-eye-slash"></i>
+                </button>
+                <button class="twt-range-btn btn-delete confirm-delete" title="删除">
+                    <i class="fa-regular fa-trash-can"></i>
+                </button>
+            </div>
+        </div>
+    `;
+
+    parentDoc.body.appendChild(modalEl);
+
+    const $modal = $(modalEl);
+    const $scrollContainer = $modal.find('#twt-range-list-scroll');
+    
+    // Performance optimization: Cache checkboxes and use raw DOM variables inside loops to boost performance 100x on mobile.
+    let $allCheckboxes = $scrollContainer.find('.twt-range-item-checkbox');
+    
+    const $targetItem = $scrollContainer.find(`.twt-range-item[data-id="${mesId}"]`);
+    if ($targetItem.length) {
+        const checkboxEl = $targetItem.find('.twt-range-item-checkbox')[0];
+        if (checkboxEl) checkboxEl.checked = true;
+        setTimeout(() => {
+            $scrollContainer.scrollTop($targetItem.position().top + $scrollContainer.scrollTop() - 60);
+        }, 50);
+    }
+
+    const refreshList = () => {
+        const scrollTop = $scrollContainer.scrollTop();
+        $scrollContainer.html(buildListHtml());
+        $allCheckboxes = $scrollContainer.find('.twt-range-item-checkbox'); // Update cache
+        $scrollContainer.scrollTop(scrollTop);
+    };
+
+    const closeModal = () => {
+        $modal.remove();
+    };
+
+    $modal.on('click', function(ev) {
+        if (ev.target === this) closeModal();
+    });
+
+    $modal.find('.cancel').on('click', (e) => {
+        e.stopPropagation();
+        closeModal();
+    });
+
+    $modal.find('#twt-select-all').on('click', (e) => {
+        e.stopPropagation();
+        $allCheckboxes.each(function() {
+            this.checked = true;
+        });
+    });
+
+    $modal.find('#twt-clear-select').on('click', (e) => {
+        e.stopPropagation();
+        $allCheckboxes.each(function() {
+            this.checked = false;
+        });
+    });
+
+    $modal.find('#twt-invert-select').on('click', (e) => {
+        e.stopPropagation();
+        $allCheckboxes.each(function() {
+            this.checked = !this.checked;
+        });
+    });
+
+    $modal.find('#twt-select-current').on('click', (e) => {
+        e.stopPropagation();
+        $allCheckboxes.each(function() {
+            const id = Number(this.getAttribute('data-id'));
+            this.checked = (id === mesId);
+        });
+    });
+
+    $modal.find('#twt-select-current-to-end').on('click', (e) => {
+        e.stopPropagation();
+        $allCheckboxes.each(function() {
+            const id = Number(this.getAttribute('data-id'));
+            this.checked = (id >= mesId);
+        });
+    });
+
+    let rangeSelectMode = false;
+    let rangeSelectStartIdx = null;
+
+    $modal.find('#twt-select-range').on('click', function(e) {
+        e.stopPropagation();
+        rangeSelectMode = !rangeSelectMode;
+        $(this).toggleClass('active', rangeSelectMode);
+        
+        if (rangeSelectMode) {
+            rangeSelectStartIdx = null;
+            $modal.find('.twt-range-item').removeClass('range-start-selected');
+        } else {
+            $modal.find('.twt-range-item').removeClass('range-start-selected');
+        }
+    });
+
+    let lastCheckedIdx = mesId;
+
+    function handleRangeSelectInteraction(currentIdx, $itemEl) {
+        if (rangeSelectStartIdx === null) {
+            rangeSelectStartIdx = currentIdx;
+            $modal.find('.twt-range-item').removeClass('range-start-selected');
+            $itemEl.addClass('range-start-selected');
+        } else {
+            const start = Math.min(rangeSelectStartIdx, currentIdx);
+            const end = Math.max(rangeSelectStartIdx, currentIdx);
+            
+            // Check all messages in the range using the cache
+            $allCheckboxes.each(function() {
+                const id = Number(this.getAttribute('data-id'));
+                if (id >= start && id <= end) {
+                    this.checked = true;
+                }
+            });
+            
+            // Exit range select mode
+            rangeSelectMode = false;
+            rangeSelectStartIdx = null;
+            $modal.find('.twt-range-item').removeClass('range-start-selected');
+            $modal.find('#twt-select-range').removeClass('active');
+        }
+    }
+
+    function performShiftClickSelection(currentIdx, isChecked, isShiftPressed) {
+        if (isShiftPressed && lastCheckedIdx !== null) {
+            const start = Math.min(lastCheckedIdx, currentIdx);
+            const end = Math.max(lastCheckedIdx, currentIdx);
+            $allCheckboxes.each(function() {
+                const id = Number(this.getAttribute('data-id'));
+                if (id >= start && id <= end) {
+                    this.checked = isChecked;
+                }
+            });
+        }
+        lastCheckedIdx = currentIdx;
+    }
+
+    $scrollContainer.on('click', '.twt-range-item', function(e) {
+        const $chk = $(this).find('.twt-range-item-checkbox');
+        if ($chk.length === 0) return;
+        const currentIdx = Number($chk.attr('data-id'));
+        
+        if (e.target.tagName !== 'INPUT') {
+            if (rangeSelectMode) {
+                handleRangeSelectInteraction(currentIdx, $(this));
+            } else {
+                const chkDom = $chk[0];
+                const isChecked = !chkDom.checked;
+                chkDom.checked = isChecked;
+                performShiftClickSelection(currentIdx, isChecked, e.shiftKey);
+            }
+        }
+    });
+
+    $scrollContainer.on('click', '.twt-range-item-checkbox', function(e) {
+        e.stopPropagation();
+        const currentIdx = Number($(this).attr('data-id'));
+        const isChecked = this.checked;
+        
+        if (rangeSelectMode) {
+            // Revert default checkbox check so range selection logic handles it
+            this.checked = !isChecked;
+            handleRangeSelectInteraction(currentIdx, $(this).closest('.twt-range-item'));
+        } else {
+            performShiftClickSelection(currentIdx, isChecked, e.shiftKey);
+        }
+    });
+
+    const getSelectedIds = () => {
+        const targetIds = [];
+        $allCheckboxes.each(function() {
+            if (this.checked) {
+                targetIds.push(Number(this.getAttribute('data-id')));
+            }
+        });
+        return targetIds;
+    };
+
+    // Helper to hide/unhide target IDs efficiently by grouping into contiguous ranges
+    const setHideStateForIds = async (targetIds, unhide) => {
+        if (targetIds.length === 0) return;
+        targetIds.sort((a, b) => a - b);
+        let ranges = [];
+        let start = targetIds[0];
+        let end = targetIds[0];
+        for (let i = 1; i < targetIds.length; i++) {
+            if (targetIds[i] === end + 1) {
+                end = targetIds[i];
+            } else {
+                ranges.push({ start, end });
+                start = targetIds[i];
+                end = targetIds[i];
+            }
+        }
+        ranges.push({ start, end });
+
+        for (const range of ranges) {
+            await hideChatMessageRange(range.start, range.end, unhide);
+        }
+    };
+
+    $modal.find('.confirm-show').on('click', async (e) => {
+        e.stopPropagation();
+        const targetIds = getSelectedIds();
+        if (targetIds.length === 0) {
+            alert('请先选择目标消息！');
+            return;
+        }
+        await setHideStateForIds(targetIds, true);
+        
+        // In-place DOM update instead of recreating the whole list (100x faster, preserves scroll position)
+        targetIds.forEach(id => {
+            const $item = $scrollContainer.find(`.twt-range-item[data-id="${id}"]`);
+            $item.removeClass('twt-item-hidden');
+            const $label = $item.find('.twt-range-item-label');
+            let text = $label.text();
+            text = text.replace(' [已隐藏]', '');
+            $label.text(text);
+        });
+    });
+
+    $modal.find('.confirm-hide').on('click', async (e) => {
+        e.stopPropagation();
+        const targetIds = getSelectedIds();
+        if (targetIds.length === 0) {
+            alert('请先选择目标消息！');
+            return;
+        }
+        await setHideStateForIds(targetIds, false);
+        
+        // In-place DOM update instead of recreating the whole list
+        targetIds.forEach(id => {
+            const $item = $scrollContainer.find(`.twt-range-item[data-id="${id}"]`);
+            $item.addClass('twt-item-hidden');
+            const $label = $item.find('.twt-range-item-label');
+            let text = $label.text();
+            if (!text.includes(' [已隐藏]')) {
+                text = text.replace(new RegExp(`^#${id}`), `#${id} [已隐藏]`);
+            }
+            $label.text(text);
+        });
+    });
+
+    $modal.find('.confirm-delete').on('click', async (e) => {
+        e.stopPropagation();
+        const targetIds = getSelectedIds();
+        if (targetIds.length === 0) {
+            alert('请先选择目标消息！');
+            return;
+        }
+        
+        const confirmMsg = targetIds.length === 1 
+            ? '确定要删除这条消息吗？' 
+            : `确定要删除选中的 ${targetIds.length} 条消息吗？(此操作不可逆！)`;
+            
+        if (confirm(confirmMsg)) {
+            const sortedIds = targetIds.sort((a, b) => b - a);
+            for (const id of sortedIds) {
+                await context.deleteMessage(id, undefined, false);
+            }
+            refreshList();
+        }
+    });
+}
+
+function getParentDoc() {
+    let doc = document;
+    try {
+        if (window.parent && window.parent.document) {
+            doc = window.parent.document;
+        }
+    } catch (e) {
+        console.warn("TwT: Cannot access window.parent.document", e);
+    }
+    return doc;
+}
+
+function startExcerptLinkage() {
+    const settings = getSettingsCallback ? getSettingsCallback() : {};
+    const parentDoc = getParentDoc();
+    const oldBar = parentDoc.getElementById('twt-excerpt-float-bar');
+    if (oldBar) oldBar.remove();
+
+    const bar = parentDoc.createElement('div');
+    bar.id = 'twt-excerpt-float-bar';
+    
+    // Apply user settings dynamically
+    const topOffset = settings.excerptTopOffset !== undefined ? settings.excerptTopOffset : 0;
+    const fontSize = settings.excerptFontSize !== undefined ? settings.excerptFontSize : 12;
+    
+    bar.style.top = `${topOffset}px`;
+    bar.style.fontSize = `${fontSize}px`;
+    if (topOffset === 0) {
+        bar.style.borderTop = 'none';
+        bar.style.borderRadius = '0 0 10px 10px';
+    } else {
+        bar.style.borderTop = '1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.15))';
+        bar.style.borderRadius = '10px';
+    }
+
+    const prevBtn = parentDoc.createElement('button');
+    prevBtn.className = 'twt-excerpt-nav-btn';
+    prevBtn.innerHTML = '<i class="fa-solid fa-chevron-left"></i>';
+    prevBtn.title = '上一页';
+    prevBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        scrollPageLeft();
+    });
+    bar.appendChild(prevBtn);
+
+    const textSpan = parentDoc.createElement('span');
+    textSpan.className = 'twt-excerpt-text';
+    textSpan.innerHTML = '摘抄模式已开启';
+    bar.appendChild(textSpan);
+
+    const nextBtn = parentDoc.createElement('button');
+    nextBtn.className = 'twt-excerpt-nav-btn';
+    nextBtn.innerHTML = '<i class="fa-solid fa-chevron-right"></i>';
+    nextBtn.title = '下一页';
+    nextBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        scrollPageRight();
+    });
+    bar.appendChild(nextBtn);
+
+    const rectBtn = parentDoc.createElement('button');
+    rectBtn.className = 'twt-excerpt-nav-btn';
+    rectBtn.innerHTML = '<i class="fa-solid fa-vector-square"></i>';
+    rectBtn.title = '使用矩形选框框选文字进行摘抄';
+    rectBtn.style.marginRight = '10px';
+    rectBtn.style.marginLeft = '10px';
+    rectBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (typeof window.twtOpenRectSelector === 'function') {
+            window.twtOpenRectSelector();
+        } else {
+            console.error("twtOpenRectSelector is not defined on window.");
+        }
+    });
+    bar.appendChild(rectBtn);
+
+    const closeBtn = parentDoc.createElement('button');
+    closeBtn.className = 'twt-excerpt-close-btn';
+    closeBtn.innerText = '关闭';
+    closeBtn.addEventListener('click', () => {
+        bar.remove();
+        if (toggleExcerptCallback) {
+            toggleExcerptCallback(false);
+        }
+    });
+    bar.appendChild(closeBtn);
+
+    parentDoc.body.appendChild(bar);
+
+    if (toggleExcerptCallback) {
+        toggleExcerptCallback(true);
+    }
+}
