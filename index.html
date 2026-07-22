@@ -278,6 +278,30 @@
                     </div>
                 </div>
 
+                <!-- 字体设置折叠 -->
+                <div class="twt-collapsible" style="border-top: 1px dashed var(--SmartThemeBorderColor); margin-top: 4px; padding-top: 2px;">
+                    <div class="twt-collapsible-header" style="font-size: 0.95em; padding: 6px 0; cursor: pointer; display: flex; align-items: center; justify-content: space-between; user-select: none;">
+                        <b>字体设置</b>
+                        <i class="twt-collapsible-icon fa-solid fa-chevron-down" style="font-size: 0.85em; transition: transform 0.2s; opacity: 0.8;"></i>
+                    </div>
+                    <div class="twt-collapsible-content" style="display: none; padding-top: 8px;">
+                        <div class="twt-setting-row"
+                            style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                            <select id="twt_font_family"
+                                style="flex: 1; margin-right: 5px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 4px;"></select>
+                            <div style="display: flex; gap: 5px; align-items: center;">
+                                <button id="twt_font_import_file" class="menu_button" style="padding: 4px 8px; margin: 0;"
+                                    title="导入本地字体文件 (.ttf/.otf/.woff/.woff2)"><i class="fa-solid fa-file-import"></i></button>
+                                <button id="twt_font_import_css" class="menu_button" style="padding: 4px 8px; margin: 0;"
+                                    title="自定义 CSS / 网络字体 URL"><i class="fa-solid fa-code"></i></button>
+                                <button id="twt_font_delete" class="menu_button" style="padding: 4px 8px; margin: 0;"
+                                    title="删除选中自定义字体"><i class="fa-solid fa-trash"></i></button>
+                            </div>
+                        </div>
+                        <input type="file" id="twt_font_file_input" accept=".ttf,.otf,.woff,.woff2,.eot" style="display: none;" />
+                    </div>
+                </div>
+
                 <!-- 页面编辑折叠 -->
                 <div class="twt-collapsible" style="border-top: 1px dashed var(--SmartThemeBorderColor); margin-top: 4px; padding-top: 2px;">
                     <div class="twt-collapsible-header" style="font-size: 0.95em; padding: 6px 0; cursor: pointer; display: flex; align-items: center; justify-content: space-between; user-select: none;">

@@ -15,7 +15,18 @@ export function applyVisualMode(enabled, settings) {
             chatContainer.style.setProperty('--twt-letter-spacing', `${settings.letterSpacing ?? 0}px`, 'important');
             chatContainer.style.setProperty('--twt-font-weight', `${settings.fontWeight ?? 'normal'}`, 'important');
         }
+        if (settings.fontFamily && settings.fontFamily !== 'inherit') {
+            const cleanFont = settings.fontFamily.replace(/"/g, '');
+            document.documentElement.style.setProperty('--twt-global-font-family', `"${cleanFont}", sans-serif`);
+            document.body.classList.add('twt-custom-font-active');
+        } else {
+            document.documentElement.style.removeProperty('--twt-global-font-family');
+            document.body.classList.remove('twt-custom-font-active');
+        }
     } else {
         document.body.classList.remove('twt-visual-mode');
+        document.documentElement.style.removeProperty('--twt-global-font-family');
+        document.body.classList.remove('twt-custom-font-active');
     }
 }
+

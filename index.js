@@ -83,7 +83,10 @@ const defaultSettings = {
     paragraphSpacing: 0,     // 段落间距 px
     letterSpacing: 0,        // 字间距 px
     fontWeight: 'normal',    // 文本粗细
+    fontFamily: 'inherit',   // 字体选择
+    customFonts: {},         // 自定义字体库
     visualPresets: {}, 
+
     currentPreset: 'custom',
     presetThemeLinks: {},
     presetTagLinks: {},
@@ -590,6 +593,82 @@ export function updateInjectedStyles() {
     style.innerHTML = css;
 }
 
+const BUILTIN_FONTS = {
+    'Huiwen-mincho': {
+        name: '汇文明朝',
+        family: 'Huiwen-mincho',
+        css: '@import url("https://fontsapi.zeoseven.com/256/main/result.css");'
+    },
+    'Noto Serif CJK': {
+        name: '思源宋体',
+        family: 'Noto Serif CJK',
+        css: '@import url("https://fontsapi.zeoseven.com/285/main/result.css");'
+    }
+};
+
+function getValidCustomFonts() {
+    const raw = extension_settings.twt.customFonts;
+    if (!raw || typeof raw !== 'object') return {};
+    const valid = {};
+    for (const [key, fontData] of Object.entries(raw)) {
+        if (!fontData) continue;
+        if (typeof fontData === 'object' && fontData.css && typeof fontData.css === 'string' && fontData.css.trim().length > 0) {
+            valid[key] = fontData;
+        }
+    }
+    return valid;
+}
+
+function updateCustomFontsStyle() {
+    let $style = $('#twt-custom-fonts-style');
+    if (!$style.length) {
+        $style = $('<style id="twt-custom-fonts-style"></style>').appendTo('head');
+    }
+    let importsCss = '';
+    let fontFaceCss = '';
+
+    for (const fontKey of Object.keys(BUILTIN_FONTS)) {
+        importsCss += `${BUILTIN_FONTS[fontKey].css}\n`;
+    }
+
+    const customFonts = getValidCustomFonts();
+    for (const [fontName, fontData] of Object.entries(customFonts)) {
+        if (fontData && fontData.css) {
+            let snippet = fontData.css.trim();
+            const importMatch = snippet.match(/@import\s+url\((["']?)([^"']+)\1\);?/i);
+            if (importMatch) {
+                importsCss += `@import url("${importMatch[2]}");\n`;
+            } else if (snippet.startsWith('@import')) {
+                const firstLine = snippet.split('\n')[0].trim();
+                importsCss += `${firstLine}\n`;
+            } else {
+                fontFaceCss += `/* Custom Font: ${fontName} */\n${snippet}\n\n`;
+            }
+        }
+    }
+    $style.text(`${importsCss}\n${fontFaceCss}`);
+}
+
+function renderFontFamilyOptions() {
+    const $select = $('#twt_font_family');
+    if (!$select.length) return;
+    $select.empty();
+    $select.append(`<option value="inherit">系统默认</option>`);
+    for (const [key, fontObj] of Object.entries(BUILTIN_FONTS)) {
+        $select.append($('<option></option>').val(fontObj.family).text(fontObj.name));
+    }
+    const customFonts = getValidCustomFonts();
+    extension_settings.twt.customFonts = customFonts;
+    for (const [fontKey, fontObj] of Object.entries(customFonts)) {
+        if (BUILTIN_FONTS[fontKey] || BUILTIN_FONTS[fontObj.family]) continue;
+        const displayName = fontObj.name || fontKey;
+        const familyVal = fontObj.family || fontKey;
+        $select.append($('<option></option>').val(familyVal).text(`${displayName} (自定义)`));
+    }
+    $select.val(extension_settings.twt.fontFamily || 'inherit');
+}
+
+
 function renderPresetList() {
     const $select = $('#twt_visual_preset');
     $select.empty();
@@ -629,6 +708,13 @@ function applyPreset(presetName) {
         if (preset.paragraphSpacing !== undefined) extension_settings.twt.paragraphSpacing = preset.paragraphSpacing;
         if (preset.letterSpacing !== undefined) extension_settings.twt.letterSpacing = preset.letterSpacing;
         if (preset.fontWeight !== undefined) extension_settings.twt.fontWeight = preset.fontWeight;
+        if (preset.fontFamily !== undefined) extension_settings.twt.fontFamily = preset.fontFamily;
+        else extension_settings.twt.fontFamily = 'inherit';
+        if (preset.customFonts) {
+            extension_settings.twt.customFonts = Object.assign({}, extension_settings.twt.customFonts || {}, preset.customFonts);
+        }
+        updateCustomFontsStyle();
+        renderFontFamilyOptions();
         
         $('#twt_font_size').val(extension_settings.twt.fontSize);
         $('#twt_line_height').val(extension_settings.twt.lineHeight);
@@ -683,6 +769,8 @@ function saveCurrentToPreset(name) {
         paragraphSpacing: extension_settings.twt.paragraphSpacing,
         letterSpacing: extension_settings.twt.letterSpacing,
         fontWeight: extension_settings.twt.fontWeight || 'normal',
+        fontFamily: extension_settings.twt.fontFamily || 'inherit',
+        customFonts: $.extend(true, {}, extension_settings.twt.customFonts || {}),
         avatarLayoutMode: extension_settings.twt.avatarLayoutMode || 'float'
     };
 
@@ -697,6 +785,7 @@ function saveCurrentToPreset(name) {
     getContext().saveSettingsDebounced();
     renderPresetList();
 }
+
 
 function renderMuluRegexPresetList() {
     const $select = $('#twt_mulu_regex_preset');
@@ -962,6 +1051,8 @@ function bindUI() {
     $muluBtnToc.prop('checked', extension_settings.twt.muluBtnToc);
     $muluBtnEnd.prop('checked', extension_settings.twt.muluBtnEnd);
 
+    updateCustomFontsStyle();
+    renderFontFamilyOptions();
     renderPresetList();
     renderMuluRegexPresetList();
     renderOptimizePatchList();
@@ -1814,6 +1905,152 @@ function bindUI() {
         extension_settings.twt.fontWeight = $(this).val();
         handleVisualChange();
     });
+
+    $('#twt_font_family').on('change', function () {
+        extension_settings.twt.fontFamily = $(this).val();
+        handleVisualChange();
+    });
+
+    $('#twt_font_import_file').on('click', function () {
+        $('#twt_font_file_input').trigger('click');
+    });
+
+    $('#twt_font_file_input').on('change', function (e) {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        const defaultName = file.name.replace(/\.[^/.]+$/, '');
+        const fontName = prompt('请输入字体显示名称：', defaultName);
+        if (!fontName || !fontName.trim()) {
+            $(this).val('');
+            return;
+        }
+        const trimmedName = fontName.trim();
+
+        const ext = file.name.split('.').pop().toLowerCase();
+        let formatHint = '';
+        if (ext === 'ttf') formatHint = ' format("truetype")';
+        else if (ext === 'otf') formatHint = ' format("opentype")';
+        else if (ext === 'woff') formatHint = ' format("woff")';
+        else if (ext === 'woff2') formatHint = ' format("woff2")';
+        else if (ext === 'eot') formatHint = ' format("embedded-opentype")';
+
+        const reader = new FileReader();
+        reader.onload = function (evt) {
+            let dataUrl = evt.target.result;
+            if (typeof dataUrl === 'string' && (dataUrl.startsWith('data:application/octet-stream') || dataUrl.startsWith('data:;'))) {
+                const mimeMap = {
+                    ttf: 'font/ttf',
+                    otf: 'font/otf',
+                    woff: 'font/woff',
+                    woff2: 'font/woff2',
+                    eot: 'application/vnd.ms-fontobject'
+                };
+                const mime = mimeMap[ext] || 'font/ttf';
+                dataUrl = dataUrl.replace(/^data:[^;]*/, `data:${mime}`);
+            }
+
+            const fontFaceCss = `@font-face {\n  font-family: "${trimmedName}";\n  src: url("${dataUrl}")${formatHint};\n  font-display: swap;\n}`;
+            if (!extension_settings.twt.customFonts) extension_settings.twt.customFonts = {};
+            extension_settings.twt.customFonts[trimmedName] = {
+                name: trimmedName,
+                family: trimmedName,
+                css: fontFaceCss
+            };
+            extension_settings.twt.fontFamily = trimmedName;
+            updateCustomFontsStyle();
+            renderFontFamilyOptions();
+            handleVisualChange();
+            $('#twt_font_file_input').val('');
+        };
+        reader.readAsDataURL(file);
+    });
+
+    $('#twt_font_import_css').on('click', function () {
+        const cssInput = prompt('请输入字体 CSS 代码或网络 URL (支持直接粘贴包含 @import、@font-face 或 body { font-family: ... } 的完整代码片段)：');
+        if (!cssInput || !cssInput.trim()) return;
+        const input = cssInput.trim();
+
+        let cleanCss = '';
+        let detectedFamily = '';
+
+        // Extract @import if present
+        const importMatch = input.match(/@import\s+url\((["']?)([^"']+)\1\);?/i);
+        if (importMatch) {
+            cleanCss = `@import url("${importMatch[2]}");`;
+        }
+
+        // Extract font-family if present
+        const familyMatch = input.match(/font-family\s*:\s*["']?([^"';}\r\n]+)["']?/i);
+        if (familyMatch) {
+            detectedFamily = familyMatch[1].trim();
+        }
+
+        // If direct HTTP URL with no @import wrapper
+        if (!cleanCss && (input.startsWith('http://') || input.startsWith('https://'))) {
+            cleanCss = `@import url("${input}");`;
+        }
+
+        // If @font-face block (not @import)
+        if (!cleanCss && /@font-face/i.test(input)) {
+            const fontFaceMatch = input.match(/@font-face\s*\{[\s\S]*?\}/i);
+            cleanCss = fontFaceMatch ? fontFaceMatch[0] : input;
+        }
+
+        if (!cleanCss) {
+            cleanCss = input;
+        }
+
+        const defaultName = detectedFamily || 'MyCustomFont';
+        const fontName = prompt('请确认/修改字体显示名称：', defaultName);
+        if (!fontName || !fontName.trim()) return;
+        const finalName = fontName.trim();
+        const finalFamily = detectedFamily || finalName;
+
+        // If @font-face block (not @import), update font-family in @font-face to match finalFamily
+        if (!importMatch && /font-family\s*:/i.test(cleanCss)) {
+            cleanCss = cleanCss.replace(/font-family\s*:\s*["']?([^"';}]+)["']?/i, `font-family: "${finalFamily}"`);
+        }
+
+        if (!extension_settings.twt.customFonts) extension_settings.twt.customFonts = {};
+        extension_settings.twt.customFonts[finalName] = {
+            name: finalName,
+            family: finalFamily,
+            css: cleanCss
+        };
+        extension_settings.twt.fontFamily = finalFamily;
+        updateCustomFontsStyle();
+        renderFontFamilyOptions();
+        handleVisualChange();
+    });
+
+
+    $('#twt_font_delete').on('click', function () {
+        const currentFont = $('#twt_font_family').val();
+        if (!currentFont || currentFont === 'inherit' || BUILTIN_FONTS[currentFont]) {
+            alert('系统默认及内置字体不可删除');
+            return;
+        }
+        const customFonts = extension_settings.twt.customFonts || {};
+        let keyToDelete = null;
+        for (const [k, v] of Object.entries(customFonts)) {
+            if (k === currentFont || (v && v.family === currentFont)) {
+                keyToDelete = k;
+                break;
+            }
+        }
+        if (keyToDelete && customFonts[keyToDelete]) {
+            const dispName = customFonts[keyToDelete].name || keyToDelete;
+            if (confirm(`确定要删除自定义字体 "${dispName}" 吗？`)) {
+                delete customFonts[keyToDelete];
+                extension_settings.twt.fontFamily = 'inherit';
+                updateCustomFontsStyle();
+                renderFontFamilyOptions();
+                handleVisualChange();
+            }
+        }
+    });
+
+
 
     $('#twt-settings').on('click', '.twt-tab', function() {
         $('#twt-settings .twt-tab').removeClass('active');

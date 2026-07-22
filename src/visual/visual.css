@@ -42,3 +42,9 @@ body.twt-visual-mode #chat .mes_text p {
 .twt-collapsible-icon.rotated {
     transform: rotate(180deg);
 }
+
+/* 视觉模式下全局最高优先级字体覆盖（避让图标元素） */
+body.twt-visual-mode.twt-custom-font-active *:not(i):not([class*="fa-"]):not([class*="material-"]):not(.fa):not(.fas):not(.far):not(.fal):not(.fab):not(.fad):not(.fa-solid):not(.fa-regular):not(.fa-brands):not(.material-icons):not([class*="material-symbols"]):not([style*="FontAwesome"]):not([style*="Font Awesome"]):not([style*="Material"]) {
+    font-family: var(--twt-global-font-family) !important;
+}
+
