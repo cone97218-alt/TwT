@@ -38,6 +38,7 @@ body.twt-reading-mode #chat::-webkit-scrollbar {
 body.twt-reading-mode #chat > * {
     width: 100% !important;
     box-sizing: border-box !important;
+    clear: both !important;
     break-inside: auto !important; 
     page-break-inside: auto !important;
     -webkit-column-break-inside: auto !important;
@@ -57,40 +58,43 @@ body.twt-reading-mode #chat > :not(.mes) {
     padding-bottom: 10px;
 }
 
-/* 消息主体 */
-body.twt-reading-mode #chat .mes {
+/* 消息主体：物理强制覆写酒馆原生 style.css 的 display: flex，恢复为标准的 Block 布局与流式跨页切分 */
+body.twt-reading-mode #chat .mes,
+body.twt-reading-mode #chat .mes_block,
+body.twt-reading-mode #chat .mes_text,
+body.twt-reading-mode #chat .markdown-wrapper {
     width: 100% !important;
-    box-sizing: border-box;
+    box-sizing: border-box !important;
     display: block !important;
-    overflow: visible !important; 
+    flex: none !important;
+    float: none !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    clear: both !important;
+    contain: none !important;
     break-inside: auto !important; 
     page-break-inside: auto !important;
     -webkit-column-break-inside: auto !important;
 }
 
-/* 使用 clearfix 物理清除浮动 avatar，避免 flow-root BFC 在 WebKit 多列排版下破坏断页与造成楼层交错 Bug */
+/* 物理清除浮动 avatar，结合 clear: both 确保每条消息物理断开浮动，禁止跨楼层侵入与混排 */
 body.twt-reading-mode #chat .mes::after {
     content: "";
-    display: table;
+    display: block;
     clear: both;
-}
-
-body.twt-reading-mode #chat .mes_block,
-body.twt-reading-mode #chat .mes_text {
-    width: 100% !important;
-    box-sizing: border-box;
-    display: block !important;
-    overflow: visible !important; 
-    break-inside: auto !important; 
-    page-break-inside: auto !important;
-    -webkit-column-break-inside: auto !important;
+    height: 0;
+    visibility: hidden;
 }
 
 /* 默认使用文字环绕，但当启用主题布局时跳过覆盖 */
 body.twt-reading-mode:not(.twt-avatar-theme-layout) #chat .mes .avatar {
-    float: left;
-    margin-right: 15px;
-    margin-bottom: 5px;
+    float: left !important;
+    margin-right: 15px !important;
+    margin-bottom: 5px !important;
+    flex: none !important;
+    position: static !important;
 }
 
 /* 保护层：仅针对无法分割的原子元素使用防断页，防止渲染重组引发排版崩塌 */
