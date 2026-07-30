@@ -309,6 +309,7 @@ function renderRowSnippetsAndPageBadges(rowEl, mesId, query, hits, fullText) {
     rowEl.appendChild(snippetBox);
 }
 
+
 async function searchMuluMessages(query) {
     if (!query) return null;
     const handle = await getMuluTTHandle();
