@@ -53,6 +53,24 @@ body.twt-reading-mode #form_sheath {
     box-sizing: border-box !important;
 }
 
+/* 核心修复：中和 TauriTavern 2.2.0+ @tanstack/virtual 虚拟化 DOM 包装层在横向多列翻页下的 Y 轴绝对定位与 translate 累积干涉 */
+body.twt-reading-mode #chat > div,
+body.twt-reading-mode #chat > div > div,
+body.twt-reading-mode #chat [data-index] {
+    position: static !important;
+    transform: none !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+}
+
 /* 防护所有子元素与消息块的离屏隔离 */
 body.twt-reading-mode #chat *,
 body.twt-reading-mode #chat .mes,
