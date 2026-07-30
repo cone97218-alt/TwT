@@ -283,6 +283,15 @@ function updateColWidthWhenReady(retries = 20, interval = 150) {
         }
         chat.style.setProperty('--twt-col-width', `${w}px`, 'important');
         containOversizedElements();
+        
+        const settings = extension_settings?.twt || {};
+        if (!settings.rememberReadingPosition) {
+            lastUserPage = 0;
+        } else {
+            const maxPage = Math.max(0, Math.ceil(chat.scrollWidth / w) - 1);
+            lastUserPage = Math.max(0, Math.min(lastUserPage, maxPage));
+        }
+
         requestAnimationFrame(() => {
             chat.scrollLeft = lastUserPage * w;
         });
@@ -546,9 +555,14 @@ export async function resetPaginationBinding(getSettings) {
         scrollEventsAbortController = null;
     }
 
-    const savedProgress = await TauriTavernBridge.getReadingProgress();
-    if (savedProgress && typeof savedProgress.pageIndex === 'number') {
-        lastUserPage = savedProgress.pageIndex;
+    const settings = extension_settings?.twt || {};
+    if (settings.rememberReadingPosition) {
+        const savedProgress = await TauriTavernBridge.getReadingProgress();
+        if (savedProgress && typeof savedProgress.pageIndex === 'number') {
+            lastUserPage = savedProgress.pageIndex;
+        } else {
+            lastUserPage = 0;
+        }
     } else {
         lastUserPage = 0;
     }
