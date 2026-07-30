@@ -168,6 +168,147 @@ async function setMuluTitleOf(mesId, msgObj, title, context) {
 /**
  * P3：使用 TauriTavern Rust 全文检索能力检索消息
  */
+
+function escapeRegExp(str) {
+    return (str || '').replace(/[.*+?^$${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * P3：使用 TauriTavern Rust 全文检索能力检索消息，返回 Map<mesId, SearchHit>
+ */
+async function searchMuluMessagesMap(query) {
+    if (!query) return null;
+    const handle = await getMuluTTHandle();
+    if (!handle || typeof handle.searchMessages !== 'function') return null;
+    try {
+        const hits = await handle.searchMessages({
+            query: query,
+            limit: 200,
+            filters: { role: 'assistant' }
+        });
+        if (Array.isArray(hits)) {
+            const hitMap = new Map();
+            hits.forEach(h => hitMap.set(h.index, h));
+            return hitMap;
+        }
+    } catch (e) {
+        console.warn('[TwT/mulu] Rust searchMessages failed, fallback to local search:', e);
+    }
+    return null;
+}
+
+function extractMatches(text, query, rustSnippet) {
+    const hits = [];
+    if (!text || !query) return hits;
+
+    const lowerText = text.toLowerCase();
+    const lowerQuery = query.toLowerCase();
+    let pos = 0;
+
+    while ((pos = lowerText.indexOf(lowerQuery, pos)) !== -1) {
+        const start = Math.max(0, pos - 25);
+        const end = Math.min(text.length, pos + query.length + 25);
+        let snippetText = text.substring(start, end);
+        if (start > 0) snippetText = '...' + snippetText;
+        if (end < text.length) snippetText = snippetText + '...';
+
+        hits.push({
+            charIndex: pos,
+            snippet: snippetText
+        });
+
+        pos += lowerQuery.length;
+        if (hits.length >= 5) break; // Limit max 5 snippets per row
+    }
+
+    if (hits.length === 0 && rustSnippet) {
+        hits.push({ charIndex: 0, snippet: rustSnippet });
+    }
+
+    return hits;
+}
+
+async function jumpToMessagePosition(mesId, charIndex = 0, totalLength = 1) {
+    const mes = await ensureMessageLoaded(mesId);
+    if (!mes) return;
+    const doc = getDoc();
+    const chatContainer = doc.getElementById('chat');
+    if (!chatContainer) return;
+
+    if (doc.body.classList.contains('twt-reading-mode')) {
+        const chatRect = chatContainer.getBoundingClientRect();
+        const cw = chatContainer.getBoundingClientRect().width;
+        const currentScrollLeft = chatContainer.scrollLeft;
+        const rect = mes.getBoundingClientRect();
+        const absoluteLeft = rect.left - chatRect.left + currentScrollLeft;
+        
+        const ratio = totalLength > 0 ? Math.min(1, Math.max(0, charIndex / totalLength)) : 0;
+        const targetOffsetLeft = absoluteLeft + (rect.width * ratio);
+        
+        const targetPage = Math.max(0, Math.floor(targetOffsetLeft / cw));
+        chatContainer.scrollTo({ left: targetPage * cw, behavior: 'smooth' });
+        setLastUserPage(targetPage);
+    } else {
+        mes.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
+
+function renderRowSnippetsAndPageBadges(rowEl, mesId, query, hits, fullText) {
+    const doc = getDoc();
+    const snippetBox = doc.createElement('div');
+    snippetBox.className = 'twt-mulu-snippet-container';
+    snippetBox.style.cssText = `
+        margin-top: 6px;
+        padding: 5px 8px;
+        background: rgba(255, 255, 255, 0.04);
+        border-left: 2px solid var(--SmartThemeUnderlineColor, #007aff);
+        border-radius: 4px;
+        font-size: 0.82em;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        cursor: default;
+        width: 100%;
+        box-sizing: border-box;
+    `;
+
+    snippetBox.addEventListener('click', (e) => e.stopPropagation());
+
+    hits.forEach((hit, idx) => {
+        const itemDiv = doc.createElement('div');
+        itemDiv.style.cssText = 'display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%;';
+
+        const escapedQuery = escapeRegExp(query);
+        const highlighted = escapeHtml(hit.snippet).replace(
+            new RegExp(escapedQuery, 'gi'),
+            (m) => `<span style="color: var(--SmartThemeUnderlineColor, #007aff); font-weight: bold; background: rgba(0, 122, 255, 0.15); padding: 0 2px; border-radius: 2px;">${m}</span>`
+        );
+
+        const textSpan = doc.createElement('span');
+        textSpan.innerHTML = highlighted;
+        textSpan.style.cssText = 'flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.88; text-align: left;';
+
+        const jumpBtn = doc.createElement('button');
+        jumpBtn.className = 'menu_button';
+        jumpBtn.style.cssText = 'padding: 1px 6px !important; margin: 0 !important; font-size: 0.78em !important; min-height: 20px !important; height: 20px !important; border-radius: 4px !important; background: var(--SmartThemeUnderlineColor, #007aff) !important; color: #fff !important; border: none !important; flex-shrink: 0 !important; font-weight: bold !important; cursor: pointer !important;';
+        
+        const label = hits.length > 1 ? `位置 ${idx + 1}` : '跳转';
+        jumpBtn.innerText = label;
+
+        jumpBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            closeMuluModal();
+            await jumpToMessagePosition(mesId, hit.charIndex, fullText.length);
+        });
+
+        itemDiv.appendChild(textSpan);
+        itemDiv.appendChild(jumpBtn);
+        snippetBox.appendChild(itemDiv);
+    });
+
+    rowEl.appendChild(snippetBox);
+}
+
 async function searchMuluMessages(query) {
     if (!query) return null;
     const handle = await getMuluTTHandle();
