@@ -1,5 +1,14 @@
 // @ts-nocheck
-import { getContext } from '../../../extensions.js';
+
+function getContext() {
+    if (typeof window.SillyTavern?.getContext === 'function') {
+        return window.SillyTavern.getContext();
+    }
+    if (typeof window.getContext === 'function') {
+        return window.getContext();
+    }
+    return null;
+}
 
 export class TauriTavernBridge {
     /**
@@ -8,14 +17,11 @@ export class TauriTavernBridge {
      */
     static async isAvailable() {
         try {
-            if (window.__TAURITAVERN__?.ready) {
-                await window.__TAURITAVERN__.ready;
-                return !!(window.__TAURITAVERN__?.api?.chat?.current);
+            const readyPromise = window.__TAURITAVERN__?.ready ?? window.__TAURITAVERN_MAIN_READY__;
+            if (readyPromise) {
+                await readyPromise;
             }
-            if (window.__TAURITAVERN_MAIN_READY__) {
-                await window.__TAURITAVERN_MAIN_READY__;
-                return !!(window.__TAURITAVERN__?.api?.chat?.current);
-            }
+            return !!(window.__TAURITAVERN__?.api?.chat?.current);
         } catch (e) {
             console.warn('TwT [TauriTavernBridge]: Readiness check error', e);
         }
@@ -58,7 +64,7 @@ export class TauriTavernBridge {
             }
         }
         // Fallback: Read from message.extra
-        const context = typeof getContext === 'function' ? getContext() : null;
+        const context = getContext();
         const chatArray = context ? context.chat : (window.chat || []);
         const msg = chatArray[msgIndex];
         return msg?.extra?.twt_comments || [];
@@ -71,7 +77,7 @@ export class TauriTavernBridge {
      */
     static async saveComments(msgIndex, comments) {
         const handle = await this.getHandle();
-        const context = typeof getContext === 'function' ? getContext() : null;
+        const context = getContext();
         const chatArray = context ? context.chat : (window.chat || []);
         const msg = chatArray[msgIndex];
 
@@ -125,7 +131,7 @@ export class TauriTavernBridge {
         }
 
         // Fallback: Basic JS text filter
-        const context = typeof getContext === 'function' ? getContext() : null;
+        const context = getContext();
         const chatArray = context ? context.chat : (window.chat || []);
         const hits = [];
         const lowerQuery = (query || '').toLowerCase();
@@ -175,7 +181,7 @@ export class TauriTavernBridge {
         }
 
         // Fallback: Reverse scan in JS
-        const context = typeof getContext === 'function' ? getContext() : null;
+        const context = getContext();
         const chatArray = context ? context.chat : (window.chat || []);
         let scanned = 0;
         
