@@ -197,11 +197,11 @@ function containOversizedElements() {
         el.classList.add('twt-pagination-scrollable');
     });
 
-    // 越界校正
+    // 越界校正（使用整数列宽，避免小数误差导致错误判断）
     if (!isTouching) {
-        const cw = chat.getBoundingClientRect().width;
+        const cw = getColWidth(chat);
         if (cw > 0) {
-            const total = Math.ceil(chat.scrollWidth / cw);
+            const total = Math.round(chat.scrollWidth / cw);
             if (lastUserPage >= total) {
                 lastUserPage = Math.max(0, total - 1);
                 chat.scrollLeft = lastUserPage * cw;
@@ -215,9 +215,19 @@ function containOversizedElements() {
 // ============================================================
 function getChat() { return document.getElementById('chat'); }
 
+/**
+ * 获取整数列宽（列宽权威来源）
+ * TauriTavern 等环境下 getBoundingClientRect().width 可能返回小数，
+ * 必须 Math.round() 取整，否则 scrollLeft 目标累积误差会导致跳页混乱。
+ */
+function getColWidth(chat) {
+    return Math.round(chat.getBoundingClientRect().width);
+}
+
 function scrollToPage(chat, page, cw) {
     if (!chat) return;
-    const total = Math.ceil(chat.scrollWidth / cw);
+    // 用整数列宽计算总页数，避免浮点误差
+    const total = Math.round(chat.scrollWidth / cw);
     page = Math.max(0, Math.min(page, total - 1));
     lastUserPage = page;
     isScrolling = true;
@@ -232,7 +242,7 @@ function doSnap(chat) {
     if (!document.body.classList.contains('twt-reading-mode')) return;
     if (document.body.classList.contains('twt-paragraph-editing')) return;
 
-    const cw = chat.getBoundingClientRect().width;
+    const cw = getColWidth(chat);
     if (cw <= 0) return;
 
     const nearest = Math.round(chat.scrollLeft / cw);
@@ -251,8 +261,9 @@ function doSnap(chat) {
 function updateColWidth() {
     const chat = getChat();
     if (!chat || !document.body.classList.contains('twt-reading-mode')) return;
-    const w = chat.getBoundingClientRect().width;
+    const w = getColWidth(chat);
     if (w > 0) {
+        // 始终使用整数列宽，避免小数像素引发的 scrollLeft 累积误差
         chat.style.setProperty('--twt-col-width', `${w}px`, 'important');
         containOversizedElements();
     }
@@ -263,18 +274,18 @@ function updateColWidthWhenReady(retries = 20, interval = 150) {
     const chat = getChat();
     if (!chat || !document.body.classList.contains('twt-reading-mode')) return;
 
-    const w = chat.getBoundingClientRect().width;
+    const w = getColWidth(chat);
     if (w <= 0) {
         if (retries > 0) colWidthRetryTimer = setTimeout(() => updateColWidthWhenReady(retries - 1, interval), interval);
         return;
     }
 
-    // 等待 scrollWidth 两帧稳定
+    // 等待 scrollWidth 两帧稳定（容差放宽到 2，兼容高 DPI / 子像素渲染）
     const sw1 = chat.scrollWidth;
     requestAnimationFrame(() => {
         if (!document.body.classList.contains('twt-reading-mode')) return;
         const sw2 = chat.scrollWidth;
-        if (Math.abs(sw2 - sw1) > 1 && retries > 0) {
+        if (Math.abs(sw2 - sw1) > 2 && retries > 0) {
             colWidthRetryTimer = setTimeout(() => updateColWidthWhenReady(retries - 1, interval), interval);
             return;
         }
@@ -503,9 +514,9 @@ export function refreshPagination(targetPage = null) {
     const chat = getChat();
     if (!chat || !document.body.classList.contains('twt-reading-mode')) return;
     updateColWidth();
-    const cw = chat.getBoundingClientRect().width;
+    const cw = getColWidth(chat);
     if (cw <= 0) return;
-    const total = Math.ceil(chat.scrollWidth / cw);
+    const total = Math.round(chat.scrollWidth / cw);
     const page = targetPage !== null ? Math.max(0, Math.min(targetPage, total - 1)) : total - 1;
     requestAnimationFrame(() => {
         scrollToPage(chat, page, cw);
@@ -515,7 +526,7 @@ export function refreshPagination(targetPage = null) {
 export function scrollPageLeft() {
     const chat = getChat();
     if (!chat) return;
-    const cw = chat.getBoundingClientRect().width;
+    const cw = getColWidth(chat);
     if (cw <= 0) return;
     scrollToPage(chat, lastUserPage - 1, cw);
 }
@@ -523,7 +534,7 @@ export function scrollPageLeft() {
 export function scrollPageRight() {
     const chat = getChat();
     if (!chat) return;
-    const cw = chat.getBoundingClientRect().width;
+    const cw = getColWidth(chat);
     if (cw <= 0) return;
     scrollToPage(chat, lastUserPage + 1, cw);
 }
@@ -627,7 +638,7 @@ export function initPaginationEvent(getSettings) {
         // 有文字选区时不翻页
         if (window.getSelection().toString().length > 0) return;
 
-        const cw = chat.getBoundingClientRect().width;
+        const cw = getColWidth(chat);
         if (cw <= 0) return;
 
         const ratio = e.clientX / window.innerWidth;
@@ -675,7 +686,7 @@ function bindScrollEvents(getSettings) {
         } else {
             // scrollend 存在时，scroll 事件只用于更新 lastUserPage（不做 snap）
             snapTimer = setTimeout(() => {
-                const cw = chat.getBoundingClientRect().width;
+                const cw = getColWidth(chat);
                 if (cw > 0) lastUserPage = Math.round(chat.scrollLeft / cw);
             }, 50);
         }
@@ -706,7 +717,7 @@ function bindScrollEvents(getSettings) {
         touchStartTime = Date.now();
         touchIsHorizontal = null;
 
-        const cw = chat.getBoundingClientRect().width;
+        const cw = getColWidth(chat);
         touchStartPage = cw > 0 ? Math.round(touchStartLeft / cw) : 0;
     }, { passive: true, signal });
 
@@ -757,7 +768,7 @@ function bindScrollEvents(getSettings) {
             return;
         }
 
-        const cw = chat.getBoundingClientRect().width;
+        const cw = getColWidth(chat);
         if (cw <= 0) { isTouching = false; return; }
 
         const dx        = e.changedTouches[0].clientX - touchStartX;
