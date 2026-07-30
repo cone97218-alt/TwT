@@ -217,10 +217,11 @@ function containOversizedElements() {
 function getChat() { return document.getElementById('chat'); }
 
 function scrollToPage(chat, page, cw) {
-    if (!chat) return;
+    if (!chat || cw <= 0) return;
     const total = Math.ceil(chat.scrollWidth / cw);
     page = Math.max(0, Math.min(page, total - 1));
     lastUserPage = page;
+    TauriTavernBridge.saveReadingProgress({ pageIndex: page });
     isScrolling = true;
     chat.scrollTo({ left: page * cw, behavior: 'smooth' });
 }
@@ -243,6 +244,7 @@ function doSnap(chat) {
         chat.scrollLeft = expected;
     }
     lastUserPage = Math.round(chat.scrollLeft / cw);
+    TauriTavernBridge.saveReadingProgress({ pageIndex: lastUserPage });
     isScrolling = false;
 }
 

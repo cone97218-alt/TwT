@@ -624,6 +624,9 @@ function showMuluModal() {
             const query = searchInput.value.toLowerCase().trim();
             const rows = listContainer.querySelectorAll('.twt-mulu-row');
 
+            const existingResultsBox = listContainer.querySelector('#twt-search-results-container');
+            if (existingResultsBox) existingResultsBox.remove();
+
             if (!query) {
                 rows.forEach(row => row.style.display = 'flex');
                 return;
@@ -633,19 +636,60 @@ function showMuluModal() {
             if (isTauriReady) {
                 const hits = await TauriTavernBridge.searchMessages({
                     query: query,
-                    limit: 100,
+                    limit: 50,
                     filters: { role: 'assistant' }
                 });
-                const matchedMesIds = new Set(hits.map(h => String(h.index)));
-                rows.forEach(row => {
-                    const mesId = row.getAttribute('data-mesid');
-                    const rowText = (row.getAttribute('data-text') || '').toLowerCase();
-                    if (matchedMesIds.has(mesId) || rowText.includes(query)) {
-                        row.style.display = 'flex';
-                    } else {
-                        row.style.display = 'none';
-                    }
-                });
+
+                rows.forEach(row => row.style.display = 'none');
+
+                if (hits && hits.length > 0) {
+                    const resultsBox = doc.createElement('div');
+                    resultsBox.id = 'twt-search-results-container';
+                    resultsBox.style.cssText = 'display: flex; flex-direction: column; gap: 6px; padding: 6px 0; width: 100%; box-sizing: border-box;';
+
+                    hits.forEach(hit => {
+                        const hitRow = doc.createElement('div');
+                        hitRow.style.cssText = `
+                            display: flex;
+                            flex-direction: column;
+                            padding: 8px 10px;
+                            border-radius: 6px;
+                            background: var(--SmartThemeBlurTintColor, rgba(255, 255, 255, 0.05));
+                            border: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.1));
+                            cursor: pointer;
+                            transition: background 0.15s;
+                        `;
+                        hitRow.addEventListener('mouseover', () => hitRow.style.background = 'var(--SmartThemeUnderlineColor, rgba(0, 122, 255, 0.2))');
+                        hitRow.addEventListener('mouseout', () => hitRow.style.background = 'var(--SmartThemeBlurTintColor, rgba(255, 255, 255, 0.05))');
+
+                        const hitHeader = doc.createElement('div');
+                        hitHeader.style.cssText = 'display: flex; justify-content: space-between; font-size: 0.8em; opacity: 0.75; margin-bottom: 4px;';
+                        hitHeader.innerHTML = `<span><i class="fa-solid fa-hashtag"></i> 楼层 #${hit.index + 1}</span><span>匹配度: ${Math.round((hit.score || 1) * 100)}%</span>`;
+
+                        const hitSnippet = doc.createElement('div');
+                        hitSnippet.style.cssText = 'font-size: 0.88em; line-height: 1.4; color: var(--SmartThemeBodyColor, #fff); word-break: break-all;';
+                        hitSnippet.innerText = hit.snippet || hit.text || '';
+
+                        hitRow.appendChild(hitHeader);
+                        hitRow.appendChild(hitSnippet);
+
+                        hitRow.addEventListener('click', async (e) => {
+                            e.stopPropagation();
+                            closeMuluModal();
+                            await scrollToMessageOrNearest(hit.index);
+                        });
+
+                        resultsBox.appendChild(hitRow);
+                    });
+
+                    listContainer.appendChild(resultsBox);
+                } else {
+                    const emptyBox = doc.createElement('div');
+                    emptyBox.id = 'twt-search-results-container';
+                    emptyBox.style.cssText = 'padding: 20px; text-align: center; font-size: 0.9em; opacity: 0.6;';
+                    emptyBox.innerText = '未找到匹配的正文句子';
+                    listContainer.appendChild(emptyBox);
+                }
             } else {
                 rows.forEach(row => {
                     const rowText = (row.getAttribute('data-text') || '').toLowerCase();
