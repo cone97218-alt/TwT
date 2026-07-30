@@ -216,11 +216,14 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
         'menuOptSwipe',
         'menuOptManage',
         'menuOptEdit',
+        'menuOptNewChat',
+        'menuOptCloseChat',
         'menuOptExcerpt',
         'menuOptFullscreen',
         'menuOptApi',
         'menuOptPurifier',
-        'menuOptPurifierDiff'
+        'menuOptPurifierDiff',
+        'menuOptPromptViewer'
     ];
 
     for (const key of order) {
@@ -475,6 +478,60 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
                 } else {
                     if (typeof toastr !== 'undefined') {
                         toastr.warning('该消息未被修改或没有净化记录', '提示');
+                    }
+                }
+            });
+            if (useGridLayout) {
+                $listContainer.append($item);
+            } else {
+                $menu.append($item);
+            }
+            hasItems = true;
+        }
+
+        if (key === 'menuOptNewChat' && settings.menuOptNewChat) {
+            const $item = $('<div class="twt-menu-item"><i class="fa-solid fa-comments"></i><span>新对话</span></div>');
+            $item.on('click', (evt) => {
+                evt.stopPropagation();
+                $menu.hide();
+                $('#option_start_new_chat').trigger('click');
+            });
+            if (useGridLayout) {
+                $listContainer.append($item);
+            } else {
+                $menu.append($item);
+            }
+            hasItems = true;
+        }
+
+        if (key === 'menuOptCloseChat' && settings.menuOptCloseChat) {
+            const $item = $('<div class="twt-menu-item"><i class="fa-solid fa-xmark"></i><span>关闭</span></div>');
+            $item.on('click', (evt) => {
+                evt.stopPropagation();
+                $menu.hide();
+                $('#option_close_chat').trigger('click');
+            });
+            if (useGridLayout) {
+                $listContainer.append($item);
+            } else {
+                $menu.append($item);
+            }
+            hasItems = true;
+        }
+
+        if (key === 'menuOptPromptViewer' && settings.menuOptPromptViewer) {
+            const $item = $('<div class="twt-menu-item"><i class="fa-solid fa-magnifying-glass"></i><span>提示词</span></div>');
+            $item.on('click', (evt) => {
+                evt.stopPropagation();
+                $menu.hide();
+                const promptBtn = Array.from(document.querySelectorAll('.list-group-item'))
+                    .find(el => el.textContent && el.textContent.includes('提示词查看器'));
+                if (promptBtn) {
+                    promptBtn.click();
+                } else {
+                    console.warn('未找到酒馆助手(JS-Slash-Runner)提示词查看器接口');
+                    if (typeof toastr !== 'undefined') {
+                        toastr.warning('未找到酒馆助手(JS-Slash-Runner)提示词查看器接口', '提示');
                     }
                 }
             });
