@@ -98,12 +98,9 @@ function containOversizedElements() {
     const pageBreakEnabled = extension_settings?.twt?.htmlPageBreakEnabled !== false;
     const chatRect = chat.getBoundingClientRect();
 
-    const toScrollable  = [];
-    const toBreak       = [];
-    const containerAdds = [];
-    const containerRms  = [];
+    const toScrollable = [];
+    const toBreak      = [];
 
-    // --- Phase 1: Read & Collect (不修改 DOM) ---
     chat.querySelectorAll('.mes_text > *').forEach(el => {
         // 跳过思维链
         if (el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')) return;
@@ -115,10 +112,11 @@ function containOversizedElements() {
             el.tagName === 'IFRAME'
         );
 
+        // 标记/取消标记 twt-html-container
         if (isContainer) {
-            containerAdds.push(el);
+            el.classList.add('twt-html-container');
         } else {
-            containerRms.push(el);
+            el.classList.remove('twt-html-container', 'twt-html-needs-break');
         }
 
         // 已经是 scrollable 的，直接沿用并重算高度
@@ -186,15 +184,13 @@ function containOversizedElements() {
         }
     });
 
-    // --- Phase 2: Batch Write (统一修改 DOM，彻底消除 Layout Thrashing) ---
-    containerAdds.forEach(el => el.classList.add('twt-html-container'));
-    containerRms.forEach(el => el.classList.remove('twt-html-container', 'twt-html-needs-break'));
-
+    // 写相位：断页标记
     chat.querySelectorAll('.twt-html-needs-break').forEach(el => {
         if (!toBreak.includes(el)) el.classList.remove('twt-html-needs-break');
     });
     toBreak.forEach(el => el.classList.add('twt-html-needs-break'));
 
+    // 写相位：收容样式
     toScrollable.forEach(({ el, maxH }) => {
         el.style.setProperty('max-height', `${maxH}px`, 'important');
         el.style.setProperty('overflow-y', 'auto', 'important');
@@ -311,15 +307,6 @@ function updateColWidthWhenReady(retries = 20, interval = 150) {
     });
 }
 
-function safeContainOversizedElements() {
-    const chat = getChat();
-    if (mutationObserver) mutationObserver.disconnect();
-    containOversizedElements();
-    if (chat && mutationObserver && document.body.classList.contains('twt-reading-mode')) {
-        mutationObserver.observe(chat, MUT_OPTS);
-    }
-}
-
 // ============================================================
 // MutationObserver：监听 DOM 变化，驱动 containOversizedElements
 // ============================================================
@@ -328,6 +315,7 @@ function initMutationObserver() {
     if (!chat || mutationObserver) return;
 
     let debounceTimer = null;
+    let pendingDelay  = null;
 
     mutationObserver = new MutationObserver(() => {
         if (!document.body.classList.contains('twt-reading-mode')) return;
@@ -335,13 +323,26 @@ function initMutationObserver() {
         if (isFocusGuarding) return;
 
         clearTimeout(debounceTimer);
+        clearTimeout(pendingDelay);
         debounceTimer = setTimeout(() => {
             if (isTouching) {
-                // 滑动中推迟
-                debounceTimer = setTimeout(() => safeContainOversizedElements(), 200);
+                // 滑动中推迟，重新安排而非递归赋值 debounceTimer（防止闭包引用混乱）
+                pendingDelay = setTimeout(() => {
+                    if (!mutationObserver) return;
+                    mutationObserver.disconnect();
+                    try { containOversizedElements(); } finally {
+                        mutationObserver.observe(chat, MUT_OPTS);
+                    }
+                }, 200);
                 return;
             }
-            safeContainOversizedElements();
+            // 暂停观察 → 处理 → 恢复：用 try/finally 确保 observe 必然执行，避免异常导致 observer 永久失效
+            mutationObserver.disconnect();
+            try {
+                containOversizedElements();
+            } finally {
+                mutationObserver.observe(chat, MUT_OPTS);
+            }
         }, 150);
     });
 
@@ -761,7 +762,8 @@ function bindScrollEvents(getSettings) {
         if (!touchIsHorizontal) return;
 
         const dx  = e.touches[0].clientX - touchStartX;
-        const max = chat.scrollWidth - chat.getBoundingClientRect().width;
+        // 使用整数列宽计算最大滚动值，与其他地方保持一致，避免小数累积误差
+        const max = chat.scrollWidth - getColWidth(chat);
         chat.scrollLeft = Math.max(0, Math.min(max, touchStartLeft - dx));
     }, { passive: true, signal });
 
@@ -809,17 +811,15 @@ function bindScrollEvents(getSettings) {
 
         scrollToPage(chat, targetPage, cw);
 
-        // scrollend / timeout 双重保险：解除 isTouching
+        // 双重保险解除 isTouching：scrollend 事件（优先）+ 600ms 超时兜底（唯一，不重复）
         const cleanup = () => {
-            isTouching = false;
+            isTouching  = false;
             isScrolling = false;
-            chat.removeEventListener('scrollend', cleanup);
             clearTimeout(fallback);
         };
-        const fallback = setTimeout(cleanup, 500);
-        if (supportsScrollend) {
-            chat.addEventListener('scrollend', cleanup, { once: true, signal });
-        }
+        const fallback = setTimeout(cleanup, 600);
+        // 无论是否支持 scrollend，fallback 始终兜底；支持时 scrollend 可提前触发
+        if (supportsScrollend) chat.addEventListener('scrollend', cleanup, { once: true, signal });
     }, { passive: true, signal });
 
     chat.addEventListener('touchcancel', () => {
