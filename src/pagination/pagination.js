@@ -2,6 +2,60 @@
 import { extension_settings } from '../../../../../extensions.js';
 
 // ============================================================
+// P1：TauriTavern API 接入层 — 阅读位置记忆
+// 完全可选：标准 SillyTavern 上静默跳过，不影响任何功能
+// ============================================================
+const TT_NS = 'twt';  // metadata namespace
+
+/** 获取 TauriTavern Chat API handle，不可用时返回 null */
+async function getTTHandle() {
+    try {
+        const tt = window.__TAURITAVERN__;
+        if (!tt) return null;
+        await (tt.ready ?? tt.__TAURITAVERN_MAIN_READY__);
+        return tt.api?.chat?.current?.handle?.() ?? null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * 保存当前阅读位置到 TauriTavern metadata
+ * 在切换聊天前调用，保存的是「离开时」的位置
+ */
+async function savePaginationPosition() {
+    if (lastUserPage <= 0) return;  // 第 0 页无需保存
+    try {
+        const handle = await getTTHandle();
+        if (!handle) return;
+        await handle.metadata.setExtension({
+            namespace: TT_NS,
+            value: { lastPage: lastUserPage, savedAt: Date.now() },
+        });
+    } catch (e) {
+        console.warn('[TwT] Failed to save reading position:', e);
+    }
+}
+
+/**
+ * 从 TauriTavern metadata 恢复阅读位置
+ * 在新聊天的列宽稳定后调用，返回恢复的页码（无数据时返回 0）
+ */
+async function restorePaginationPosition() {
+    try {
+        const handle = await getTTHandle();
+        if (!handle) return 0;
+        const meta = await handle.metadata.get();
+        const saved = meta?.extensions?.[TT_NS];
+        if (!saved || typeof saved.lastPage !== 'number') return 0;
+        return Math.max(0, saved.lastPage);
+    } catch (e) {
+        console.warn('[TwT] Failed to restore reading position:', e);
+        return 0;
+    }
+}
+
+// ============================================================
 // 核心状态
 // ============================================================
 let lastUserPage = 0;           // 用户当前所在页（唯一权威来源）
@@ -301,8 +355,22 @@ function updateColWidthWhenReady(retries = 20, interval = 150) {
         }
         chat.style.setProperty('--twt-col-width', `${w}px`, 'important');
         containOversizedElements();
-        requestAnimationFrame(() => {
-            chat.scrollLeft = lastUserPage * w;
+        // ③ layout 稳定后恢复阅读位置（P1 核心）
+        // 先异步读取 metadata，再在下一帧安全跳页
+        restorePaginationPosition().then(savedPage => {
+            requestAnimationFrame(() => {
+                if (!document.body.classList.contains('twt-reading-mode')) return;
+                const restoredPage = savedPage > 0 ? savedPage : lastUserPage;
+                if (restoredPage > 0) {
+                    const cw = getColWidth(chat);
+                    const total = Math.round(chat.scrollWidth / cw);
+                    const page = Math.min(restoredPage, total - 1);
+                    lastUserPage = page;
+                    chat.scrollLeft = page * cw;
+                } else {
+                    chat.scrollLeft = 0;
+                }
+            });
         });
     });
 }
@@ -568,6 +636,9 @@ export function setLastUserPage(page) {
 // resetPaginationBinding：切换聊天时重置并重绑定
 // ============================================================
 export function resetPaginationBinding(getSettings) {
+    // ① 切换前：保存旧聊天的阅读位置（异步，不阻塞主流程）
+    savePaginationPosition();
+
     // 中止旧事件
     if (scrollEventsAbortController) {
         scrollEventsAbortController.abort();
@@ -587,6 +658,7 @@ export function resetPaginationBinding(getSettings) {
         if (chat) {
             initResizeObserver();
             bindScrollEvents(getSettings);
+            // ② 切换后：列宽稳定时会触发位置恢复（见 updateColWidthWhenReady）
             updateColWidthWhenReady();
             initMutationObserver();
         } else if (retries > 0) {

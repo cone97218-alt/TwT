@@ -3,6 +3,180 @@ import { extension_settings, getContext } from '../../../../../extensions.js';
 import { showMoreMessages } from '../../../../../../script.js';
 import { setLastUserPage } from '../pagination/pagination.js';
 
+// ============================================================
+// P2 & P3：TauriTavern Store & Search API 接入层
+// 完全可选：标准 SillyTavern 上静默降级，不影响任何原版逻辑
+// ============================================================
+const MULU_NS  = 'twt-mulu';
+const MULU_KEY = 'mulu-meta';
+
+async function getMuluTTHandle() {
+    try {
+        const tt = window.__TAURITAVERN__;
+        if (!tt) return null;
+        await (tt.ready ?? tt.__TAURITAVERN_MAIN_READY__);
+        return tt.api?.chat?.current?.handle?.() ?? null;
+    } catch {
+        return null;
+    }
+}
+
+let _muluStoreCache = null;
+let _muluStoreCacheHandle = null;
+
+async function getMuluStore(handle) {
+    if (handle && handle === _muluStoreCacheHandle && _muluStoreCache !== null) {
+        return _muluStoreCache;
+    }
+    try {
+        const data = await handle.store.getJson({ namespace: MULU_NS, key: MULU_KEY });
+        _muluStoreCache = data ?? { tabs: {}, titles: {} };
+        _muluStoreCacheHandle = handle;
+        return _muluStoreCache;
+    } catch {
+        return { tabs: {}, titles: {} };
+    }
+}
+
+async function saveMuluStore(handle, data) {
+    try {
+        _muluStoreCache = data;
+        await handle.store.setJson({ namespace: MULU_NS, key: MULU_KEY, value: data });
+    } catch (e) {
+        console.warn('[TwT/mulu] Failed to save mulu store:', e);
+    }
+}
+
+export function invalidateMuluStoreCache() {
+    _muluStoreCache = null;
+    _muluStoreCacheHandle = null;
+}
+
+async function getMuluTabOf(mesId, msgObj) {
+    const handle = await getMuluTTHandle();
+    if (handle) {
+        const store = await getMuluStore(handle);
+        const storeVal = store?.tabs?.[String(mesId)];
+        if (storeVal !== undefined) return storeVal;
+        if (msgObj?.extra?.twtMuluTab) {
+            const tab = msgObj.extra.twtMuluTab;
+            store.tabs = store.tabs || {};
+            store.tabs[String(mesId)] = tab;
+            delete msgObj.extra.twtMuluTab;
+            saveMuluStore(handle, store);
+            return tab;
+        }
+        return undefined;
+    }
+    return msgObj?.extra?.twtMuluTab;
+}
+
+async function setMuluTabOf(mesId, msgObj, tab, context) {
+    const handle = await getMuluTTHandle();
+    if (handle) {
+        const store = await getMuluStore(handle);
+        store.tabs = store.tabs || {};
+        if (tab === null || tab === undefined) {
+            delete store.tabs[String(mesId)];
+        } else {
+            store.tabs[String(mesId)] = tab;
+        }
+        await saveMuluStore(handle, store);
+        return;
+    }
+    if (msgObj) {
+        msgObj.extra = msgObj.extra || {};
+        if (tab === null || tab === undefined) {
+            delete msgObj.extra.twtMuluTab;
+        } else {
+            msgObj.extra.twtMuluTab = tab;
+        }
+    }
+    if (context && typeof context.saveChat === 'function') {
+        await context.saveChat();
+    }
+}
+
+async function batchSetMuluTab(mesIds, tab, chatArray, context) {
+    const handle = await getMuluTTHandle();
+    if (handle) {
+        const store = await getMuluStore(handle);
+        store.tabs = store.tabs || {};
+        mesIds.forEach(id => {
+            if (tab === null || tab === undefined) {
+                delete store.tabs[String(id)];
+            } else {
+                store.tabs[String(id)] = tab;
+            }
+        });
+        await saveMuluStore(handle, store);
+        return;
+    }
+    mesIds.forEach(id => {
+        const msg = chatArray?.[id];
+        if (!msg) return;
+        msg.extra = msg.extra || {};
+        if (tab === null || tab === undefined) {
+            delete msg.extra.twtMuluTab;
+        } else {
+            msg.extra.twtMuluTab = tab;
+        }
+    });
+    if (context && typeof context.saveChat === 'function') {
+        await context.saveChat();
+    }
+}
+
+async function setMuluTitleOf(mesId, msgObj, title, context) {
+    const handle = await getMuluTTHandle();
+    if (handle) {
+        const store = await getMuluStore(handle);
+        store.titles = store.titles || {};
+        if (!title) {
+            delete store.titles[String(mesId)];
+        } else {
+            store.titles[String(mesId)] = title;
+        }
+        await saveMuluStore(handle, store);
+        return;
+    }
+    if (msgObj) {
+        msgObj.extra = msgObj.extra || {};
+        if (!title) {
+            delete msgObj.extra.twtMuluTitle;
+        } else {
+            msgObj.extra.twtMuluTitle = title;
+        }
+    }
+    if (context && typeof context.saveChat === 'function') {
+        await context.saveChat();
+    }
+}
+
+/**
+ * P3：使用 TauriTavern Rust 全文检索能力检索消息
+ */
+async function searchMuluMessages(query) {
+    if (!query) return null;
+    const handle = await getMuluTTHandle();
+    if (!handle || typeof handle.searchMessages !== 'function') return null;
+    try {
+        const hits = await handle.searchMessages({
+            query: query,
+            limit: 200,
+            filters: { role: 'assistant' }
+        });
+        if (Array.isArray(hits)) {
+            const hitSet = new Set(hits.map(h => h.index));
+            return hitSet;
+        }
+    } catch (e) {
+        console.warn('[TwT/mulu] Rust searchMessages failed, fallback to local search:', e);
+    }
+    return null;
+}
+
+
 const BTN_START_ID = 'twt-mulu-start-btn';
 const BTN_END_ID = 'twt-mulu-end-btn';
 const BTN_TOC_ID = 'twt-mulu-toc-btn';
@@ -451,7 +625,7 @@ function injectMuluStyles() {
     doc.head.appendChild(style);
 }
 
-function showMuluModal() {
+async function showMuluModal() {
     closeMuluModal();
     injectMuluStyles();
 
@@ -1274,7 +1448,12 @@ function showMuluModal() {
         optDel.addEventListener('mouseleave', () => optDel.style.background = 'transparent');
         optDel.addEventListener('click', (ev) => {
             ev.stopPropagation();
-            const emptyTabs = allTabs.filter(tabName => !chatArray.some(msg => msg.extra && msg.extra.twtMuluTab === tabName));
+            const emptyTabs = allTabs.filter(tabName => {
+                if (ttHandle && _muluStoreCache?.tabs) {
+                    return !Object.values(_muluStoreCache.tabs).includes(tabName);
+                }
+                return !chatArray.some(msg => msg.extra && msg.extra.twtMuluTab === tabName);
+            });
             if (emptyTabs.length === 0) {
                 toastr.info('当前没有空的分组页签可供删除', '提示');
                 closeAllMuluDropdowns();
@@ -1659,7 +1838,8 @@ function showMuluModal() {
         `;
 
         // Highlight rightSpan or row if categorized in target active tab
-        if (msgObj && msgObj.extra?.twtMuluTab) {
+        const itemTab = ttHandle ? _muluStoreCache?.tabs?.[String(item.mesId)] : msgObj?.extra?.twtMuluTab;
+        if (itemTab) {
             rightSpan.style.color = 'var(--SmartThemeUnderlineColor, #007aff)';
             rightSpan.style.opacity = '1';
         }
