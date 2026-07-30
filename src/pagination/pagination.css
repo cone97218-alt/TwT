@@ -34,43 +34,66 @@ body.twt-reading-mode #chat::-webkit-scrollbar {
 }
 
 /* 对 #chat 的所有直接子元素进行宽度和边距归一化，防止系统消息、输入指示器等其他元素破坏列对齐，同时消除 margin 在 WebKit 多列布局下的断页偏移 Bug */
+/* 对 #chat 的所有直接子元素进行宽度和排版归一化，消除 margin 在 WebKit 多列布局下的断页偏移 Bug */
 body.twt-reading-mode #chat > * {
     width: 100% !important;
     box-sizing: border-box !important;
-    margin: 0 !important;
-    padding-top: 10px !important;
-    padding-bottom: 10px !important;
     break-inside: auto !important; 
     page-break-inside: auto !important;
     -webkit-column-break-inside: auto !important;
 }
 
-body.twt-reading-mode #chat .mes,
+/* 非消息的辅助元素（如系统消息、输入提示等）强制重置外边距和内边距，保证排版整齐 */
+body.twt-reading-mode #chat > :not(.mes) {
+    margin: 0 !important;
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+}
+
+/* 消息元素默认重置外边距和内边距，但使用 :where 降低特异性，允许用户自定义美化主题进行覆盖 */
+:where(body.twt-reading-mode #chat > .mes) {
+    margin: 0;
+    padding-top: 10px;
+    padding-bottom: 10px;
+}
+
+/* 消息主体 */
+body.twt-reading-mode #chat .mes {
+    width: 100% !important;
+    box-sizing: border-box;
+    overflow: visible !important; 
+    break-inside: auto !important; 
+    page-break-inside: auto !important;
+    -webkit-column-break-inside: auto !important;
+    /* 不在每个 .mes 上单独提升合成层，避免 column layout 下合成层碎片化 */
+}
+
+/* 默认使用 BFC 自动收容浮动 avatar，除非启用主题头像布局 */
+body.twt-reading-mode:not(.twt-avatar-theme-layout) #chat .mes {
+    display: flow-root !important;
+}
+
 body.twt-reading-mode #chat .mes_block,
 body.twt-reading-mode #chat .mes_text {
     width: 100% !important;
     box-sizing: border-box;
-    display: block !important; 
     overflow: visible !important; 
     break-inside: auto !important; 
     page-break-inside: auto !important;
     -webkit-column-break-inside: auto !important;
 }
 
-body.twt-reading-mode #chat .mes {
-    /* 不在每个 .mes 上单独提升合成层，避免 column layout 下合成层碎片化 */
+/* 默认强制使用 block 排版以配合浮动，除非启用主题头像布局 */
+body.twt-reading-mode:not(.twt-avatar-theme-layout) #chat .mes_block,
+body.twt-reading-mode:not(.twt-avatar-theme-layout) #chat .mes_text {
+    display: block !important; 
 }
 
-body.twt-reading-mode #chat .mes .avatar {
+/* 默认使用文字环绕，但当启用主题布局时跳过覆盖 */
+body.twt-reading-mode:not(.twt-avatar-theme-layout) #chat .mes .avatar {
     float: left;
     margin-right: 15px;
     margin-bottom: 5px;
-}
-
-body.twt-reading-mode #chat .mes::after {
-    content: "";
-    display: table;
-    clear: both;
 }
 
 /* 保护层：仅针对无法分割的原子元素使用防断页，防止渲染重组引发排版崩塌 */

@@ -1,6 +1,5 @@
-// @ts-nocheck
+﻿// @ts-nocheck
 import { extension_settings } from '../../../../../extensions.js';
-import { TauriTavernBridge } from '../tauri_bridge.js';
 
 // ============================================================
 // 核心状态
@@ -217,11 +216,10 @@ function containOversizedElements() {
 function getChat() { return document.getElementById('chat'); }
 
 function scrollToPage(chat, page, cw) {
-    if (!chat || cw <= 0) return;
+    if (!chat) return;
     const total = Math.ceil(chat.scrollWidth / cw);
     page = Math.max(0, Math.min(page, total - 1));
     lastUserPage = page;
-    TauriTavernBridge.saveReadingProgress({ pageIndex: page });
     isScrolling = true;
     chat.scrollTo({ left: page * cw, behavior: 'smooth' });
 }
@@ -244,7 +242,6 @@ function doSnap(chat) {
         chat.scrollLeft = expected;
     }
     lastUserPage = Math.round(chat.scrollLeft / cw);
-    TauriTavernBridge.saveReadingProgress({ pageIndex: lastUserPage });
     isScrolling = false;
 }
 
@@ -283,15 +280,6 @@ function updateColWidthWhenReady(retries = 20, interval = 150) {
         }
         chat.style.setProperty('--twt-col-width', `${w}px`, 'important');
         containOversizedElements();
-
-        const settings = extension_settings?.twt || {};
-        if (!settings.rememberReadingPosition) {
-            lastUserPage = 0;
-        } else {
-            const maxPage = Math.max(0, Math.ceil(chat.scrollWidth / w) - 1);
-            lastUserPage = Math.max(0, Math.min(lastUserPage, maxPage));
-        }
-
         requestAnimationFrame(() => {
             chat.scrollLeft = lastUserPage * w;
         });
@@ -542,30 +530,19 @@ export function scrollPageRight() {
 
 export function setLastUserPage(page) {
     lastUserPage = page;
-    TauriTavernBridge.saveReadingProgress({ pageIndex: page });
 }
 
 // ============================================================
 // resetPaginationBinding：切换聊天时重置并重绑定
 // ============================================================
-export async function resetPaginationBinding(getSettings) {
+export function resetPaginationBinding(getSettings) {
     // 中止旧事件
     if (scrollEventsAbortController) {
         scrollEventsAbortController.abort();
         scrollEventsAbortController = null;
     }
 
-    const settings = extension_settings?.twt || {};
-    if (settings.rememberReadingPosition) {
-        const savedProgress = await TauriTavernBridge.getReadingProgress();
-        if (savedProgress && typeof savedProgress.pageIndex === 'number') {
-            lastUserPage = savedProgress.pageIndex;
-        } else {
-            lastUserPage = 0;
-        }
-    } else {
-        lastUserPage = 0;
-    }
+    lastUserPage = 0;
     isScrolling  = false;
 
     if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null; }
