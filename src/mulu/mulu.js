@@ -15,6 +15,20 @@ const escapeHtml = (str) => (str || '')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 
+function highlightMatchedKeyword(text, keyword) {
+    if (!text) return '';
+    if (!keyword || !keyword.trim()) return escapeHtml(text);
+
+    const safeText = escapeHtml(text);
+    const escapedKeyword = keyword.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    try {
+        const regex = new RegExp(`(${escapedKeyword})`, 'gi');
+        return safeText.replace(regex, `<mark style="background: rgba(var(--SmartThemeUnderlineColor-rgb, 0, 122, 255), 0.25); color: var(--SmartThemeEmColor, var(--SmartThemeUnderlineColor, #00afff)); font-weight: bold; border-radius: 2px; padding: 0 2px;">$1</mark>`);
+    } catch (e) {
+        return safeText;
+    }
+}
+
 // 模块级全局变量，保证目录模态框关闭后重新打开时日志和生成状态依然存在
 let globalBatchLogs = [];
 let globalGenerationStatus = 'idle'; // 'idle', 'generating', 'done'
@@ -700,7 +714,7 @@ function showMuluModal() {
 
                     const hitSnippet = doc.createElement('div');
                     hitSnippet.style.cssText = 'font-size: 0.88em; line-height: 1.4; color: var(--SmartThemeBodyColor, #fff); word-break: break-all;';
-                    hitSnippet.innerText = hit.snippet || hit.text || '';
+                    hitSnippet.innerHTML = highlightMatchedKeyword(hit.snippet || hit.text || '', query);
 
                     hitRow.appendChild(hitHeader);
                     hitRow.appendChild(hitSnippet);
@@ -1908,6 +1922,59 @@ function extractDirectoryTitle(text, regexStr) {
     return null;
 }
 
+function getQueryTextScrollInfo(container, queryText, chatContainer) {
+    if (!container || !queryText) return null;
+    const cleanQuery = queryText.trim();
+    if (!cleanQuery) return null;
+
+    const chatRect = chatContainer.getBoundingClientRect();
+    const currentScrollLeft = chatContainer.scrollLeft;
+
+    // 1. Try TreeWalker to find the exact Text Node containing queryText
+    try {
+        const doc = container.ownerDocument || document;
+        const walker = doc.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
+        let node;
+        while (node = walker.nextNode()) {
+            const text = node.nodeValue || '';
+            const idx = text.toLowerCase().indexOf(cleanQuery.toLowerCase());
+            if (idx !== -1) {
+                const range = doc.createRange();
+                range.setStart(node, idx);
+                range.setEnd(node, Math.min(idx + cleanQuery.length, text.length));
+                const rect = range.getBoundingClientRect();
+                if (rect && (rect.width > 0 || rect.height > 0)) {
+                    return {
+                        absoluteLeft: rect.left - chatRect.left + currentScrollLeft,
+                        targetElement: node.parentElement
+                    };
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('TreeWalker text range search error:', e);
+    }
+
+    // 2. Fallback: Find smallest leaf DOM element containing cleanQuery
+    const candidates = Array.from(container.querySelectorAll('p, li, blockquote, h1, h2, h3, h4, h5, h6, pre, code, span, div'));
+    const matching = candidates.filter(el => {
+        const t = (el.innerText || el.textContent || '').toLowerCase();
+        return t.includes(cleanQuery.toLowerCase());
+    });
+
+    if (matching.length > 0) {
+        matching.sort((a, b) => (a.innerText || a.textContent || '').length - (b.innerText || b.textContent || '').length);
+        const leaf = matching[0];
+        const rect = leaf.getBoundingClientRect();
+        return {
+            absoluteLeft: rect.left - chatRect.left + currentScrollLeft,
+            targetElement: leaf
+        };
+    }
+
+    return null;
+}
+
 function scrollToMessage(mes, targetQueryText = null) {
     if (!mes) return;
     const doc = getDoc();
@@ -1919,32 +1986,65 @@ function scrollToMessage(mes, targetQueryText = null) {
         const cw = chatContainer.getBoundingClientRect().width;
         const currentScrollLeft = chatContainer.scrollLeft;
 
-        let targetElement = mes;
+        let absoluteLeft = null;
+        let matchedEl = null;
         if (targetQueryText && typeof targetQueryText === 'string' && targetQueryText.trim()) {
-            const cleanQuery = targetQueryText.trim().toLowerCase();
-            const children = mes.querySelectorAll('p, div, span, blockquote, li');
-            for (let el of children) {
-                if (el.innerText && el.innerText.toLowerCase().includes(cleanQuery)) {
-                    targetElement = el;
-                    break;
-                }
+            const info = getQueryTextScrollInfo(mes, targetQueryText, chatContainer);
+            if (info) {
+                absoluteLeft = info.absoluteLeft;
+                matchedEl = info.targetElement;
             }
         }
 
-        const rect = targetElement.getBoundingClientRect();
-        const absoluteLeft = rect.left - chatRect.left + currentScrollLeft;
+        if (absoluteLeft === null) {
+            const rect = mes.getBoundingClientRect();
+            absoluteLeft = rect.left - chatRect.left + currentScrollLeft;
+        }
+
         const targetPage = Math.floor(absoluteLeft / cw);
         chatContainer.scrollTo({ left: targetPage * cw, behavior: 'smooth' });
         setLastUserPage(targetPage);
+
+        if (matchedEl) {
+            try {
+                const origBg = matchedEl.style.backgroundColor;
+                const origTrans = matchedEl.style.transition;
+                matchedEl.style.transition = 'background-color 0.3s ease, box-shadow 0.3s ease';
+                matchedEl.style.backgroundColor = 'rgba(var(--SmartThemeUnderlineColor-rgb, 0, 122, 255), 0.3)';
+                matchedEl.style.boxShadow = '0 0 8px rgba(var(--SmartThemeUnderlineColor-rgb, 0, 122, 255), 0.5)';
+                setTimeout(() => {
+                    matchedEl.style.backgroundColor = origBg;
+                    matchedEl.style.boxShadow = 'none';
+                    setTimeout(() => {
+                        matchedEl.style.transition = origTrans;
+                    }, 300);
+                }, 2200);
+            } catch (e) {}
+        }
     } else {
         if (targetQueryText && typeof targetQueryText === 'string' && targetQueryText.trim()) {
             const cleanQuery = targetQueryText.trim().toLowerCase();
-            const children = mes.querySelectorAll('p, div, span, blockquote, li');
-            for (let el of children) {
-                if (el.innerText && el.innerText.toLowerCase().includes(cleanQuery)) {
-                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    return;
-                }
+            const candidates = Array.from(mes.querySelectorAll('p, li, blockquote, h1, h2, h3, h4, h5, h6, pre, code, span, div'));
+            const matching = candidates.filter(el => (el.innerText || el.textContent || '').toLowerCase().includes(cleanQuery));
+            if (matching.length > 0) {
+                matching.sort((a, b) => (a.innerText || a.textContent || '').length - (b.innerText || b.textContent || '').length);
+                const el = matching[0];
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                try {
+                    const origBg = el.style.backgroundColor;
+                    const origTrans = el.style.transition;
+                    el.style.transition = 'background-color 0.3s ease, box-shadow 0.3s ease';
+                    el.style.backgroundColor = 'rgba(var(--SmartThemeUnderlineColor-rgb, 0, 122, 255), 0.3)';
+                    el.style.boxShadow = '0 0 8px rgba(var(--SmartThemeUnderlineColor-rgb, 0, 122, 255), 0.5)';
+                    setTimeout(() => {
+                        el.style.backgroundColor = origBg;
+                        el.style.boxShadow = 'none';
+                        setTimeout(() => {
+                            el.style.transition = origTrans;
+                        }, 300);
+                    }, 2200);
+                } catch (e) {}
+                return;
             }
         }
         mes.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1957,7 +2057,10 @@ async function scrollToMessageOrNearest(mesId, targetQueryText = null) {
     if (!chatContainer) return;
 
     let targetMes = await ensureMessageLoaded(mesId);
-    // Check if element exists and is visible (height > 0)
+
+    // Wait a frame for DOM layout & CSS multi-column reflow after modal close
+    await new Promise(r => setTimeout(r, 60));
+
     if (targetMes && targetMes.getBoundingClientRect().height > 0) {
         scrollToMessage(targetMes, targetQueryText);
         return;

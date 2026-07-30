@@ -39,6 +39,8 @@ const defaultSettings = {
     menuEnabled: false,
     menuOptRegenerate: true,
     menuOptSwipe: true,
+    menuOptNewChat: true,
+    menuOptCloseChat: true,
     menuOptManage: true,
     menuOptEdit: true,
     paragraphToolbarBottom: 15,
@@ -52,16 +54,20 @@ const defaultSettings = {
     menuOptApi: false,
     menuOptPurifier: false,
     menuOptPurifierDiff: false,
+    menuOptPromptViewer: false,
     menuOrder: [
         'menuOptRegenerate',
         'menuOptSwipe',
+        'menuOptNewChat',
+        'menuOptCloseChat',
         'menuOptManage',
         'menuOptEdit',
         'menuOptExcerpt',
         'menuOptFullscreen',
         'menuOptApi',
         'menuOptPurifier',
-        'menuOptPurifierDiff'
+        'menuOptPurifierDiff',
+        'menuOptPromptViewer'
     ],
     isFullscreen: false,
     menuInvokeMethod: 'longpress',
@@ -959,6 +965,8 @@ function bindUI() {
     const $menuDirection = $('#twt_menu_direction');
     const $menuOptRegenerate = $('#twt_menu_opt_regenerate');
     const $menuOptSwipe = $('#twt_menu_opt_swipe');
+    const $menuOptNewChat = $('#twt_menu_opt_new_chat');
+    const $menuOptCloseChat = $('#twt_menu_opt_close_chat');
     const $menuOptManage = $('#twt_menu_opt_manage');
     const $menuOptEdit = $('#twt_menu_opt_edit');
     const $paragraphToolbarBottom = $('#twt_paragraph_toolbar_bottom');
@@ -972,6 +980,7 @@ function bindUI() {
     const $menuOptApi = $('#twt_menu_opt_api');
     const $menuOptPurifier = $('#twt_menu_opt_purifier');
     const $menuOptPurifierDiff = $('#twt_menu_opt_purifier_diff');
+    const $menuOptPromptViewer = $('#twt_menu_opt_prompt_viewer');
     const $menuStyle = $('#twt_menu_style');
     const $visualEnabled = $('#twt_visual_enabled');
     const $muluEnabled = $('#twt_mulu_enabled');
@@ -1005,6 +1014,8 @@ function bindUI() {
     $menuDirection.val(extension_settings.twt.menuDirection || 'bottom-right');
     $menuOptRegenerate.prop('checked', extension_settings.twt.menuOptRegenerate);
     $menuOptSwipe.prop('checked', extension_settings.twt.menuOptSwipe);
+    $menuOptNewChat.prop('checked', extension_settings.twt.menuOptNewChat ?? true);
+    $menuOptCloseChat.prop('checked', extension_settings.twt.menuOptCloseChat ?? true);
     $menuOptManage.prop('checked', extension_settings.twt.menuOptManage);
     $menuOptEdit.prop('checked', extension_settings.twt.menuOptEdit);
     $paragraphToolbarBottom.val(extension_settings.twt.paragraphToolbarBottom !== undefined ? extension_settings.twt.paragraphToolbarBottom : 15);
@@ -1018,6 +1029,7 @@ function bindUI() {
     $menuOptApi.prop('checked', extension_settings.twt.menuOptApi);
     $menuOptPurifier.prop('checked', extension_settings.twt.menuOptPurifier);
     $menuOptPurifierDiff.prop('checked', extension_settings.twt.menuOptPurifierDiff);
+    $menuOptPromptViewer.prop('checked', extension_settings.twt.menuOptPromptViewer ?? false);
     $menuStyle.val(extension_settings.twt.menuStyle || 'grid');
     
     updateParagraphSubOptionsVisibility();
@@ -1715,6 +1727,16 @@ function bindUI() {
         getContext().saveSettingsDebounced();
     });
 
+    $menuOptNewChat.on('change', function () {
+        extension_settings.twt.menuOptNewChat = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+    });
+
+    $menuOptCloseChat.on('change', function () {
+        extension_settings.twt.menuOptCloseChat = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+    });
+
     $menuOptManage.on('change', function () {
         extension_settings.twt.menuOptManage = $(this).prop('checked');
         getContext().saveSettingsDebounced();
@@ -1803,6 +1825,11 @@ function bindUI() {
 
     $menuOptPurifierDiff.on('change', function () {
         extension_settings.twt.menuOptPurifierDiff = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+    });
+
+    $menuOptPromptViewer.on('change', function () {
+        extension_settings.twt.menuOptPromptViewer = $(this).prop('checked');
         getContext().saveSettingsDebounced();
     });
 
@@ -2100,6 +2127,8 @@ function renderMenuOrderList() {
     const order = extension_settings.twt.menuOrder || [
         'menuOptRegenerate',
         'menuOptSwipe',
+        'menuOptNewChat',
+        'menuOptCloseChat',
         'menuOptManage',
         'menuOptEdit',
         'menuOptExcerpt',
@@ -2112,13 +2141,16 @@ function renderMenuOrderList() {
     const labels = {
         menuOptRegenerate: '重新生成',
         menuOptSwipe: '滑动',
+        menuOptNewChat: '新对话',
+        menuOptCloseChat: '关闭',
         menuOptManage: '管理消息',
         menuOptEdit: '分段编辑',
         menuOptExcerpt: '摘抄',
         menuOptFullscreen: '全屏',
         menuOptApi: 'API',
         menuOptPurifier: '净化词汇映射',
-        menuOptPurifierDiff: '净化前文透视'
+        menuOptPurifierDiff: '净化前文透视',
+        menuOptPromptViewer: '提示词'
     };
 
     order.forEach((key, index) => {

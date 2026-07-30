@@ -214,6 +214,8 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
     const order = settings.menuOrder || [
         'menuOptRegenerate',
         'menuOptSwipe',
+        'menuOptNewChat',
+        'menuOptCloseChat',
         'menuOptManage',
         'menuOptEdit',
         'menuOptExcerpt',
@@ -291,6 +293,50 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
                     $menu.append($item);
                     hasItems = true;
                 }
+            }
+        }
+
+        if (key === 'menuOptNewChat' && settings.menuOptNewChat) {
+            if (useGridLayout) {
+                const $item = $('<div class="twt-menu-grid-item" title="新对话"><i class="fa-solid fa-comments"></i><span>新对话</span></div>');
+                $item.on('click', (evt) => {
+                    evt.stopPropagation();
+                    $menu.hide();
+                    $('#option_start_new_chat').trigger('click');
+                });
+                $gridBar.append($item);
+                hasItems = true;
+            } else {
+                const $item = $('<div class="twt-menu-item"><i class="fa-solid fa-comments"></i><span>新对话</span></div>');
+                $item.on('click', (evt) => {
+                    evt.stopPropagation();
+                    $menu.hide();
+                    $('#option_start_new_chat').trigger('click');
+                });
+                $menu.append($item);
+                hasItems = true;
+            }
+        }
+
+        if (key === 'menuOptCloseChat' && settings.menuOptCloseChat) {
+            if (useGridLayout) {
+                const $item = $('<div class="twt-menu-grid-item" title="关闭"><i class="fa-solid fa-xmark"></i><span>关闭</span></div>');
+                $item.on('click', (evt) => {
+                    evt.stopPropagation();
+                    $menu.hide();
+                    $('#option_close_chat').trigger('click');
+                });
+                $gridBar.append($item);
+                hasItems = true;
+            } else {
+                const $item = $('<div class="twt-menu-item"><i class="fa-solid fa-xmark"></i><span>关闭</span></div>');
+                $item.on('click', (evt) => {
+                    evt.stopPropagation();
+                    $menu.hide();
+                    $('#option_close_chat').trigger('click');
+                });
+                $menu.append($item);
+                hasItems = true;
             }
         }
 
@@ -477,6 +523,21 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
                         toastr.warning('该消息未被修改或没有净化记录', '提示');
                     }
                 }
+            });
+            if (useGridLayout) {
+                $listContainer.append($item);
+            } else {
+                $menu.append($item);
+            }
+            hasItems = true;
+        }
+
+        if (key === 'menuOptPromptViewer' && settings.menuOptPromptViewer) {
+            const $item = $('<div class="twt-menu-item"><i class="fa-solid fa-magnifying-glass"></i><span>提示词</span></div>');
+            $item.on('click', (evt) => {
+                evt.stopPropagation();
+                $menu.hide();
+                openPromptViewerModal();
             });
             if (useGridLayout) {
                 $listContainer.append($item);
@@ -1059,5 +1120,32 @@ function startExcerptLinkage() {
 
     if (toggleExcerptCallback) {
         toggleExcerptCallback(true);
+    }
+}
+
+function openPromptViewerModal() {
+    const parentDoc = typeof getParentDoc === 'function' ? getParentDoc() : document;
+    const doc = parentDoc || document;
+
+    // 1. Search for JS-Slash-Runner / extension prompt viewer item in extensions menu
+    const candidates = Array.from(doc.querySelectorAll('#extensionsMenu .list-group-item, .extension_container .list-group-item, #extensions_settings .list-group-item, .list-group-item'));
+    const target = candidates.find(el => (el.innerText || el.textContent || '').includes('提示词查看器'));
+    if (target) {
+        target.click();
+        return;
+    }
+
+    // 2. Fallback: search for any element named 提示词查看器 or 提示词查看
+    const allTargets = Array.from(doc.querySelectorAll('div, span, button, a')).filter(el => {
+        const text = (el.innerText || el.textContent || '').trim();
+        return text === '提示词查看器' || text === '提示词查看';
+    });
+    if (allTargets.length > 0) {
+        allTargets[allTargets.length - 1].click();
+        return;
+    }
+
+    if (typeof toastr !== 'undefined') {
+        toastr.warning('未在页面中找到“提示词查看器”扩展', '提示');
     }
 }
