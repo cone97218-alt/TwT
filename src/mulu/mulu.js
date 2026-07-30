@@ -2,6 +2,7 @@
 import { extension_settings, getContext } from '../../../../../extensions.js';
 import { showMoreMessages } from '../../../../../../script.js';
 import { setLastUserPage } from '../pagination/pagination.js';
+import { TauriTavernBridge } from '../tauri_bridge.js';
 
 const BTN_START_ID = 'twt-mulu-start-btn';
 const BTN_END_ID = 'twt-mulu-end-btn';
@@ -619,19 +620,44 @@ function showMuluModal() {
     let searchTimeout = null;
     searchInput.addEventListener('input', () => {
         clearTimeout(searchTimeout);
-        searchTimeout = setTimeout(() => {
+        searchTimeout = setTimeout(async () => {
             const query = searchInput.value.toLowerCase().trim();
             const rows = listContainer.querySelectorAll('.twt-mulu-row');
-            rows.forEach(row => {
-                const rowText = (row.getAttribute('data-text') || '').toLowerCase();
-                const fullText = (row.getAttribute('data-full-text') || '').toLowerCase();
-                if (rowText.includes(query) || fullText.includes(query)) {
-                    row.style.display = 'flex';
-                } else {
-                    row.style.display = 'none';
-                }
-            });
-        }, 800); // 延后 800 毫秒（约1秒左右）等待打字结束
+
+            if (!query) {
+                rows.forEach(row => row.style.display = 'flex');
+                return;
+            }
+
+            const isTauriReady = await TauriTavernBridge.isAvailable();
+            if (isTauriReady) {
+                const hits = await TauriTavernBridge.searchMessages({
+                    query: query,
+                    limit: 100,
+                    filters: { role: 'assistant' }
+                });
+                const matchedMesIds = new Set(hits.map(h => String(h.index)));
+                rows.forEach(row => {
+                    const mesId = row.getAttribute('data-mesid');
+                    const rowText = (row.getAttribute('data-text') || '').toLowerCase();
+                    if (matchedMesIds.has(mesId) || rowText.includes(query)) {
+                        row.style.display = 'flex';
+                    } else {
+                        row.style.display = 'none';
+                    }
+                });
+            } else {
+                rows.forEach(row => {
+                    const rowText = (row.getAttribute('data-text') || '').toLowerCase();
+                    const fullText = (row.getAttribute('data-full-text') || '').toLowerCase();
+                    if (rowText.includes(query) || fullText.includes(query)) {
+                        row.style.display = 'flex';
+                    } else {
+                        row.style.display = 'none';
+                    }
+                });
+            }
+        }, 500);
     });
 
     let isBatchMode = false;

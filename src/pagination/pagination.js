@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { extension_settings } from '../../../../../extensions.js';
+import { TauriTavernBridge } from '../tauri_bridge.js';
 
 // ============================================================
 // 核心状态
@@ -530,19 +531,25 @@ export function scrollPageRight() {
 
 export function setLastUserPage(page) {
     lastUserPage = page;
+    TauriTavernBridge.saveReadingProgress({ pageIndex: page });
 }
 
 // ============================================================
 // resetPaginationBinding：切换聊天时重置并重绑定
 // ============================================================
-export function resetPaginationBinding(getSettings) {
+export async function resetPaginationBinding(getSettings) {
     // 中止旧事件
     if (scrollEventsAbortController) {
         scrollEventsAbortController.abort();
         scrollEventsAbortController = null;
     }
 
-    lastUserPage = 0;
+    const savedProgress = await TauriTavernBridge.getReadingProgress();
+    if (savedProgress && typeof savedProgress.pageIndex === 'number') {
+        lastUserPage = savedProgress.pageIndex;
+    } else {
+        lastUserPage = 0;
+    }
     isScrolling  = false;
 
     if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null; }

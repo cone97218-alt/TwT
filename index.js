@@ -4,6 +4,7 @@ import { applyPaginationMode, initPaginationEvent, resetPaginationBinding } from
 import { applyVisualMode } from './src/visual/visual.js';
 import { initMulu, applyMuluSettings } from './src/mulu/mulu.js';
 import { initMenu, applyMenuMode, applyFullscreenMode } from './src/menu/menu.js';
+import { TauriTavernBridge } from './src/tauri_bridge.js';
 
 let parentDoc = document;
 try {
@@ -3058,4 +3059,13 @@ jQuery(async () => {
     } catch (e) {
         console.warn('[TwT] Failed to register CHAT_CHANGED listener for pagination reset:', e);
     }
+
+    // 检测并日志输出 TauriTavern 增强 API 连接状态
+    TauriTavernBridge.isAvailable().then(available => {
+        if (available) {
+            console.log('[TwT] Successfully connected to TauriTavern backend Rust API acceleration!');
+        } else {
+            console.log('[TwT] Running in standard SillyTavern web environment (Fallback mode active).');
+        }
+    });
 });

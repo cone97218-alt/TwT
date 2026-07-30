@@ -2,6 +2,7 @@
 import { extension_settings, getContext } from '../../../../../extensions.js';
 import { scrollPageLeft, scrollPageRight } from '../pagination/pagination.js';
 import { getRegexedString, regex_placement } from '../../../../regex/engine.js';
+import { TauriTavernBridge } from '../tauri_bridge.js';
 
 
 // 使用本地 document 作为 modal 的挂载目标，防止跨文档/跨域限制或弹窗被 iframe 遮挡
@@ -1079,7 +1080,7 @@ function getMessageVisibleBlocks(message, settings) {
 }
 
 
-export function renderCommentsForMessage(mesId) {
+export async function renderCommentsForMessage(mesId) {
     const context = getContext();
     const message = context.chat[mesId];
     if (!message) return;
@@ -1096,8 +1097,8 @@ export function renderCommentsForMessage(mesId) {
     const settings = extension_settings.twt || {};
     if (!settings.commentsEnabled) return;
 
-    const commentsList = message.extra?.twt_comments || [];
-    if (commentsList.length === 0) return;
+    const commentsList = await TauriTavernBridge.getComments(mesId);
+    if (!commentsList || commentsList.length === 0) return;
 
     // 对齐 DOM
     const $elements = getSelectableElements($mesText);
@@ -1329,8 +1330,7 @@ export async function triggerBatchCommentsForMessage(mesId) {
             return;
         }
 
-        if (!message.extra) message.extra = {};
-        if (!message.extra.twt_comments) message.extra.twt_comments = [];
+        const commentsList = await TauriTavernBridge.getComments(mesId);
 
         aiComments.forEach(item => {
             const idx = parseInt(item.para_id);
@@ -1340,14 +1340,14 @@ export async function triggerBatchCommentsForMessage(mesId) {
             const block = visibleBlocks[idx];
             const hash = getParagraphHash(block.original);
 
-            let entry = message.extra.twt_comments.find(c => c.paragraph_index === idx || c.hash === hash);
+            let entry = commentsList.find(c => c.paragraph_index === idx || c.hash === hash);
             if (!entry) {
                 entry = {
                     paragraph_index: idx,
                     hash: hash,
                     comments: []
                 };
-                message.extra.twt_comments.push(entry);
+                commentsList.push(entry);
             }
 
             entry.comments.push({
@@ -1358,6 +1358,7 @@ export async function triggerBatchCommentsForMessage(mesId) {
             });
         });
 
+        await TauriTavernBridge.saveComments(mesId, commentsList);
         await context.updateMessageBlock(mesId, message, { rerenderMessage: false });
         await context.saveChat();
 
@@ -1421,8 +1422,7 @@ async function triggerBatchCommentsForMessageSilently(mesId) {
             return logEntry;
         }
 
-        if (!message.extra) message.extra = {};
-        if (!message.extra.twt_comments) message.extra.twt_comments = [];
+        const commentsList = await TauriTavernBridge.getComments(mesId);
 
         aiComments.forEach(item => {
             const idx = parseInt(item.para_id);
@@ -1432,14 +1432,14 @@ async function triggerBatchCommentsForMessageSilently(mesId) {
             const block = visibleBlocks[idx];
             const hash = getParagraphHash(block.original);
 
-            let entry = message.extra.twt_comments.find(c => c.paragraph_index === idx || c.hash === hash);
+            let entry = commentsList.find(c => c.paragraph_index === idx || c.hash === hash);
             if (!entry) {
                 entry = {
                     paragraph_index: idx,
                     hash: hash,
                     comments: []
                 };
-                message.extra.twt_comments.push(entry);
+                commentsList.push(entry);
             }
 
             entry.comments.push({
@@ -1451,6 +1451,7 @@ async function triggerBatchCommentsForMessageSilently(mesId) {
             logEntry.commentsCount++;
         });
 
+        await TauriTavernBridge.saveComments(mesId, commentsList);
         await context.updateMessageBlock(mesId, message, { rerenderMessage: false });
         await context.saveChat();
         renderCommentsForMessage(mesId);
@@ -1576,11 +1577,11 @@ export function openCommentDrawer(mesId, paragraphIdx) {
         }
     });
 
-    const renderCommentsList = () => {
+    const renderCommentsList = async () => {
         const listContainer = $drawer.find('#twt-comment-list-container');
         listContainer.empty();
 
-        const commentsData = message.extra?.twt_comments || [];
+        const commentsData = await TauriTavernBridge.getComments(mesId);
         const entry = commentsData.find(c => c.paragraph_index === paragraphIdx || c.hash === getParagraphHash(blockText));
         const list = entry ? entry.comments : [];
 
@@ -1619,11 +1620,11 @@ export function openCommentDrawer(mesId, paragraphIdx) {
                             commentsData.splice(index, 1);
                         }
                     }
-                    message.extra.twt_comments = commentsData;
+                    await TauriTavernBridge.saveComments(mesId, commentsData);
                     await context.updateMessageBlock(mesId, message, { rerenderMessage: false });
                     await context.saveChat();
-                    renderCommentsList();
-                    renderCommentsForMessage(mesId);
+                    await renderCommentsList();
+                    await renderCommentsForMessage(mesId);
                 }
             });
 
@@ -1658,18 +1659,16 @@ export function openCommentDrawer(mesId, paragraphIdx) {
         const text = $drawer.find('.twt-comment-textarea').val().trim();
         if (!text) return;
 
-        if (!message.extra) message.extra = {};
-        if (!message.extra.twt_comments) message.extra.twt_comments = [];
-
+        const commentsData = await TauriTavernBridge.getComments(mesId);
         const hash = getParagraphHash(blockText);
-        let entry = message.extra.twt_comments.find(c => c.paragraph_index === paragraphIdx || c.hash === hash);
+        let entry = commentsData.find(c => c.paragraph_index === paragraphIdx || c.hash === hash);
         if (!entry) {
             entry = {
                 paragraph_index: paragraphIdx,
                 hash: hash,
                 comments: []
             };
-            message.extra.twt_comments.push(entry);
+            commentsData.push(entry);
         }
 
         entry.comments.push({
@@ -1679,6 +1678,7 @@ export function openCommentDrawer(mesId, paragraphIdx) {
             type: 'user'
         });
 
+        await TauriTavernBridge.saveComments(mesId, commentsData);
         await context.updateMessageBlock(mesId, message, { rerenderMessage: false });
         await context.saveChat();
 
@@ -1689,8 +1689,8 @@ export function openCommentDrawer(mesId, paragraphIdx) {
         $toggleBar.show();
         $footer.addClass('folded');
 
-        renderCommentsList();
-        renderCommentsForMessage(mesId);
+        await renderCommentsList();
+        await renderCommentsForMessage(mesId);
     };
 
     $drawer.find('#twt-btn-comment-send').on('click', sendComment);
@@ -1718,18 +1718,16 @@ export function openCommentDrawer(mesId, paragraphIdx) {
                 return;
             }
 
-            if (!message.extra) message.extra = {};
-            if (!message.extra.twt_comments) message.extra.twt_comments = [];
-
+            const commentsData = await TauriTavernBridge.getComments(mesId);
             const hash = getParagraphHash(blockText);
-            let entry = message.extra.twt_comments.find(c => c.paragraph_index === paragraphIdx || c.hash === hash);
+            let entry = commentsData.find(c => c.paragraph_index === paragraphIdx || c.hash === hash);
             if (!entry) {
                 entry = {
                     paragraph_index: paragraphIdx,
                     hash: hash,
                     comments: []
                 };
-                message.extra.twt_comments.push(entry);
+                commentsData.push(entry);
             }
 
             // Loop and add all generated comments
@@ -1742,10 +1740,11 @@ export function openCommentDrawer(mesId, paragraphIdx) {
                 });
             });
 
+            await TauriTavernBridge.saveComments(mesId, commentsData);
             await context.updateMessageBlock(mesId, message, { rerenderMessage: false });
             await context.saveChat();
-            renderCommentsList();
-            renderCommentsForMessage(mesId);
+            await renderCommentsList();
+            await renderCommentsForMessage(mesId);
         } catch (err) {
             console.error('Failed to generate single AI comment:', err);
             toastr.error(`生成失败: ${err.message || err}`);
