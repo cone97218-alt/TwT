@@ -3092,3 +3092,30 @@ jQuery(async () => {
         console.warn('[TwT] Failed to register CHAT_CHANGED listener for pagination reset:', e);
     }
 });
+
+// ============================================================
+// 免刷新热重载 (Hot Reload)
+// 可在 F12 控制台直接执行 twtHotReload() 或配合代码监听工具调用
+// ============================================================
+window.twtHotReload = async function () {
+    console.log('[TwT] 热重载启动...');
+    try {
+        const doc = (window.parent && window.parent.document) || document;
+        doc.querySelectorAll('#twt-mulu-styles, #twt-menu-styles, #twt-pagination-styles, #twt-visual-styles, #twt-paragraph-styles').forEach(el => el.remove());
+        doc.querySelectorAll('#twt-mulu-start-btn, #twt-mulu-end-btn, #twt-mulu-toc-btn, #twt-menu-btn, #twt-mulu-overlay, #twt-batch-log-overlay').forEach(el => el.remove());
+
+        const timestamp = Date.now();
+        await import(`./index.js?v=${timestamp}`);
+
+        if (window.toastr) {
+            window.toastr.success('TwT 扩展已成功热重载！', 'Hot Reload');
+        }
+        console.log('[TwT] 热重载完成！');
+    } catch (e) {
+        console.error('[TwT] 热重载失败:', e);
+        if (window.toastr) {
+            window.toastr.error(`热重载失败: ${e.message || e}`, '错误');
+        }
+    }
+};
+
