@@ -292,7 +292,8 @@ function getChat() { return document.getElementById('chat'); }
  * 必须 Math.round() 取整，否则 scrollLeft 目标累积误差会导致跳页混乱。
  */
 function getColWidth(chat) {
-    return chat ? (chat.getBoundingClientRect().width || chat.clientWidth) : 0;
+    if (!chat) return 0;
+    return chat.clientWidth || chat.getBoundingClientRect().width;
 }
 
 let scrollUnlockTimer = null;
@@ -347,7 +348,7 @@ function updateColWidth() {
     const w = getColWidth(chat);
     if (w > 0) {
         // 始终使用整数列宽，避免小数像素引发的 scrollLeft 累积误差
-        chat.style.setProperty('--twt-col-width', `${w}px`, 'important');
+        chat.style.removeProperty('--twt-col-width');
         containOversizedElements();
     }
 }
@@ -372,7 +373,7 @@ function updateColWidthWhenReady(retries = 20, interval = 150) {
             colWidthRetryTimer = setTimeout(() => updateColWidthWhenReady(retries - 1, interval), interval);
             return;
         }
-        chat.style.setProperty('--twt-col-width', `${w}px`, 'important');
+        chat.style.removeProperty('--twt-col-width');
         containOversizedElements();
         // ③ layout 稳定后恢复阅读位置（P1 核心）
         // 先异步读取 metadata，再在下一帧安全跳页
