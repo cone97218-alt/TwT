@@ -127,7 +127,7 @@ function startPositionLock(chat) {
     const expected = lastUserPage * cw;
     function lock() {
         if (!isKeyboardOpen && !isFocusGuarding) { positionLockRaf = null; return; }
-        if (Math.abs(chat.scrollLeft - expected) > 2) {
+        if (Math.abs(chat.scrollLeft - expected) > 5) {
             chat.scrollLeft = expected;
         }
         positionLockRaf = requestAnimationFrame(lock);
@@ -292,7 +292,7 @@ function getChat() { return document.getElementById('chat'); }
  * 必须 Math.round() 取整，否则 scrollLeft 目标累积误差会导致跳页混乱。
  */
 function getColWidth(chat) {
-    return Math.round(chat.getBoundingClientRect().width);
+    return chat ? (chat.getBoundingClientRect().width || chat.clientWidth) : 0;
 }
 
 let scrollUnlockTimer = null;
@@ -329,7 +329,7 @@ function doSnap(chat) {
     const nearest = Math.round(chat.scrollLeft / cw);
     const expected = nearest * cw;
 
-    if (Math.abs(chat.scrollLeft - expected) > 2) {
+    if (Math.abs(chat.scrollLeft - expected) > 5) {
         chat.scrollLeft = expected;
     }
     lastUserPage = Math.round(chat.scrollLeft / cw);
