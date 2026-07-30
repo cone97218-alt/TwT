@@ -34,7 +34,6 @@ const defaultSettings = {
     swipeEnabled: true,
     messagePageEnabled: false,
     htmlPageBreakEnabled: true,
-    rememberReadingPosition: false,
     avatarLayoutMode: 'float',
     customWhitelist: '.mes_reasoning_details, .thought-block',
     menuEnabled: false,
@@ -958,7 +957,6 @@ function bindUI() {
     const $swipeEnabled = $('#twt_swipe_enabled');
     const $messagePageEnabled = $('#twt_message_page_enabled');
     const $htmlPageBreakEnabled = $('#twt_html_page_break_enabled');
-    const $rememberReadingPosition = $('#twt_remember_reading_position');
     const $avatarLayoutMode = $('#twt_avatar_layout_mode');
     const $customWhitelist = $('#twt_custom_whitelist');
     const $menuEnabled = $('#twt_menu_enabled');
@@ -1008,7 +1006,6 @@ function bindUI() {
     $swipeEnabled.prop('checked', extension_settings.twt.swipeEnabled);
     $messagePageEnabled.prop('checked', extension_settings.twt.messagePageEnabled);
     $htmlPageBreakEnabled.prop('checked', extension_settings.twt.htmlPageBreakEnabled);
-    $rememberReadingPosition.prop('checked', extension_settings.twt.rememberReadingPosition ?? false);
     $avatarLayoutMode.val(extension_settings.twt.avatarLayoutMode || 'float');
     $customWhitelist.val(extension_settings.twt.customWhitelist || '');
     $menuEnabled.prop('checked', extension_settings.twt.menuEnabled);
@@ -1681,11 +1678,6 @@ function bindUI() {
         extension_settings.twt.htmlPageBreakEnabled = $(this).prop('checked');
         getContext().saveSettingsDebounced();
         applyPaginationMode(extension_settings.twt.enabled, extension_settings.twt);
-    });
-
-    $rememberReadingPosition.on('change', function () {
-        extension_settings.twt.rememberReadingPosition = $(this).prop('checked');
-        getContext().saveSettingsDebounced();
     });
 
     $avatarLayoutMode.on('change', function () {

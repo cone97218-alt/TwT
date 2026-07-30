@@ -79,7 +79,7 @@ const elementPrevHeights = new WeakMap();
 const HEIGHT_SURGE_THRESHOLD = 80;
 
 const EXCLUDED_TAGS = new Set([
-    'DIV','P','SPAN','BLOCKQUOTE','PRE','OL','UL','LI',
+    'P','SPAN','BLOCKQUOTE','PRE','OL','UL','LI',
     'H1','H2','H3','H4','H5','H6','A','CODE','EM','STRONG','I','B'
 ]);
 
@@ -107,7 +107,7 @@ function containOversizedElements() {
         if (el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')) return;
 
         const isContainer = (
-            el.tagName === 'TABLE' ||
+            el.tagName === 'DIV' || el.tagName === 'TABLE' ||
             el.tagName === 'SECTION' || el.tagName === 'FORM' ||
             el.tagName === 'ARTICLE' || el.tagName === 'DETAILS' ||
             el.tagName === 'IFRAME'
@@ -283,7 +283,7 @@ function updateColWidthWhenReady(retries = 20, interval = 150) {
         }
         chat.style.setProperty('--twt-col-width', `${w}px`, 'important');
         containOversizedElements();
-        
+
         const settings = extension_settings?.twt || {};
         if (!settings.rememberReadingPosition) {
             lastUserPage = 0;
