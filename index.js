@@ -1,9 +1,9 @@
 // @ts-nocheck
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
-import { applyPaginationMode, initPaginationEvent, resetPaginationBinding } from './src/pagination/pagination.js';
-import { applyVisualMode } from './src/visual/visual.js';
-import { initMulu, applyMuluSettings } from './src/mulu/mulu.js';
-import { initMenu, applyMenuMode, applyFullscreenMode } from './src/menu/menu.js';
+import { applyPaginationMode, initPaginationEvent, resetPaginationBinding } from './src/pagination/pagination.js?v=20260731_2';
+import { applyVisualMode } from './src/visual/visual.js?v=20260731_2';
+import { initMulu, applyMuluSettings } from './src/mulu/mulu.js?v=20260731_2';
+import { initMenu, applyMenuMode, applyFullscreenMode } from './src/menu/menu.js?v=20260731_2';
 
 let parentDoc = document;
 try {
@@ -3113,7 +3113,14 @@ window.twtHotReload = async function () {
         doc.querySelectorAll('#twt-mulu-start-btn, #twt-mulu-end-btn, #twt-mulu-toc-btn, #twt-menu-btn, #twt-mulu-overlay, #twt-batch-log-overlay').forEach(el => el.remove());
 
         const timestamp = Date.now();
+        const muluMod = await import(`./src/mulu/mulu.js?v=${timestamp}`);
+        await import(`./src/pagination/pagination.js?v=${timestamp}`);
+        await import(`./src/menu/menu.js?v=${timestamp}`);
         await import(`./index.js?v=${timestamp}`);
+
+        if (muluMod && typeof muluMod.initMulu === 'function') {
+            muluMod.initMulu(() => extension_settings.twt);
+        }
 
         if (window.toastr) {
             window.toastr.success('TwT 扩展已成功热重载！', 'Hot Reload');
