@@ -98,9 +98,12 @@ function containOversizedElements() {
     const pageBreakEnabled = extension_settings?.twt?.htmlPageBreakEnabled !== false;
     const chatRect = chat.getBoundingClientRect();
 
-    const toScrollable = [];
-    const toBreak      = [];
+    const toScrollable  = [];
+    const toBreak       = [];
+    const containerAdds = [];
+    const containerRms  = [];
 
+    // --- Phase 1: Read & Collect (不修改 DOM) ---
     chat.querySelectorAll('.mes_text > *').forEach(el => {
         // 跳过思维链
         if (el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')) return;
@@ -112,11 +115,10 @@ function containOversizedElements() {
             el.tagName === 'IFRAME'
         );
 
-        // 标记/取消标记 twt-html-container
         if (isContainer) {
-            el.classList.add('twt-html-container');
+            containerAdds.push(el);
         } else {
-            el.classList.remove('twt-html-container', 'twt-html-needs-break');
+            containerRms.push(el);
         }
 
         // 已经是 scrollable 的，直接沿用并重算高度
@@ -184,13 +186,15 @@ function containOversizedElements() {
         }
     });
 
-    // 写相位：断页标记
+    // --- Phase 2: Batch Write (统一修改 DOM，彻底消除 Layout Thrashing) ---
+    containerAdds.forEach(el => el.classList.add('twt-html-container'));
+    containerRms.forEach(el => el.classList.remove('twt-html-container', 'twt-html-needs-break'));
+
     chat.querySelectorAll('.twt-html-needs-break').forEach(el => {
         if (!toBreak.includes(el)) el.classList.remove('twt-html-needs-break');
     });
     toBreak.forEach(el => el.classList.add('twt-html-needs-break'));
 
-    // 写相位：收容样式
     toScrollable.forEach(({ el, maxH }) => {
         el.style.setProperty('max-height', `${maxH}px`, 'important');
         el.style.setProperty('overflow-y', 'auto', 'important');
@@ -307,6 +311,15 @@ function updateColWidthWhenReady(retries = 20, interval = 150) {
     });
 }
 
+function safeContainOversizedElements() {
+    const chat = getChat();
+    if (mutationObserver) mutationObserver.disconnect();
+    containOversizedElements();
+    if (chat && mutationObserver && document.body.classList.contains('twt-reading-mode')) {
+        mutationObserver.observe(chat, MUT_OPTS);
+    }
+}
+
 // ============================================================
 // MutationObserver：监听 DOM 变化，驱动 containOversizedElements
 // ============================================================
@@ -325,13 +338,10 @@ function initMutationObserver() {
         debounceTimer = setTimeout(() => {
             if (isTouching) {
                 // 滑动中推迟
-                debounceTimer = setTimeout(() => containOversizedElements(), 200);
+                debounceTimer = setTimeout(() => safeContainOversizedElements(), 200);
                 return;
             }
-            // 暂停观察 → 处理 → 恢复（防止修改 class/style 触发无限递归）
-            mutationObserver.disconnect();
-            containOversizedElements();
-            mutationObserver.observe(chat, MUT_OPTS);
+            safeContainOversizedElements();
         }, 150);
     });
 
@@ -806,9 +816,10 @@ function bindScrollEvents(getSettings) {
             chat.removeEventListener('scrollend', cleanup);
             clearTimeout(fallback);
         };
-        const fallback = setTimeout(cleanup, 600);
-        if (supportsScrollend) chat.addEventListener('scrollend', cleanup, { once: true, signal });
-        else setTimeout(cleanup, 600);  // 不支持 scrollend 时直接靠 timeout
+        const fallback = setTimeout(cleanup, 500);
+        if (supportsScrollend) {
+            chat.addEventListener('scrollend', cleanup, { once: true, signal });
+        }
     }, { passive: true, signal });
 
     chat.addEventListener('touchcancel', () => {
