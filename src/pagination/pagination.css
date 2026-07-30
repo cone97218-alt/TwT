@@ -1,3 +1,37 @@
+
+/* ============================================================
+   防护 TauriTavern 2.2.0+ @tanstack/virtual DOM 虚拟化干扰：
+   虚拟化给 #chat 或其内层容器施加的 padding-top / translateY 动态位移，
+   在 CSS 多列布局 (column-width) 下会产生垂直偏移，经多列折行后转换为
+   横向边距偏移（随着翻页页数增加，偏移量按 padding-top % colHeight 呈线性放大）。
+   在阅读模式下强制关闭虚拟化占位符位移与内边距！
+   ============================================================ */
+body.twt-reading-mode #chat {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+
+body.twt-reading-mode #chat > * {
+    transform: none !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+
+body.twt-reading-mode #chat .mes {
+    transform: none !important;
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+}
+
+/* 归零 @tanstack/virtual 插入的虚拟高度占位元素 */
+body.twt-reading-mode #chat > div:not(.mes):not([id^="twt-"]) {
+    height: auto !important;
+    min-height: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+}
 body.twt-reading-mode {
     overflow-x: hidden !important;
 }
