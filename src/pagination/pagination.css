@@ -61,32 +61,29 @@ body.twt-reading-mode #chat > :not(.mes) {
 body.twt-reading-mode #chat .mes {
     width: 100% !important;
     box-sizing: border-box;
+    display: block !important;
     overflow: visible !important; 
     break-inside: auto !important; 
     page-break-inside: auto !important;
     -webkit-column-break-inside: auto !important;
-    /* 不在每个 .mes 上单独提升合成层，避免 column layout 下合成层碎片化 */
 }
 
-/* 默认使用 BFC 自动收容浮动 avatar，除非启用主题头像布局 */
-body.twt-reading-mode:not(.twt-avatar-theme-layout) #chat .mes {
-    display: flow-root !important;
+/* 使用 clearfix 物理清除浮动 avatar，避免 flow-root BFC 在 WebKit 多列排版下破坏断页与造成楼层交错 Bug */
+body.twt-reading-mode #chat .mes::after {
+    content: "";
+    display: table;
+    clear: both;
 }
 
 body.twt-reading-mode #chat .mes_block,
 body.twt-reading-mode #chat .mes_text {
     width: 100% !important;
     box-sizing: border-box;
+    display: block !important;
     overflow: visible !important; 
     break-inside: auto !important; 
     page-break-inside: auto !important;
     -webkit-column-break-inside: auto !important;
-}
-
-/* 默认强制使用 block 排版以配合浮动，除非启用主题头像布局 */
-body.twt-reading-mode:not(.twt-avatar-theme-layout) #chat .mes_block,
-body.twt-reading-mode:not(.twt-avatar-theme-layout) #chat .mes_text {
-    display: block !important; 
 }
 
 /* 默认使用文字环绕，但当启用主题布局时跳过覆盖 */
