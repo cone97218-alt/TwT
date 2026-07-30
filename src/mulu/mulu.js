@@ -634,6 +634,10 @@ async function showMuluModal() {
     closeMuluModal();
     injectMuluStyles();
 
+    // P2 & P3：初始化 TauriTavern 句柄并预加载 store 数据到缓存
+    const ttHandle = await getMuluTTHandle();
+    if (ttHandle) await getMuluStore(ttHandle);
+
     const settings = extension_settings.twt;
     const regexStr = settings.customMuluRegex;
     const sortOrder = settings.muluSortOrder || 'asc';
@@ -659,11 +663,15 @@ async function showMuluModal() {
     let customTabs = settings.muluChatTabs[chatTabsKey] || [];
     
     const tabsSet = new Set(customTabs);
-    chatArray.forEach(msg => {
-        if (msg.extra && msg.extra.twtMuluTab) {
-            tabsSet.add(msg.extra.twtMuluTab);
-        }
-    });
+    if (ttHandle && _muluStoreCache?.tabs) {
+        Object.values(_muluStoreCache.tabs).forEach(tab => tabsSet.add(tab));
+    } else {
+        chatArray.forEach(msg => {
+            if (msg.extra && msg.extra.twtMuluTab) {
+                tabsSet.add(msg.extra.twtMuluTab);
+            }
+        });
+    }
     const allTabs = Array.from(tabsSet);
     
     if (currentActiveMuluTab !== '全部' && !allTabs.includes(currentActiveMuluTab)) {
@@ -680,8 +688,11 @@ async function showMuluModal() {
         const cleanText = getCleanText(rawText);
 
         let displayTitle = '';
-        if (msg.extra && msg.extra.twtMuluTitle) {
-            displayTitle = msg.extra.twtMuluTitle;
+        const storedTitle = ttHandle
+            ? _muluStoreCache?.titles?.[String(i)]
+            : msg.extra?.twtMuluTitle;
+        if (storedTitle) {
+            displayTitle = storedTitle;
         } else if (regexStr && regexStr.trim() !== '') {
             const matchedTitle = extractDirectoryTitle(cleanText, regexStr);
             if (matchedTitle) {
