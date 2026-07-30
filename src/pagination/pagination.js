@@ -341,6 +341,7 @@ function doSnap(chat) {
 // 列宽初始化：等待 scrollWidth 稳定
 // ============================================================
 function updateColWidth() {
+    updateUnconstrainedHeight();
     const chat = getChat();
     if (!chat || !document.body.classList.contains('twt-reading-mode')) return;
     const w = getColWidth(chat);

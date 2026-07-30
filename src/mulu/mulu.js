@@ -246,10 +246,10 @@ async function jumpToMessagePosition(mesId, charIndex = 0, totalLength = 1) {
         const targetOffsetLeft = absoluteLeft + (rect.width * ratio);
         
         const targetPage = Math.max(0, Math.floor(targetOffsetLeft / cw));
-        chatContainer.scrollTo({ left: targetPage * cw, behavior: 'smooth' });
+        chatContainer.scrollTo({ left: targetPage * cw, behavior: 'auto' });
         setLastUserPage(targetPage);
     } else {
-        mes.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        mes.scrollIntoView({ behavior: 'auto', block: 'start' });
     }
 }
 
@@ -308,7 +308,6 @@ function renderRowSnippetsAndPageBadges(rowEl, mesId, query, hits, fullText) {
 
     rowEl.appendChild(snippetBox);
 }
-
 
 async function searchMuluMessages(query) {
     if (!query) return null;
