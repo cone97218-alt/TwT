@@ -32,12 +32,19 @@ async function getMuluStore(handle) {
         return _muluStoreCache;
     }
     try {
-        const data = await handle.store.getJson({ namespace: MULU_NS, key: MULU_KEY });
-        _muluStoreCache = data ?? { tabs: {}, titles: {} };
+        const keys = await handle.store.listKeys({ namespace: MULU_NS });
+        if (Array.isArray(keys) && keys.includes(MULU_KEY)) {
+            const data = await handle.store.getJson({ namespace: MULU_NS, key: MULU_KEY });
+            _muluStoreCache = data ?? { tabs: {}, titles: {} };
+        } else {
+            _muluStoreCache = { tabs: {}, titles: {} };
+        }
         _muluStoreCacheChatId = chatId;
         return _muluStoreCache;
     } catch {
-        return { tabs: {}, titles: {} };
+        _muluStoreCache = { tabs: {}, titles: {} };
+        _muluStoreCacheChatId = chatId;
+        return _muluStoreCache;
     }
 }
 
