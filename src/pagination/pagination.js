@@ -7,10 +7,18 @@ import { extension_settings } from '../../../../../extensions.js';
 // ============================================================
 const TT_NS = 'twt';  // metadata namespace
 
+function getWin() {
+    try {
+        if (window.parent && window.parent.document) return window.parent;
+    } catch {}
+    return window;
+}
+
 /** 获取 TauriTavern Chat API handle，不可用时返回 null */
 async function getTTHandle() {
     try {
-        const tt = window.__TAURITAVERN__;
+        const win = getWin();
+        const tt = win.__TAURITAVERN__ || window.__TAURITAVERN__ || window.parent?.__TAURITAVERN__ || window.top?.__TAURITAVERN__;
         if (!tt) return null;
         await (tt.ready ?? tt.__TAURITAVERN_MAIN_READY__);
         return tt.api?.chat?.current?.handle?.() ?? null;
@@ -19,22 +27,31 @@ async function getTTHandle() {
     }
 }
 
+let savePositionTimer = null;
+
 /**
  * 保存当前阅读位置到 TauriTavern metadata
- * 在切换聊天前调用，保存的是「离开时」的位置
  */
-async function savePaginationPosition() {
-    if (lastUserPage <= 0) return;  // 第 0 页无需保存
+export async function savePaginationPosition(targetPage = lastUserPage) {
+    const pageToSave = targetPage;
+    if (pageToSave < 0) return;
     try {
         const handle = await getTTHandle();
         if (!handle) return;
         await handle.metadata.setExtension({
             namespace: TT_NS,
-            value: { lastPage: lastUserPage, savedAt: Date.now() },
+            value: { lastPage: pageToSave, savedAt: Date.now() },
         });
     } catch (e) {
         console.warn('[TwT] Failed to save reading position:', e);
     }
+}
+
+export function debouncedSavePaginationPosition() {
+    clearTimeout(savePositionTimer);
+    savePositionTimer = setTimeout(() => {
+        savePaginationPosition(lastUserPage);
+    }, 500);
 }
 
 /**
@@ -286,6 +303,7 @@ function scrollToPage(chat, page, cw) {
     const total = Math.round(chat.scrollWidth / cw);
     page = Math.max(0, Math.min(page, total - 1));
     lastUserPage = page;
+    debouncedSavePaginationPosition();
     isScrolling = true;
 
     clearTimeout(scrollUnlockTimer);
@@ -635,9 +653,15 @@ export function setLastUserPage(page) {
 // ============================================================
 // resetPaginationBinding：切换聊天时重置并重绑定
 // ============================================================
+import { invalidateMuluStoreCache } from '../mulu/mulu.js';
+
 export function resetPaginationBinding(getSettings) {
-    // ① 切换前：保存旧聊天的阅读位置（异步，不阻塞主流程）
-    savePaginationPosition();
+    // ① 切换前：抓取并保存旧聊天的阅读位置
+    const oldPage = lastUserPage;
+    if (oldPage > 0) {
+        savePaginationPosition(oldPage);
+    }
+    invalidateMuluStoreCache();
 
     // 中止旧事件
     if (scrollEventsAbortController) {

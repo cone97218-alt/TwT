@@ -12,7 +12,8 @@ const MULU_KEY = 'mulu-meta';
 
 async function getMuluTTHandle() {
     try {
-        const tt = window.__TAURITAVERN__;
+        const win = typeof getWin === 'function' ? getWin() : window;
+        const tt = win.__TAURITAVERN__ || window.__TAURITAVERN__ || window.parent?.__TAURITAVERN__ || window.top?.__TAURITAVERN__;
         if (!tt) return null;
         await (tt.ready ?? tt.__TAURITAVERN_MAIN_READY__);
         return tt.api?.chat?.current?.handle?.() ?? null;
@@ -22,16 +23,18 @@ async function getMuluTTHandle() {
 }
 
 let _muluStoreCache = null;
-let _muluStoreCacheHandle = null;
+let _muluStoreCacheChatId = null;
 
 async function getMuluStore(handle) {
-    if (handle && handle === _muluStoreCacheHandle && _muluStoreCache !== null) {
+    const context = typeof getContext === 'function' ? getContext() : null;
+    const chatId = context ? context.chatId : 'default';
+    if (_muluStoreCache !== null && _muluStoreCacheChatId === chatId) {
         return _muluStoreCache;
     }
     try {
         const data = await handle.store.getJson({ namespace: MULU_NS, key: MULU_KEY });
         _muluStoreCache = data ?? { tabs: {}, titles: {} };
-        _muluStoreCacheHandle = handle;
+        _muluStoreCacheChatId = chatId;
         return _muluStoreCache;
     } catch {
         return { tabs: {}, titles: {} };
@@ -40,7 +43,9 @@ async function getMuluStore(handle) {
 
 async function saveMuluStore(handle, data) {
     try {
+        const context = typeof getContext === 'function' ? getContext() : null;
         _muluStoreCache = data;
+        _muluStoreCacheChatId = context ? context.chatId : 'default';
         await handle.store.setJson({ namespace: MULU_NS, key: MULU_KEY, value: data });
     } catch (e) {
         console.warn('[TwT/mulu] Failed to save mulu store:', e);
@@ -49,7 +54,7 @@ async function saveMuluStore(handle, data) {
 
 export function invalidateMuluStoreCache() {
     _muluStoreCache = null;
-    _muluStoreCacheHandle = null;
+    _muluStoreCacheChatId = null;
 }
 
 async function getMuluTabOf(mesId, msgObj) {
