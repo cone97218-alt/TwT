@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { extension_settings } from '../../../../../extensions.js';
+import { extension_settings } from '../../../extensions.js';
 
 // ============================================================
 // 核心状态
