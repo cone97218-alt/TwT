@@ -27,6 +27,20 @@ body.twt-reading-mode #chat {
     /* 关键：横向手势完全由 JS 接管，浏览器不处理横向滚动和惯性 */
     /* 比 preventDefault 更底层，无 passive 冲突问题 */
     touch-action: pan-y;
+
+    /* 防护 TauriTavern 2.2.0+ 离屏渲染优化：强行关闭 content-visibility 与 contain，避免多列布局离屏高度坍缩 */
+    content-visibility: visible !important;
+    contain: none !important;
+}
+
+/* 防护所有子元素与消息块的离屏隔离 */
+body.twt-reading-mode #chat *,
+body.twt-reading-mode #chat .mes,
+body.twt-reading-mode #chat .mes_text,
+body.twt-reading-mode #chat .mes_block {
+    content-visibility: visible !important;
+    contain: none !important;
+    contain-intrinsic-size: none !important;
 }
 
 body.twt-reading-mode #chat::-webkit-scrollbar {

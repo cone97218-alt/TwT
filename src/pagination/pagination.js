@@ -224,6 +224,8 @@ function getColWidth(chat) {
     return Math.round(chat.getBoundingClientRect().width);
 }
 
+let scrollUnlockTimer = null;
+
 function scrollToPage(chat, page, cw) {
     if (!chat) return;
     // 用整数列宽计算总页数，避免浮点误差
@@ -231,6 +233,13 @@ function scrollToPage(chat, page, cw) {
     page = Math.max(0, Math.min(page, total - 1));
     lastUserPage = page;
     isScrolling = true;
+
+    clearTimeout(scrollUnlockTimer);
+    // 350ms 超时强制解锁，防止 WebView 未抛出 scrollend 导致 isScrolling 永久死锁
+    scrollUnlockTimer = setTimeout(() => {
+        isScrolling = false;
+    }, 350);
+
     chat.scrollTo({ left: page * cw, behavior: 'smooth' });
 }
 
@@ -253,6 +262,7 @@ function doSnap(chat) {
     }
     lastUserPage = Math.round(chat.scrollLeft / cw);
     isScrolling = false;
+    clearTimeout(scrollUnlockTimer);
 }
 
 // ============================================================
@@ -676,20 +686,22 @@ function bindScrollEvents(getSettings) {
     }
 
     chat.addEventListener('scroll', () => {
-        if (isScrolling || isTouching) return;
         if (document.body.classList.contains('twt-paragraph-editing')) return;
         if (isFocusGuarding || isKeyboardOpen) return;
 
-        clearTimeout(snapTimer);
-        if (!supportsScrollend) {
-            snapTimer = setTimeout(() => doSnap(chat), 120);
-        } else {
-            // scrollend 存在时，scroll 事件只用于更新 lastUserPage（不做 snap）
-            snapTimer = setTimeout(() => {
-                const cw = getColWidth(chat);
-                if (cw > 0) lastUserPage = Math.round(chat.scrollLeft / cw);
-            }, 50);
+        // 无论是否程序滚动，只要滚动位置变化就随时更新 lastUserPage，防止页码死锁
+        const cw = getColWidth(chat);
+        if (cw > 0) {
+            lastUserPage = Math.round(chat.scrollLeft / cw);
         }
+
+        clearTimeout(snapTimer);
+        // 防抖 snap：不管浏览器是否触发 scrollend，100ms 无滚动动作后强制进行 doSnap 检查
+        snapTimer = setTimeout(() => {
+            if (!isTouching && !isScrolling) {
+                doSnap(chat);
+            }
+        }, 100);
     }, { signal });
 
     // ---- 触摸滑动翻页 ----
