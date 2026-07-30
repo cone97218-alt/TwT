@@ -1071,6 +1071,14 @@ function bindUI() {
 
     $('#twt_mulu_regex_input').val(extension_settings.twt.customMuluRegex);
 
+    // 热重载按钮事件
+    $(document).off('click', '#twt_btn_hot_reload').on('click', '#twt_btn_hot_reload', function(e) {
+        e.preventDefault();
+        if (typeof window.twtHotReload === 'function') {
+            window.twtHotReload();
+        }
+    });
+
     // 预设相关
     $('#twt_visual_preset').on('change', function() {
         const val = $(this).val();
