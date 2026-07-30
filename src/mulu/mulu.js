@@ -2,7 +2,6 @@
 import { extension_settings, getContext } from '../../../../../extensions.js';
 import { showMoreMessages } from '../../../../../../script.js';
 import { setLastUserPage } from '../pagination/pagination.js';
-import { TauriTavernBridge } from '../tauri_bridge.js';
 
 const BTN_START_ID = 'twt-mulu-start-btn';
 const BTN_END_ID = 'twt-mulu-end-btn';
@@ -14,20 +13,6 @@ const escapeHtml = (str) => (str || '')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
-
-function highlightMatchedKeyword(text, keyword) {
-    if (!text) return '';
-    if (!keyword || !keyword.trim()) return escapeHtml(text);
-
-    const safeText = escapeHtml(text);
-    const escapedKeyword = keyword.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    try {
-        const regex = new RegExp(`(${escapedKeyword})`, 'gi');
-        return safeText.replace(regex, `<mark style="background: rgba(var(--SmartThemeUnderlineColor-rgb, 0, 122, 255), 0.25); color: var(--SmartThemeEmColor, var(--SmartThemeUnderlineColor, #00afff)); font-weight: bold; border-radius: 2px; padding: 0 2px;">$1</mark>`);
-    } catch (e) {
-        return safeText;
-    }
-}
 
 // 模块级全局变量，保证目录模态框关闭后重新打开时日志和生成状态依然存在
 let globalBatchLogs = [];
@@ -613,39 +598,6 @@ function showMuluModal() {
         flex-shrink: 0;
     `;
 
-    let currentSearchScope = 'full'; // 'full' or 'title'
-
-    const searchScopeBtn = doc.createElement('button');
-    searchScopeBtn.id = 'twt-mulu-search-scope-btn';
-    searchScopeBtn.className = 'menu_button';
-    searchScopeBtn.style.cssText = `
-        width: 28px !important;
-        min-width: 28px !important;
-        max-width: 28px !important;
-        height: 26px !important;
-        padding: 0 !important;
-        margin: 0 !important;
-        font-size: 0.85em !important;
-        display: inline-flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        flex-shrink: 0 !important;
-        box-sizing: border-box !important;
-        border-radius: 4px !important;
-        cursor: pointer !important;
-    `;
-
-    const updateScopeBtnUI = () => {
-        if (currentSearchScope === 'full') {
-            searchScopeBtn.innerHTML = '<i class="fa-solid fa-file-lines fa-fw"></i>';
-            searchScopeBtn.title = '当前搜索范围：全文（点击切换为仅搜标题）';
-        } else {
-            searchScopeBtn.innerHTML = '<i class="fa-solid fa-heading fa-fw"></i>';
-            searchScopeBtn.title = '当前搜索范围：仅标题（点击切换为全文搜索）';
-        }
-    };
-    updateScopeBtnUI();
-
     const searchInput = doc.createElement('input');
     searchInput.type = 'text';
     searchInput.id = 'twt-mulu-search';
@@ -664,102 +616,22 @@ function showMuluModal() {
         min-width: 0;
     `;
 
-    const doSearch = async () => {
-        const query = searchInput.value.toLowerCase().trim();
-        const scope = currentSearchScope;
-        const rows = listContainer.querySelectorAll('.twt-mulu-row');
-
-        const existingResultsBox = listContainer.querySelector('#twt-search-results-container');
-        if (existingResultsBox) existingResultsBox.remove();
-
-        if (!query) {
-            rows.forEach(row => row.style.display = 'flex');
-            return;
-        }
-
-        const isTauriReady = (scope === 'full') && (await TauriTavernBridge.isAvailable());
-
-        if (isTauriReady) {
-            const hits = await TauriTavernBridge.searchMessages({
-                query: query,
-                limit: 50,
-                filters: { role: 'assistant' }
-            });
-
-            rows.forEach(row => row.style.display = 'none');
-
-            if (hits && hits.length > 0) {
-                const resultsBox = doc.createElement('div');
-                resultsBox.id = 'twt-search-results-container';
-                resultsBox.style.cssText = 'display: flex; flex-direction: column; gap: 6px; padding: 6px 0; width: 100%; box-sizing: border-box;';
-
-                hits.forEach(hit => {
-                    const hitRow = doc.createElement('div');
-                    hitRow.style.cssText = `
-                        display: flex;
-                        flex-direction: column;
-                        padding: 8px 10px;
-                        border-radius: 6px;
-                        background: var(--SmartThemeBlurTintColor, rgba(255, 255, 255, 0.05));
-                        border: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.1));
-                        cursor: pointer;
-                        transition: background 0.15s;
-                    `;
-                    hitRow.addEventListener('mouseover', () => hitRow.style.background = 'var(--SmartThemeUnderlineColor, rgba(0, 122, 255, 0.2))');
-                    hitRow.addEventListener('mouseout', () => hitRow.style.background = 'var(--SmartThemeBlurTintColor, rgba(255, 255, 255, 0.05))');
-
-                    const hitHeader = doc.createElement('div');
-                    hitHeader.style.cssText = 'display: flex; justify-content: space-between; font-size: 0.8em; opacity: 0.75; margin-bottom: 4px;';
-                    hitHeader.innerHTML = `<span><i class="fa-solid fa-hashtag"></i> 楼层 #${hit.index + 1}</span><span>匹配度: ${Math.round((hit.score || 1) * 100)}%</span>`;
-
-                    const hitSnippet = doc.createElement('div');
-                    hitSnippet.style.cssText = 'font-size: 0.88em; line-height: 1.4; color: var(--SmartThemeBodyColor, #fff); word-break: break-all;';
-                    hitSnippet.innerHTML = highlightMatchedKeyword(hit.snippet || hit.text || '', query);
-
-                    hitRow.appendChild(hitHeader);
-                    hitRow.appendChild(hitSnippet);
-
-                    hitRow.addEventListener('click', async (e) => {
-                        e.stopPropagation();
-                        closeMuluModal();
-                        await scrollToMessageOrNearest(hit.index, query);
-                    });
-
-                    resultsBox.appendChild(hitRow);
-                });
-
-                listContainer.appendChild(resultsBox);
-            } else {
-                const emptyBox = doc.createElement('div');
-                emptyBox.id = 'twt-search-results-container';
-                emptyBox.style.cssText = 'padding: 20px; text-align: center; font-size: 0.9em; opacity: 0.6;';
-                emptyBox.innerText = '未找到匹配的正文句子';
-                listContainer.appendChild(emptyBox);
-            }
-        } else {
+    let searchTimeout = null;
+    searchInput.addEventListener('input', () => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            const query = searchInput.value.toLowerCase().trim();
+            const rows = listContainer.querySelectorAll('.twt-mulu-row');
             rows.forEach(row => {
                 const rowText = (row.getAttribute('data-text') || '').toLowerCase();
                 const fullText = (row.getAttribute('data-full-text') || '').toLowerCase();
-                if (rowText.includes(query) || (scope === 'full' && fullText.includes(query))) {
+                if (rowText.includes(query) || fullText.includes(query)) {
                     row.style.display = 'flex';
                 } else {
                     row.style.display = 'none';
                 }
             });
-        }
-    };
-
-    searchScopeBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        currentSearchScope = (currentSearchScope === 'full') ? 'title' : 'full';
-        updateScopeBtnUI();
-        doSearch();
-    });
-
-    let searchTimeout = null;
-    searchInput.addEventListener('input', () => {
-        clearTimeout(searchTimeout);
-        searchTimeout = setTimeout(doSearch, 400);
+        }, 800); // 延后 800 毫秒（约1秒左右）等待打字结束
     });
 
     let isBatchMode = false;
@@ -1497,7 +1369,6 @@ function showMuluModal() {
     headerActions.appendChild(sortBtn);
     headerActions.appendChild(closeBtn);
     header.appendChild(titleSpan);
-    header.appendChild(searchScopeBtn);
     header.appendChild(searchInput);
     header.appendChild(batchActionsContainer);
     header.appendChild(headerActions);
@@ -1922,60 +1793,7 @@ function extractDirectoryTitle(text, regexStr) {
     return null;
 }
 
-function getQueryTextScrollInfo(container, queryText, chatContainer) {
-    if (!container || !queryText) return null;
-    const cleanQuery = queryText.trim();
-    if (!cleanQuery) return null;
-
-    const chatRect = chatContainer.getBoundingClientRect();
-    const currentScrollLeft = chatContainer.scrollLeft;
-
-    // 1. Try TreeWalker to find the exact Text Node containing queryText
-    try {
-        const doc = container.ownerDocument || document;
-        const walker = doc.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
-        let node;
-        while (node = walker.nextNode()) {
-            const text = node.nodeValue || '';
-            const idx = text.toLowerCase().indexOf(cleanQuery.toLowerCase());
-            if (idx !== -1) {
-                const range = doc.createRange();
-                range.setStart(node, idx);
-                range.setEnd(node, Math.min(idx + cleanQuery.length, text.length));
-                const rect = range.getBoundingClientRect();
-                if (rect && (rect.width > 0 || rect.height > 0)) {
-                    return {
-                        absoluteLeft: rect.left - chatRect.left + currentScrollLeft,
-                        targetElement: node.parentElement
-                    };
-                }
-            }
-        }
-    } catch (e) {
-        console.warn('TreeWalker text range search error:', e);
-    }
-
-    // 2. Fallback: Find smallest leaf DOM element containing cleanQuery
-    const candidates = Array.from(container.querySelectorAll('p, li, blockquote, h1, h2, h3, h4, h5, h6, pre, code, span, div'));
-    const matching = candidates.filter(el => {
-        const t = (el.innerText || el.textContent || '').toLowerCase();
-        return t.includes(cleanQuery.toLowerCase());
-    });
-
-    if (matching.length > 0) {
-        matching.sort((a, b) => (a.innerText || a.textContent || '').length - (b.innerText || b.textContent || '').length);
-        const leaf = matching[0];
-        const rect = leaf.getBoundingClientRect();
-        return {
-            absoluteLeft: rect.left - chatRect.left + currentScrollLeft,
-            targetElement: leaf
-        };
-    }
-
-    return null;
-}
-
-function scrollToMessage(mes, targetQueryText = null) {
+function scrollToMessage(mes) {
     if (!mes) return;
     const doc = getDoc();
     const chatContainer = doc.getElementById('chat');
@@ -1985,84 +1803,25 @@ function scrollToMessage(mes, targetQueryText = null) {
         const chatRect = chatContainer.getBoundingClientRect();
         const cw = chatContainer.getBoundingClientRect().width;
         const currentScrollLeft = chatContainer.scrollLeft;
-
-        let absoluteLeft = null;
-        let matchedEl = null;
-        if (targetQueryText && typeof targetQueryText === 'string' && targetQueryText.trim()) {
-            const info = getQueryTextScrollInfo(mes, targetQueryText, chatContainer);
-            if (info) {
-                absoluteLeft = info.absoluteLeft;
-                matchedEl = info.targetElement;
-            }
-        }
-
-        if (absoluteLeft === null) {
-            const rect = mes.getBoundingClientRect();
-            absoluteLeft = rect.left - chatRect.left + currentScrollLeft;
-        }
-
-        const targetPage = Math.floor(absoluteLeft / cw);
+        const rect = mes.getBoundingClientRect();
+        const absoluteLeft = rect.left - chatRect.left + currentScrollLeft;
+        const targetPage = Math.round(absoluteLeft / cw);
         chatContainer.scrollTo({ left: targetPage * cw, behavior: 'smooth' });
         setLastUserPage(targetPage);
-
-        if (matchedEl) {
-            try {
-                const origBg = matchedEl.style.backgroundColor;
-                const origTrans = matchedEl.style.transition;
-                matchedEl.style.transition = 'background-color 0.3s ease, box-shadow 0.3s ease';
-                matchedEl.style.backgroundColor = 'rgba(var(--SmartThemeUnderlineColor-rgb, 0, 122, 255), 0.3)';
-                matchedEl.style.boxShadow = '0 0 8px rgba(var(--SmartThemeUnderlineColor-rgb, 0, 122, 255), 0.5)';
-                setTimeout(() => {
-                    matchedEl.style.backgroundColor = origBg;
-                    matchedEl.style.boxShadow = 'none';
-                    setTimeout(() => {
-                        matchedEl.style.transition = origTrans;
-                    }, 300);
-                }, 2200);
-            } catch (e) {}
-        }
     } else {
-        if (targetQueryText && typeof targetQueryText === 'string' && targetQueryText.trim()) {
-            const cleanQuery = targetQueryText.trim().toLowerCase();
-            const candidates = Array.from(mes.querySelectorAll('p, li, blockquote, h1, h2, h3, h4, h5, h6, pre, code, span, div'));
-            const matching = candidates.filter(el => (el.innerText || el.textContent || '').toLowerCase().includes(cleanQuery));
-            if (matching.length > 0) {
-                matching.sort((a, b) => (a.innerText || a.textContent || '').length - (b.innerText || b.textContent || '').length);
-                const el = matching[0];
-                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                try {
-                    const origBg = el.style.backgroundColor;
-                    const origTrans = el.style.transition;
-                    el.style.transition = 'background-color 0.3s ease, box-shadow 0.3s ease';
-                    el.style.backgroundColor = 'rgba(var(--SmartThemeUnderlineColor-rgb, 0, 122, 255), 0.3)';
-                    el.style.boxShadow = '0 0 8px rgba(var(--SmartThemeUnderlineColor-rgb, 0, 122, 255), 0.5)';
-                    setTimeout(() => {
-                        el.style.backgroundColor = origBg;
-                        el.style.boxShadow = 'none';
-                        setTimeout(() => {
-                            el.style.transition = origTrans;
-                        }, 300);
-                    }, 2200);
-                } catch (e) {}
-                return;
-            }
-        }
         mes.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 }
 
-async function scrollToMessageOrNearest(mesId, targetQueryText = null) {
+async function scrollToMessageOrNearest(mesId) {
     const doc = getDoc();
     const chatContainer = doc.getElementById('chat');
     if (!chatContainer) return;
 
     let targetMes = await ensureMessageLoaded(mesId);
-
-    // Wait a frame for DOM layout & CSS multi-column reflow after modal close
-    await new Promise(r => setTimeout(r, 60));
-
+    // Check if element exists and is visible (height > 0)
     if (targetMes && targetMes.getBoundingClientRect().height > 0) {
-        scrollToMessage(targetMes, targetQueryText);
+        scrollToMessage(targetMes);
         return;
     }
 
@@ -2088,7 +1847,7 @@ async function scrollToMessageOrNearest(mesId, targetQueryText = null) {
     if (nearestMesId !== -1) {
         const nearestMes = doc.querySelector(`#chat .mes[mesid="${nearestMesId}"]`);
         if (nearestMes) {
-            scrollToMessage(nearestMes, targetQueryText);
+            scrollToMessage(nearestMes);
             toastr.info(`该消息已隐藏，已为您定位到邻近的第 ${nearestMesId} 条消息`, '提示');
             return;
         }

@@ -1,4 +1,4 @@
-﻿// @ts-nocheck
+// @ts-nocheck
 import { extension_settings } from '../../../../../extensions.js';
 
 // ============================================================
