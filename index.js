@@ -3077,6 +3077,9 @@ jQuery(async () => {
         }
     }, true);
 
+    // 自动刷新逻辑：当在酒馆中点击更新扩展成功后自动刷新界面
+    initAutoReloadOnUpdate();
+
     // 聊天切换时重新绑定翻页事件到新的 #chat 元素
     // 解决：旧 #chat 被销毁后事件监听器失效导致翻页失控的竞态问题
     try {
@@ -3092,3 +3095,63 @@ jQuery(async () => {
         console.warn('[TwT] Failed to register CHAT_CHANGED listener for pagination reset:', e);
     }
 });
+
+let isAutoReloading = false;
+function triggerAutoReload(msg) {
+    if (isAutoReloading) return;
+    isAutoReloading = true;
+    try {
+        toastr.success(msg || 'TwT 扩展更新成功，即将在 1.5 秒后自动刷新界面...', '更新完成', { timeOut: 3000 });
+    } catch {}
+    setTimeout(() => {
+        try {
+            if (window.parent && window.parent.location) {
+                window.parent.location.reload();
+                return;
+            }
+        } catch {}
+        window.location.reload();
+    }, 1500);
+}
+
+function initAutoReloadOnUpdate() {
+    // ① 监听 SillyTavern / TauriTavern 事件源
+    try {
+        const ctx = getContext();
+        if (ctx && ctx.eventSource && ctx.eventTypes) {
+            const updateEvents = ['EXTENSION_UPDATED', 'EXTENSIONS_UPDATED', 'extension_updated', 'extensions_updated'];
+            updateEvents.forEach(evtName => {
+                const evtType = ctx.eventTypes[evtName] || evtName;
+                ctx.eventSource.on(evtType, (data) => {
+                    console.log('[TwT] Extension update event detected:', evtName, data);
+                    triggerAutoReload('检测到扩展已更新，即将在 1.5 秒后自动刷新界面...');
+                });
+            });
+        }
+    } catch (e) {
+        console.warn('[TwT] Failed to bind eventSource update listener:', e);
+    }
+
+    // ② 拦截扩展更新 API (fetch)
+    try {
+        const targetWindow = (window.parent && window.parent.fetch) ? window.parent : window;
+        const originalFetch = targetWindow.fetch;
+        if (typeof originalFetch === 'function') {
+            targetWindow.fetch = async function(...args) {
+                const response = await originalFetch.apply(this, args);
+                try {
+                    const url = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
+                    if (url.includes('/api/extensions/update') || url.includes('/api/extensions/update_extension')) {
+                        if (response.ok) {
+                            triggerAutoReload('🎉 TwT 扩展已成功更新！即将在 1.5 秒后自动刷新界面...');
+                        }
+                    }
+                } catch (err) {}
+                return response;
+            };
+        }
+    } catch (e) {
+        console.warn('[TwT] Failed to intercept fetch for auto-reload:', e);
+    }
+}
+
