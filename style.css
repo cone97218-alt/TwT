@@ -1,5 +1,472 @@
-@import url("./src/pagination/pagination.css");
-@import url("./src/visual/visual.css");
-@import url("./src/menu/menu.css");
-@import url("./src/paragraph/paragraph.css");
+/* ==========================================================================
+   页面精简 (UI Trimmer) Extension - Stylesheet
+   ========================================================================== */
 
+/* --------------------------------------------------------------------------
+   模块一：页面精简 CSS Hiding Rules [CSS 操控]
+   -------------------------------------------------------------------------- */
+
+/* 1. 隐藏教程图标 [CSS] */
+body.cut-hide-tutorials .note-link-span,
+body.cut-hide-tutorials .notes-link,
+body.cut-hide-tutorials a.topRightInset,
+body.cut-hide-tutorials [name="samplerHelpButton"],
+body.cut-hide-tutorials #samplerHelpButton,
+body.cut-hide-tutorials #chartokenwarning,
+body.cut-hide-tutorials .fa-question-circle:not(.cut-keep),
+body.cut-hide-tutorials .fa-circle-question:not(.cut-keep),
+body.cut-hide-tutorials a[href*="docs.sillytavern.app"] .fa-circle-question,
+body.cut-hide-tutorials a[href*="docs.sillytavern.app"] .fa-question-circle,
+body.cut-hide-tutorials .shepherd-element,
+body.cut-hide-tutorials .st-guided-tour-step {
+    display: none !important;
+}
+
+/* 2. 隐藏语言选择 [CSS] */
+body.cut-hide-language-select #UI-language-block,
+body.cut-hide-language-select #onboarding-UI-language-block,
+body.cut-hide-language-select select#ui_language_select,
+body.cut-hide-language-select select#onboarding_ui_language_select {
+    display: none !important;
+}
+
+/* 3. 隐藏快捷链接 [CSS] */
+body.cut-hide-redirect-links .welcomeShortcuts a[href*="docs.sillytavern.app"],
+body.cut-hide-redirect-links .welcomeShortcuts a[href*="github.com"],
+body.cut-hide-redirect-links .welcomeShortcuts a[href*="discord.gg"],
+body.cut-hide-redirect-links .welcomeShortcuts .welcomeShortcutsSeparator,
+body.cut-hide-redirect-links .onboarding a[href*="docs.sillytavern.app"],
+body.cut-hide-redirect-links .onboarding a[href*="discord.gg"],
+body.cut-hide-redirect-links .welcomeHeader a[href*="docs.sillytavern.app"],
+body.cut-hide-redirect-links .welcomeHeader a[href*="github.com"],
+body.cut-hide-redirect-links .welcomeHeader a[href*="discord.gg"] {
+    display: none !important;
+}
+
+/* 4. 隐藏滑块提示 [CSS] */
+body.cut-hide-slider-tips #clickSlidersTips {
+    display: none !important;
+}
+
+/* 5. 隐藏无效格式 [CSS] */
+body.cut-hide-cc-invalid #advanced-formatting-cc-notice,
+body.cut-hide-cc-invalid [data-cc-null] {
+    display: none !important;
+}
+
+/* 6. 手机打字防弹 [JS + CSS] */
+body.cut-mobile-anti-jump {
+    overscroll-behavior-y: none !important;
+}
+
+body.cut-mobile-anti-jump #send_form,
+body.cut-mobile-anti-jump #send_textarea,
+body.cut-mobile-anti-jump .text_pole,
+body.cut-mobile-anti-jump textarea {
+    overscroll-behavior: contain !important;
+    touch-action: pan-y !important;
+    -webkit-overflow-scrolling: touch !important;
+}
+
+body.cut-mobile-anti-jump #form_sheld:has(#send_textarea:focus, #send_textarea:not(:placeholder-shown)),
+body.cut-mobile-anti-jump #send_form:has(#send_textarea:focus, #send_textarea:not(:placeholder-shown)) {
+    position: sticky !important;
+    bottom: 0 !important;
+    z-index: 99 !important;
+    transform: translateZ(0) !important;
+    will-change: transform !important;
+}
+
+@media (max-width: 768px) {
+    body.cut-mobile-anti-jump #send_form {
+        position: sticky !important;
+        bottom: 0 !important;
+        z-index: 99 !important;
+        transform: translateZ(0) !important;
+        will-change: transform !important;
+    }
+    
+    body.cut-mobile-anti-jump #send_textarea {
+        resize: none !important;
+    }
+}
+
+
+/* --------------------------------------------------------------------------
+   模块二：界面收纳与高度动态配置 [JS / CSS 结合]
+   -------------------------------------------------------------------------- */
+
+/* 人设列表折叠条 ("人设列表") [JS] */
+#cut_m2_user_avatars_drawer {
+    margin-top: 0px !important;
+    margin-bottom: 0px !important;
+    padding-top: 0px !important;
+    padding-bottom: 0px !important;
+}
+
+#cut_m2_user_avatars_drawer .inline-drawer-header {
+    margin-top: 0px !important;
+    margin-bottom: 0px !important;
+}
+
+#cut_m2_user_avatars_drawer .inline-drawer-content {
+    padding-top: 4px !important;
+    padding-bottom: 0px !important;
+    margin-bottom: 0px !important;
+}
+
+#cut_m2_user_avatars_drawer .marginBot10 {
+    margin-bottom: 4px !important;
+}
+
+.persona_management_left_column {
+    margin-bottom: 0px !important;
+    padding-bottom: 0px !important;
+}
+
+/* 角色开场折叠条 ("角色开场") [JS] */
+#cut_m2_first_msg_drawer {
+    margin-top: 2px !important;
+    margin-bottom: 2px !important;
+}
+
+#cut_m2_first_msg_drawer .inline-drawer-header {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+}
+
+#cut_m2_first_msg_drawer .editor_maximize {
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    font-size: 0.95em;
+    opacity: 0.85;
+    cursor: pointer;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+#cut_m2_first_msg_drawer .editor_maximize:hover {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+/* 8. 人设概述高度 [CSS] */
+body.cut-persona-height-active #persona_description {
+    height: var(--cut-persona-height, 450px) !important;
+    min-height: var(--cut-persona-height, 450px) !important;
+}
+
+/* 角色描述高度 (#description_textarea) [CSS] */
+body.cut-char-desc-height-active #description_textarea {
+    height: var(--cut-char-desc-height, 450px) !important;
+    min-height: var(--cut-char-desc-height, 450px) !important;
+}
+
+/* 9. 自定义样式高度 [CSS] */
+body.cut-css-height-active #customCSS,
+body.cut-css-height-active #CustomCSS-block #customCSS {
+    height: var(--cut-css-height, 500px) !important;
+    min-height: var(--cut-css-height, 500px) !important;
+}
+
+/* 10. 用户选择高度 (#user_avatar_block) [CSS] (开启状态) */
+body.cut-avatar-height-active #user_avatar_block {
+    max-height: var(--cut-avatar-height, 300px) !important;
+    overflow: hidden auto !important;
+}
+
+/* 用户选择高度禁用状态：强行清除最大高度与内部滚动条，完全自然展开 */
+body:not(.cut-avatar-height-active) #user_avatar_block,
+body:not(.cut-avatar-height-active) #cut_m2_user_avatars_drawer #user_avatar_block {
+    max-height: none !important;
+    overflow: visible !important;
+}
+
+/* 折叠条绝对等距样式 */
+#user-settings-block-content,
+#user-settings-block div[name="UserSettingsFirstColumn"],
+#user-settings-block div[name="UserSettingsSecondColumn"],
+#user-settings-block div[name="UserSettingsThirdColumn"] {
+    gap: 0px !important;
+    margin-top: 0px !important;
+    margin-bottom: 0px !important;
+    padding-top: 0px !important;
+    padding-bottom: 0px !important;
+}
+
+#user-settings-block .inline-drawer,
+#theme_colors,
+#cut_m2_gen_params_drawer,
+#cut_m2_wi_top_drawer,
+#cut_m2_persona_drawer,
+#cut_m2_custom_css_drawer,
+#cut_m2_ui_effects_drawer,
+#cut_m2_theme_toggles_drawer,
+#cut_m2_user_advanced_drawer {
+    margin-top: 2px !important;
+    margin-bottom: 2px !important;
+    padding-top: 0px !important;
+    padding-bottom: 0px !important;
+}
+
+#user-settings-block .inline-drawer-header,
+#user-settings-block .userSettingsInnerExpandable {
+    margin-top: 0px !important;
+    margin-bottom: 0px !important;
+    padding-top: 4px !important;
+    padding-bottom: 4px !important;
+    padding-left: 6px !important;
+    padding-right: 6px !important;
+    box-sizing: border-box !important;
+}
+
+#cut_m2_custom_css_drawer #CustomCSS-block > h4 {
+    display: none !important;
+}
+
+#cut_m2_custom_css_drawer .inline-drawer-header {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+}
+
+#cut_m2_custom_css_drawer .cut-css-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+}
+
+.editor_maximize {
+    font-family: "Font Awesome 6 Free", "FontAwesome" !important;
+    font-weight: 900 !important;
+}
+
+#cut_m2_custom_css_drawer .editor_maximize {
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    font-size: 0.95em;
+    opacity: 0.8;
+    cursor: pointer;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+#cut_m2_custom_css_drawer .editor_maximize:hover {
+    background: transparent !important;
+    background-color: transparent !important;
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.regex_editor .cut-regex-label-row {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    margin-bottom: 2px !important;
+    width: 100% !important;
+}
+
+.regex_editor .editor_maximize {
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    font-size: 0.95em;
+    opacity: 0.85;
+    cursor: pointer;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.regex_editor .editor_maximize:hover {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.cut-editor-scroll-actions .cut-scroll-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.cut-editor-scroll-actions .cut-scroll-btn:hover {
+    background: rgba(255, 255, 255, 0.22);
+    border-color: var(--SmartThemeEmColor, #4caf50);
+    color: var(--SmartThemeEmColor, #4caf50);
+    transform: scale(1.05);
+}
+
+.cut-pm-prompt-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-left: auto;
+}
+
+.cut-pm-prompt-actions .editor_maximize {
+    cursor: pointer;
+    opacity: 0.85;
+    font-size: 1.05em;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.cut-pm-prompt-actions .editor_maximize:hover {
+    opacity: 1;
+    transform: scale(1.15);
+}
+
+#cut_m2_pm_entry_params_drawer {
+    margin-bottom: 10px !important;
+}
+
+#cut_m2_pm_entry_params_drawer .inline-drawer-content {
+    padding: 8px 4px 0 4px !important;
+}
+
+#user-settings-block hr,
+#user-settings-block .inline-drawer-content hr,
+div[name="UserSettingsFirstColumn"] hr,
+div[name="UserSettingsSecondColumn"] hr,
+div[name="UserSettingsThirdColumn"] hr {
+    display: none !important;
+}
+
+.completion_prompt_manager_header,
+#completion_prompt_manager .completion_prompt_manager_header,
+#cut_m2_gen_params_drawer + #completion_prompt_manager,
+#cut_m2_gen_params_drawer + .range-block,
+#cut_m2_gen_params_drawer + div {
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+}
+
+
+/* --------------------------------------------------------------------------
+   拓展设置面板样式
+   -------------------------------------------------------------------------- */
+
+#cut_container {
+    margin-bottom: 10px;
+}
+
+#cut_container .cut-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.15));
+    margin-bottom: 10px;
+    gap: 4px;
+}
+
+#cut_container .cut-tab {
+    padding: 6px 14px;
+    cursor: pointer;
+    font-size: 0.9em;
+    font-weight: 500;
+    opacity: 0.6;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+#cut_container .cut-tab:hover {
+    opacity: 0.9;
+}
+
+#cut_container .cut-tab.active {
+    opacity: 1;
+    font-weight: 600;
+    color: var(--SmartThemeEmColor, #4caf50);
+    border-bottom: 2px solid var(--SmartThemeEmColor, #4caf50);
+}
+
+#cut_container .cut-tab-content {
+    display: none;
+}
+
+#cut_container .cut-tab-content.active {
+    display: block;
+}
+
+#cut_container .cut-module-section {
+    padding: 8px 10px;
+    background: rgba(0, 0, 0, 0.12);
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+#cut_container .cut-module-title {
+    font-size: 0.9em;
+    margin-bottom: 8px;
+    color: var(--SmartThemeBodyColor);
+    opacity: 0.9;
+}
+
+#cut_container .cut-option-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 0;
+    border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
+}
+
+#cut_container .cut-option-item:last-child {
+    border-bottom: none;
+}
+
+#cut_container .cut-option-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 0.9em;
+    user-select: none;
+}
+
+#cut_container .cut-option-tag {
+    font-size: 0.75em;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-weight: normal;
+    opacity: 0.7;
+    margin-left: 4px;
+}
+
+#cut_container .cut-option-tag.tag-css {
+    background: rgba(33, 150, 243, 0.2);
+    color: #64b5f6;
+    border: 1px solid rgba(33, 150, 243, 0.3);
+}
+
+#cut_container .cut-option-tag.tag-js {
+    background: rgba(255, 152, 0, 0.2);
+    color: #ffb74d;
+    border: 1px solid rgba(255, 152, 0, 0.3);
+}
+
+#cut_container .cut-option-desc {
+    font-size: 0.8em;
+    opacity: 0.6;
+    margin-left: 24px;
+    margin-bottom: 6px;
+}
+
+#cut_container .cut-master-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.15));
+}
