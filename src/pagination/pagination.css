@@ -14,8 +14,16 @@ body.twt-reading-mode #chat {
     scrollbar-width: none;
     padding-left: 0 !important;
     padding-right: 0 !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
     border-left: none !important;
     border-right: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    left: 0 !important;
+    box-sizing: border-box !important;
 
     /* 不使用 CSS scroll-snap-type：column 布局无 snap-align 锚点，会导致 touchmove 时跳多页 */
     /* 不使用 -webkit-overflow-scrolling: touch：对横向同样触发惯性，由 touchmove preventDefault 接管 */
@@ -33,6 +41,16 @@ body.twt-reading-mode #chat {
     contain: none !important;
 }
 
+/* 防护父级容器边距与内边距偏移，确保 #chat 贴合视口两侧 */
+body.twt-reading-mode #sheathed,
+body.twt-reading-mode #chat_parent,
+body.twt-reading-mode #form_sheath {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+}
+
 /* 防护所有子元素与消息块的离屏隔离 */
 body.twt-reading-mode #chat *,
 body.twt-reading-mode #chat .mes,
@@ -48,9 +66,11 @@ body.twt-reading-mode #chat::-webkit-scrollbar {
 }
 
 /* 对 #chat 的所有直接子元素进行宽度和边距归一化，防止系统消息、输入指示器等其他元素破坏列对齐，同时消除 margin 在 WebKit 多列布局下的断页偏移 Bug */
-/* 对 #chat 的所有直接子元素进行宽度和排版归一化，消除 margin 在 WebKit 多列布局下的断页偏移 Bug */
 body.twt-reading-mode #chat > * {
     width: 100% !important;
+    max-width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
     box-sizing: border-box !important;
     break-inside: auto !important; 
     page-break-inside: auto !important;
@@ -74,7 +94,10 @@ body.twt-reading-mode #chat > :not(.mes) {
 /* 消息主体 */
 body.twt-reading-mode #chat .mes {
     width: 100% !important;
-    box-sizing: border-box;
+    max-width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    box-sizing: border-box !important;
     overflow: visible !important; 
     break-inside: auto !important; 
     page-break-inside: auto !important;

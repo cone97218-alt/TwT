@@ -1,9 +1,9 @@
 // @ts-nocheck
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
-import { applyPaginationMode, initPaginationEvent, resetPaginationBinding } from './src/pagination/pagination.js?v=20260731_2';
-import { applyVisualMode } from './src/visual/visual.js?v=20260731_2';
-import { initMulu, applyMuluSettings } from './src/mulu/mulu.js?v=20260731_2';
-import { initMenu, applyMenuMode, applyFullscreenMode } from './src/menu/menu.js?v=20260731_2';
+import { applyPaginationMode, initPaginationEvent, resetPaginationBinding } from './src/pagination/pagination.js';
+import { applyVisualMode } from './src/visual/visual.js';
+import { initMulu, applyMuluSettings } from './src/mulu/mulu.js';
+import { initMenu, applyMenuMode, applyFullscreenMode } from './src/menu/menu.js';
 
 let parentDoc = document;
 try {
@@ -1070,14 +1070,6 @@ function bindUI() {
     renderOptimizePatchList();
 
     $('#twt_mulu_regex_input').val(extension_settings.twt.customMuluRegex);
-
-    // 热重载按钮事件
-    $(document).off('click', '#twt_btn_hot_reload').on('click', '#twt_btn_hot_reload', function(e) {
-        e.preventDefault();
-        if (typeof window.twtHotReload === 'function') {
-            window.twtHotReload();
-        }
-    });
 
     // 预设相关
     $('#twt_visual_preset').on('change', function() {
@@ -3100,37 +3092,3 @@ jQuery(async () => {
         console.warn('[TwT] Failed to register CHAT_CHANGED listener for pagination reset:', e);
     }
 });
-
-// ============================================================
-// 免刷新热重载 (Hot Reload)
-// 可在 F12 控制台直接执行 twtHotReload() 或配合代码监听工具调用
-// ============================================================
-window.twtHotReload = async function () {
-    console.log('[TwT] 热重载启动...');
-    try {
-        const doc = (window.parent && window.parent.document) || document;
-        doc.querySelectorAll('#twt-mulu-styles, #twt-menu-styles, #twt-pagination-styles, #twt-visual-styles, #twt-paragraph-styles').forEach(el => el.remove());
-        doc.querySelectorAll('#twt-mulu-start-btn, #twt-mulu-end-btn, #twt-mulu-toc-btn, #twt-menu-btn, #twt-mulu-overlay, #twt-batch-log-overlay').forEach(el => el.remove());
-
-        const timestamp = Date.now();
-        const muluMod = await import(`./src/mulu/mulu.js?v=${timestamp}`);
-        await import(`./src/pagination/pagination.js?v=${timestamp}`);
-        await import(`./src/menu/menu.js?v=${timestamp}`);
-        await import(`./index.js?v=${timestamp}`);
-
-        if (muluMod && typeof muluMod.initMulu === 'function') {
-            muluMod.initMulu(() => extension_settings.twt);
-        }
-
-        if (window.toastr) {
-            window.toastr.success('TwT 扩展已成功热重载！', 'Hot Reload');
-        }
-        console.log('[TwT] 热重载完成！');
-    } catch (e) {
-        console.error('[TwT] 热重载失败:', e);
-        if (window.toastr) {
-            window.toastr.error(`热重载失败: ${e.message || e}`, '错误');
-        }
-    }
-};
-
