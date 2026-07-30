@@ -348,7 +348,7 @@ function updateColWidth() {
     const w = getColWidth(chat);
     if (w > 0) {
         // 始终使用整数列宽，避免小数像素引发的 scrollLeft 累积误差
-        chat.style.removeProperty('--twt-col-width');
+        chat.style.setProperty('--twt-col-width', `${w}px`, 'important');
         containOversizedElements();
     }
 }
@@ -373,7 +373,7 @@ function updateColWidthWhenReady(retries = 20, interval = 150) {
             colWidthRetryTimer = setTimeout(() => updateColWidthWhenReady(retries - 1, interval), interval);
             return;
         }
-        chat.style.removeProperty('--twt-col-width');
+        chat.style.setProperty('--twt-col-width', `${w}px`, 'important');
         containOversizedElements();
         // ③ layout 稳定后恢复阅读位置（P1 核心）
         // 先异步读取 metadata，再在下一帧安全跳页
