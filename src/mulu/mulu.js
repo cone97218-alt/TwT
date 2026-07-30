@@ -599,6 +599,39 @@ function showMuluModal() {
         flex-shrink: 0;
     `;
 
+    let currentSearchScope = 'full'; // 'full' or 'title'
+
+    const searchScopeBtn = doc.createElement('button');
+    searchScopeBtn.id = 'twt-mulu-search-scope-btn';
+    searchScopeBtn.className = 'menu_button';
+    searchScopeBtn.style.cssText = `
+        width: 28px !important;
+        min-width: 28px !important;
+        max-width: 28px !important;
+        height: 26px !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        font-size: 0.85em !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        flex-shrink: 0 !important;
+        box-sizing: border-box !important;
+        border-radius: 4px !important;
+        cursor: pointer !important;
+    `;
+
+    const updateScopeBtnUI = () => {
+        if (currentSearchScope === 'full') {
+            searchScopeBtn.innerHTML = '<i class="fa-solid fa-file-lines fa-fw"></i>';
+            searchScopeBtn.title = '当前搜索范围：全文（点击切换为仅搜标题）';
+        } else {
+            searchScopeBtn.innerHTML = '<i class="fa-solid fa-heading fa-fw"></i>';
+            searchScopeBtn.title = '当前搜索范围：仅标题（点击切换为全文搜索）';
+        }
+    };
+    updateScopeBtnUI();
+
     const searchInput = doc.createElement('input');
     searchInput.type = 'text';
     searchInput.id = 'twt-mulu-search';
@@ -617,91 +650,102 @@ function showMuluModal() {
         min-width: 0;
     `;
 
+    const doSearch = async () => {
+        const query = searchInput.value.toLowerCase().trim();
+        const scope = currentSearchScope;
+        const rows = listContainer.querySelectorAll('.twt-mulu-row');
+
+        const existingResultsBox = listContainer.querySelector('#twt-search-results-container');
+        if (existingResultsBox) existingResultsBox.remove();
+
+        if (!query) {
+            rows.forEach(row => row.style.display = 'flex');
+            return;
+        }
+
+        const isTauriReady = (scope === 'full') && (await TauriTavernBridge.isAvailable());
+
+        if (isTauriReady) {
+            const hits = await TauriTavernBridge.searchMessages({
+                query: query,
+                limit: 50,
+                filters: { role: 'assistant' }
+            });
+
+            rows.forEach(row => row.style.display = 'none');
+
+            if (hits && hits.length > 0) {
+                const resultsBox = doc.createElement('div');
+                resultsBox.id = 'twt-search-results-container';
+                resultsBox.style.cssText = 'display: flex; flex-direction: column; gap: 6px; padding: 6px 0; width: 100%; box-sizing: border-box;';
+
+                hits.forEach(hit => {
+                    const hitRow = doc.createElement('div');
+                    hitRow.style.cssText = `
+                        display: flex;
+                        flex-direction: column;
+                        padding: 8px 10px;
+                        border-radius: 6px;
+                        background: var(--SmartThemeBlurTintColor, rgba(255, 255, 255, 0.05));
+                        border: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.1));
+                        cursor: pointer;
+                        transition: background 0.15s;
+                    `;
+                    hitRow.addEventListener('mouseover', () => hitRow.style.background = 'var(--SmartThemeUnderlineColor, rgba(0, 122, 255, 0.2))');
+                    hitRow.addEventListener('mouseout', () => hitRow.style.background = 'var(--SmartThemeBlurTintColor, rgba(255, 255, 255, 0.05))');
+
+                    const hitHeader = doc.createElement('div');
+                    hitHeader.style.cssText = 'display: flex; justify-content: space-between; font-size: 0.8em; opacity: 0.75; margin-bottom: 4px;';
+                    hitHeader.innerHTML = `<span><i class="fa-solid fa-hashtag"></i> 楼层 #${hit.index + 1}</span><span>匹配度: ${Math.round((hit.score || 1) * 100)}%</span>`;
+
+                    const hitSnippet = doc.createElement('div');
+                    hitSnippet.style.cssText = 'font-size: 0.88em; line-height: 1.4; color: var(--SmartThemeBodyColor, #fff); word-break: break-all;';
+                    hitSnippet.innerText = hit.snippet || hit.text || '';
+
+                    hitRow.appendChild(hitHeader);
+                    hitRow.appendChild(hitSnippet);
+
+                    hitRow.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        closeMuluModal();
+                        await scrollToMessageOrNearest(hit.index, query);
+                    });
+
+                    resultsBox.appendChild(hitRow);
+                });
+
+                listContainer.appendChild(resultsBox);
+            } else {
+                const emptyBox = doc.createElement('div');
+                emptyBox.id = 'twt-search-results-container';
+                emptyBox.style.cssText = 'padding: 20px; text-align: center; font-size: 0.9em; opacity: 0.6;';
+                emptyBox.innerText = '未找到匹配的正文句子';
+                listContainer.appendChild(emptyBox);
+            }
+        } else {
+            rows.forEach(row => {
+                const rowText = (row.getAttribute('data-text') || '').toLowerCase();
+                const fullText = (row.getAttribute('data-full-text') || '').toLowerCase();
+                if (rowText.includes(query) || (scope === 'full' && fullText.includes(query))) {
+                    row.style.display = 'flex';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+    };
+
+    searchScopeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        currentSearchScope = (currentSearchScope === 'full') ? 'title' : 'full';
+        updateScopeBtnUI();
+        doSearch();
+    });
+
     let searchTimeout = null;
     searchInput.addEventListener('input', () => {
         clearTimeout(searchTimeout);
-        searchTimeout = setTimeout(async () => {
-            const query = searchInput.value.toLowerCase().trim();
-            const rows = listContainer.querySelectorAll('.twt-mulu-row');
-
-            const existingResultsBox = listContainer.querySelector('#twt-search-results-container');
-            if (existingResultsBox) existingResultsBox.remove();
-
-            if (!query) {
-                rows.forEach(row => row.style.display = 'flex');
-                return;
-            }
-
-            const isTauriReady = await TauriTavernBridge.isAvailable();
-            if (isTauriReady) {
-                const hits = await TauriTavernBridge.searchMessages({
-                    query: query,
-                    limit: 50,
-                    filters: { role: 'assistant' }
-                });
-
-                rows.forEach(row => row.style.display = 'none');
-
-                if (hits && hits.length > 0) {
-                    const resultsBox = doc.createElement('div');
-                    resultsBox.id = 'twt-search-results-container';
-                    resultsBox.style.cssText = 'display: flex; flex-direction: column; gap: 6px; padding: 6px 0; width: 100%; box-sizing: border-box;';
-
-                    hits.forEach(hit => {
-                        const hitRow = doc.createElement('div');
-                        hitRow.style.cssText = `
-                            display: flex;
-                            flex-direction: column;
-                            padding: 8px 10px;
-                            border-radius: 6px;
-                            background: var(--SmartThemeBlurTintColor, rgba(255, 255, 255, 0.05));
-                            border: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.1));
-                            cursor: pointer;
-                            transition: background 0.15s;
-                        `;
-                        hitRow.addEventListener('mouseover', () => hitRow.style.background = 'var(--SmartThemeUnderlineColor, rgba(0, 122, 255, 0.2))');
-                        hitRow.addEventListener('mouseout', () => hitRow.style.background = 'var(--SmartThemeBlurTintColor, rgba(255, 255, 255, 0.05))');
-
-                        const hitHeader = doc.createElement('div');
-                        hitHeader.style.cssText = 'display: flex; justify-content: space-between; font-size: 0.8em; opacity: 0.75; margin-bottom: 4px;';
-                        hitHeader.innerHTML = `<span><i class="fa-solid fa-hashtag"></i> 楼层 #${hit.index + 1}</span><span>匹配度: ${Math.round((hit.score || 1) * 100)}%</span>`;
-
-                        const hitSnippet = doc.createElement('div');
-                        hitSnippet.style.cssText = 'font-size: 0.88em; line-height: 1.4; color: var(--SmartThemeBodyColor, #fff); word-break: break-all;';
-                        hitSnippet.innerText = hit.snippet || hit.text || '';
-
-                        hitRow.appendChild(hitHeader);
-                        hitRow.appendChild(hitSnippet);
-
-                        hitRow.addEventListener('click', async (e) => {
-                            e.stopPropagation();
-                            closeMuluModal();
-                            await scrollToMessageOrNearest(hit.index);
-                        });
-
-                        resultsBox.appendChild(hitRow);
-                    });
-
-                    listContainer.appendChild(resultsBox);
-                } else {
-                    const emptyBox = doc.createElement('div');
-                    emptyBox.id = 'twt-search-results-container';
-                    emptyBox.style.cssText = 'padding: 20px; text-align: center; font-size: 0.9em; opacity: 0.6;';
-                    emptyBox.innerText = '未找到匹配的正文句子';
-                    listContainer.appendChild(emptyBox);
-                }
-            } else {
-                rows.forEach(row => {
-                    const rowText = (row.getAttribute('data-text') || '').toLowerCase();
-                    const fullText = (row.getAttribute('data-full-text') || '').toLowerCase();
-                    if (rowText.includes(query) || fullText.includes(query)) {
-                        row.style.display = 'flex';
-                    } else {
-                        row.style.display = 'none';
-                    }
-                });
-            }
-        }, 500);
+        searchTimeout = setTimeout(doSearch, 400);
     });
 
     let isBatchMode = false;
@@ -1439,6 +1483,7 @@ function showMuluModal() {
     headerActions.appendChild(sortBtn);
     headerActions.appendChild(closeBtn);
     header.appendChild(titleSpan);
+    header.appendChild(searchScopeBtn);
     header.appendChild(searchInput);
     header.appendChild(batchActionsContainer);
     header.appendChild(headerActions);
@@ -1863,7 +1908,7 @@ function extractDirectoryTitle(text, regexStr) {
     return null;
 }
 
-function scrollToMessage(mes) {
+function scrollToMessage(mes, targetQueryText = null) {
     if (!mes) return;
     const doc = getDoc();
     const chatContainer = doc.getElementById('chat');
@@ -1873,17 +1918,40 @@ function scrollToMessage(mes) {
         const chatRect = chatContainer.getBoundingClientRect();
         const cw = chatContainer.getBoundingClientRect().width;
         const currentScrollLeft = chatContainer.scrollLeft;
-        const rect = mes.getBoundingClientRect();
+
+        let targetElement = mes;
+        if (targetQueryText && typeof targetQueryText === 'string' && targetQueryText.trim()) {
+            const cleanQuery = targetQueryText.trim().toLowerCase();
+            const children = mes.querySelectorAll('p, div, span, blockquote, li');
+            for (let el of children) {
+                if (el.innerText && el.innerText.toLowerCase().includes(cleanQuery)) {
+                    targetElement = el;
+                    break;
+                }
+            }
+        }
+
+        const rect = targetElement.getBoundingClientRect();
         const absoluteLeft = rect.left - chatRect.left + currentScrollLeft;
-        const targetPage = Math.round(absoluteLeft / cw);
+        const targetPage = Math.floor(absoluteLeft / cw);
         chatContainer.scrollTo({ left: targetPage * cw, behavior: 'smooth' });
         setLastUserPage(targetPage);
     } else {
+        if (targetQueryText && typeof targetQueryText === 'string' && targetQueryText.trim()) {
+            const cleanQuery = targetQueryText.trim().toLowerCase();
+            const children = mes.querySelectorAll('p, div, span, blockquote, li');
+            for (let el of children) {
+                if (el.innerText && el.innerText.toLowerCase().includes(cleanQuery)) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    return;
+                }
+            }
+        }
         mes.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 }
 
-async function scrollToMessageOrNearest(mesId) {
+async function scrollToMessageOrNearest(mesId, targetQueryText = null) {
     const doc = getDoc();
     const chatContainer = doc.getElementById('chat');
     if (!chatContainer) return;
@@ -1891,7 +1959,7 @@ async function scrollToMessageOrNearest(mesId) {
     let targetMes = await ensureMessageLoaded(mesId);
     // Check if element exists and is visible (height > 0)
     if (targetMes && targetMes.getBoundingClientRect().height > 0) {
-        scrollToMessage(targetMes);
+        scrollToMessage(targetMes, targetQueryText);
         return;
     }
 
@@ -1917,7 +1985,7 @@ async function scrollToMessageOrNearest(mesId) {
     if (nearestMesId !== -1) {
         const nearestMes = doc.querySelector(`#chat .mes[mesid="${nearestMesId}"]`);
         if (nearestMes) {
-            scrollToMessage(nearestMes);
+            scrollToMessage(nearestMes, targetQueryText);
             toastr.info(`该消息已隐藏，已为您定位到邻近的第 ${nearestMesId} 条消息`, '提示');
             return;
         }
