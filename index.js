@@ -952,6 +952,83 @@ function initThemeLinkListener() {
     themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style'] });
 }
 
+
+// ============================================================
+// 拓展更新后自动刷新酒馆机制
+// ============================================================
+function getWin() {
+    try {
+        if (window.parent && window.parent.document) return window.parent;
+    } catch {}
+    return window;
+}
+
+function reloadTavern() {
+    try {
+        const win = getWin();
+        win.location.reload();
+    } catch {
+        window.location.reload();
+    }
+}
+
+let initialManifestVersion = null;
+let initialManifestHash = null;
+let isReloading = false;
+
+export async function checkExtensionUpdate() {
+    if (isReloading) return;
+    if (extension_settings.twt && extension_settings.twt.autoReloadOnUpdate === false) return;
+    try {
+        const res = await fetch('/scripts/extensions/third-party/TwT/manifest.json?t=' + Date.now());
+        if (!res.ok) return;
+        const text = await res.text();
+        const manifest = JSON.parse(text);
+        const currentVersion = manifest.version || '';
+
+        if (initialManifestVersion === null) {
+            initialManifestVersion = currentVersion;
+            initialManifestHash = text;
+            return;
+        }
+
+        if (currentVersion !== initialManifestVersion || text !== initialManifestHash) {
+            isReloading = true;
+            console.log('[TwT] Extension update detected! Reloading page...');
+            toastr.info('检测到 TwT 阅读拓展已更新，即将自动刷新页面以应用最新代码...', '拓展已更新', { timeOut: 2000 });
+            setTimeout(() => {
+                reloadTavern();
+            }, 1200);
+        }
+    } catch (e) {
+        // 静默忽略网络错误
+    }
+}
+
+function initAutoReloadObserver() {
+    checkExtensionUpdate();
+
+    // 1. 页面重获焦点时检测
+    window.addEventListener('focus', checkExtensionUpdate);
+
+    // 2. 8秒轮询检测
+    setInterval(checkExtensionUpdate, 8000);
+
+    // 3. 监听酒馆扩展面板里的“更新”按钮点击或 Ajax 完成
+    $(document).on('click', '.extension_update, #update_extension, .update_extension_button, [data-action="update_extension"]', () => {
+        setTimeout(checkExtensionUpdate, 1500);
+        setTimeout(checkExtensionUpdate, 3500);
+    });
+
+    try {
+        $(document).ajaxComplete((event, xhr, settings) => {
+            if (settings && settings.url && (settings.url.includes('/api/extensions') || settings.url.includes('/update'))) {
+                setTimeout(checkExtensionUpdate, 1000);
+            }
+        });
+    } catch (e) {}
+}
+
 function bindUI() {
     const $enabled = $('#twt_enabled');
     const $autoReloadOnUpdate = $('#twt_auto_reload_on_update');
@@ -985,6 +1062,7 @@ function bindUI() {
     const $menuStyle = $('#twt_menu_style');
     const $visualEnabled = $('#twt_visual_enabled');
     const $muluEnabled = $('#twt_mulu_enabled');
+    const $autoReloadOnUpdate = $('#twt_auto_reload_on_update');
     
     const $paddingTop = $('#twt_padding_top');
     const $paddingBottom = $('#twt_padding_bottom');
@@ -1047,6 +1125,7 @@ function bindUI() {
 
     $visualEnabled.prop('checked', extension_settings.twt.visualEnabled);
     $muluEnabled.prop('checked', extension_settings.twt.muluEnabled);
+    $autoReloadOnUpdate.prop('checked', extension_settings.twt.autoReloadOnUpdate !== false);
     $autoReloadOnUpdate.prop('checked', extension_settings.twt.autoReloadOnUpdate !== false);
 
     $autoReloadOnUpdate.on('change', function () {
@@ -3036,6 +3115,7 @@ function updateCommentsBgSolid() {
 }
 
 jQuery(async () => {
+    initAutoReloadObserver();
     const html = await renderExtensionTemplateAsync('third-party/TwT', 'index');
     $('#extensions_settings').append(html);
 
