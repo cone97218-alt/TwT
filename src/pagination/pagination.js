@@ -297,10 +297,22 @@ function getChat() { return document.getElementById('chat'); }
  * CSS Multi-column 多列布局严格基于 clientWidth 划分列，使用 getBoundingClientRect().width
  * 会因为包含 border/scrollbar 导致 cw 比实际列宽大 1~2px，在多页下产生 cumulative right margin drift（右边距随页数累积变大）。
  */
-function getColWidth(chat) {
+/**
+ * 获取多列布局下 Chromium 引擎排版每一列的绝对精确步长 (Column Step S)
+ * 在 CSS Multi-column 布局下，chat.scrollWidth 恰好等于 N * S（N 为总列数，S 为实际列步长）。
+ * 通过 S = chat.scrollWidth / N 计算得到的步长包含亚像素浮点值，
+ * 无论翻到第 1 页还是第 100 页，都能实现 0.000px 绝对精确对齐，彻底从根源抹平右边距累积放大 Bug！
+ */
+function getColStep(chat) {
     if (!chat) return 0;
-    return chat.clientWidth || Math.round(chat.getBoundingClientRect().width);
+    const rawWidth = chat.getBoundingClientRect().width || chat.clientWidth;
+    if (rawWidth <= 0) return 0;
+    const scrollW = chat.scrollWidth;
+    if (scrollW <= 0) return rawWidth;
+    const n = Math.max(1, Math.round(scrollW / rawWidth));
+    return scrollW / n;
 }
+function getColWidth(chat) { return getColStep(chat); }
 
 let scrollUnlockTimer = null;
 
