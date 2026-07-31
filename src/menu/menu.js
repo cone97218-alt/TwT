@@ -175,14 +175,34 @@ export function initMenu(getSettings, onToggleExcerpt) {
         handleEnd();
     });
 
-    // Close menu when clicking outside
-    $(document).on('click.twt-menu touchstart.twt-menu', function() {
+    // Close menu when clicking outside (multi-doc capture listener)
+    const closeHandler = (e) => {
         const $menu = $('#twt-custom-menu');
-        if ($menu.is(':visible')) {
-            setTimeout(() => {
-                $menu.hide();
-            }, 0);
+        if (!$menu.length || !$menu.is(':visible')) return;
+
+        // If user tapped directly on a menu item, let the item click handler execute
+        if (e.target && e.target.closest && e.target.closest('.twt-menu-item, .twt-menu-grid-item, .twt-menu-circle-item')) {
+            return;
         }
+
+        $menu.hide();
+    };
+
+    const targetDocs = [document];
+    try {
+        if (window.parent && window.parent.document && window.parent.document !== document) {
+            targetDocs.push(window.parent.document);
+        }
+    } catch(e) {}
+
+    targetDocs.forEach(doc => {
+        doc.removeEventListener('pointerdown', closeHandler, true);
+        doc.removeEventListener('touchstart', closeHandler, true);
+        doc.removeEventListener('click', closeHandler, true);
+
+        doc.addEventListener('pointerdown', closeHandler, true);
+        doc.addEventListener('touchstart', closeHandler, true);
+        doc.addEventListener('click', closeHandler, true);
     });
 }
 
@@ -496,11 +516,11 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
 
     if (isCircleLayout && circleItems.length > 0) {
         const N = circleItems.length;
-        const R = Math.max(52, Math.min(85, 26 + N * 5));
-        const P = 22;
+        const R = N <= 6 ? 38 : (N <= 9 ? 44 : 50);
+        const P = 16;
         const D = (R + P) * 2;
-        const CX = R + P;
-        const CY = R + P;
+        const CX = D / 2;
+        const CY = D / 2;
 
         $menu.css({
             width: `${D}px`,
@@ -510,11 +530,11 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
 
         circleItems.forEach((item, i) => {
             const angle = (2 * Math.PI * i / N) - (Math.PI / 2);
-            const x = Math.round(CX + R * Math.cos(angle) - 16);
-            const y = Math.round(CY + R * Math.sin(angle) - 16);
+            const x = Math.round(CX + R * Math.cos(angle) - 14);
+            const y = Math.round(CY + R * Math.sin(angle) - 14);
 
             const $item = $(`<div class="twt-menu-circle-item ${item.isDanger ? 'twt-danger' : ''}" title="${item.label}" style="left: ${x}px; top: ${y}px;"><i class="${item.icon}"></i></div>`);
-            $item.on('click', (evt) => {
+            $item.on('click pointerdown touchstart', (evt) => {
                 evt.stopPropagation();
                 $menu.hide();
                 item.onClick(evt);
@@ -585,11 +605,6 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
         left: posX + 'px',
         top: posY + 'px',
         visibility: 'visible'
-    });
-
-    // Stop propagation inside menu to prevent close trigger
-    $menu.off('mousedown mouseup click touchstart').on('mousedown mouseup click touchstart', (evt) => {
-        evt.stopPropagation();
     });
 }
 

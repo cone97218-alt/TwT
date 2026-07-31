@@ -463,16 +463,17 @@ body.twt-reading-mode.twt-excerpt-active #chat {
     border-radius: 50% !important;
     background: var(--twt-comments-bg-solid, var(--SmartThemeBlurTintColor)) !important;
     border: 1px solid var(--SmartThemeBorderColor) !important;
-    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2) !important;
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.25) !important;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     padding: 0 !important;
 }
 
 #twt-custom-menu.twt-menu-circle-layout .twt-menu-circle-item {
     position: absolute;
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -480,22 +481,22 @@ body.twt-reading-mode.twt-excerpt-active #chat {
     border: none !important;
     color: var(--SmartThemeBodyColor);
     cursor: pointer;
-    transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), color 0.15s ease;
+    transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), color 0.15s ease, background 0.15s ease;
     box-sizing: border-box;
 }
 
 #twt-custom-menu.twt-menu-circle-layout .twt-menu-circle-item:hover {
     color: var(--SmartThemeUnderlineColor, var(--SmartThemePrimaryColor, #007aff));
-    transform: scale(1.35);
-    background: transparent !important;
+    background: rgba(128, 128, 128, 0.18) !important;
+    transform: scale(1.25);
 }
 
 #twt-custom-menu.twt-menu-circle-layout .twt-menu-circle-item:active {
-    transform: scale(0.95);
+    transform: scale(0.92);
 }
 
 #twt-custom-menu.twt-menu-circle-layout .twt-menu-circle-item i {
-    font-size: 1.25em;
+    font-size: 1.05em;
     opacity: 0.9;
 }
 
@@ -505,6 +506,7 @@ body.twt-reading-mode.twt-excerpt-active #chat {
 
 #twt-custom-menu.twt-menu-circle-layout .twt-menu-circle-item.twt-danger:hover {
     color: #ff2222;
-    transform: scale(1.35);
+    background: rgba(255, 68, 68, 0.2) !important;
+    transform: scale(1.25);
 }
 
