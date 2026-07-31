@@ -3097,4 +3097,71 @@ jQuery(async () => {
     }
 
     // ============================================================
-    });
+    
+    // ============================================================
+    // 拓展面板更新扩展后自动刷新酒馆页面
+    // ============================================================
+    let isAutoReloading = false;
+
+    function autoReloadApp(reason) {
+        if (isAutoReloading) return;
+        isAutoReloading = true;
+        console.log(`[TwT] ${reason}，准备自动刷新页面...`);
+        if (typeof toastr !== 'undefined') {
+            toastr.info('拓展更新完成，正在为您自动刷新页面...', '自动刷新', { timeOut: 2000 });
+        }
+        setTimeout(() => {
+            try {
+                if (window.top && window.top.location && typeof window.top.location.reload === 'function') {
+                    window.top.location.reload();
+                    return;
+                }
+            } catch (e) {}
+            try {
+                if (window.parent && window.parent.location && typeof window.parent.location.reload === 'function') {
+                    window.parent.location.reload();
+                    return;
+                }
+            } catch (e) {}
+            window.location.reload();
+        }, 1200);
+    }
+
+    // 1. 监听扩展更新相关的 AJAX 请求完成
+    try {
+        const rootDoc = (window.parent && window.parent.document) ? window.parent.document : document;
+        const $root = window.parent && window.parent.jQuery ? window.parent.jQuery(rootDoc) : $(document);
+
+        $root.ajaxComplete((event, xhr, settings) => {
+            if (!settings || !settings.url) return;
+            const url = String(settings.url).toLowerCase();
+            if (url.includes('/api/extensions/update') || url.includes('/api/extensions/download') || url.includes('/api/extensions/install')) {
+                if (xhr && (xhr.status === 200 || xhr.status === 304)) {
+                    autoReloadApp('检测到拓展更新完成');
+                }
+            }
+        });
+    } catch (e) {
+        console.warn('[TwT] Register extension update ajax listener failed:', e);
+    }
+
+    // 2. 监听扩展更新 EventSource 事件
+    try {
+        const ctx = getContext();
+        if (ctx && ctx.eventSource && ctx.eventTypes) {
+            const extEventTypes = [
+                ctx.eventTypes.EXTENSION_UPDATED,
+                ctx.eventTypes.EXTENSION_INSTALLED,
+                ctx.eventTypes.EXTENSIONS_UPDATED
+            ].filter(Boolean);
+
+            extEventTypes.forEach(eventType => {
+                ctx.eventSource.on(eventType, () => {
+                    autoReloadApp('收到拓展更新事件');
+                });
+            });
+        }
+    } catch (e) {
+        console.warn('[TwT] Register extension update eventSource listener failed:', e);
+    }
+});
