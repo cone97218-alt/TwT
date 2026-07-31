@@ -8,9 +8,6 @@
     border-radius: 4px;
     padding: 4px 0;
     min-width: auto;
-    max-height: 85vh;
-    overflow-y: auto;
-    scrollbar-width: thin;
     font-family: inherit;
     color: var(--SmartThemeBodyColor);
     user-select: none;

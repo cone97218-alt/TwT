@@ -252,12 +252,11 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
         }
     };
 
-    let order = (Array.isArray(settings.menuOrder) && settings.menuOrder.length > 0) ? [...settings.menuOrder] : [
+    const order = settings.menuOrder || [
         'menuOptRegenerate',
         'menuOptSwipe',
         'menuOptManage',
         'menuOptEdit',
-        'menuOptScreenshot',
         'menuOptNewChat',
         'menuOptCloseChat',
         'menuOptExcerpt',
@@ -267,15 +266,6 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
         'menuOptPurifierDiff',
         'menuOptPromptViewer'
     ];
-
-    if (!order.includes('menuOptScreenshot')) {
-        const editIdx = order.indexOf('menuOptEdit');
-        if (editIdx !== -1) {
-            order.splice(editIdx + 1, 0, 'menuOptScreenshot');
-        } else {
-            order.splice(4, 0, 'menuOptScreenshot');
-        }
-    }
 
     for (const key of order) {
         if (key === 'menuOptRegenerate' && settings.menuOptRegenerate && isLatestAi) {
@@ -357,18 +347,6 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
                 icon: 'fa-regular fa-pen-to-square',
                 isGridItem: true,
                 onClick: () => openParagraphEditor(mesId, clientX, clientY)
-            });
-        }
-
-        if (key === 'menuOptScreenshot' && settings.menuOptScreenshot !== false) {
-            appendMenuItem({
-                label: '截图',
-                shortLabel: '截图',
-                icon: 'fa-solid fa-camera',
-                isGridItem: true,
-                onClick: async () => {
-                    await captureChatScreenshot();
-                }
             });
         }
 
@@ -1115,276 +1093,57 @@ function ensureHtml2CanvasLoaded() {
     return _h2cPromise;
 }
 
-// ============================================================
-// 纯净聊天界面截图 (6s 自动释放硬件流零功耗 + topbar 底边精准裁切)
-// ============================================================
-let activeScreenStream = null;
-let activeScreenVideo = null;
-let streamReleaseTimeout = null;
-
-function releaseScreenStream() {
-    if (activeScreenStream) {
-        try {
-            activeScreenStream.getTracks().forEach(t => t.stop());
-        } catch (e) {}
-        activeScreenStream = null;
-    }
-    if (activeScreenVideo) {
-        try { activeScreenVideo.pause(); } catch (e) {}
-        activeScreenVideo = null;
-    }
-}
-
-function scheduleStreamRelease() {
-    clearTimeout(streamReleaseTimeout);
-    // 6秒无连续截图操作，立刻彻底关闭硬件视频流，手机零功耗/零性能负担
-    streamReleaseTimeout = setTimeout(() => {
-        releaseScreenStream();
-    }, 6000);
-}
-
-async function getOrCreateScreenStream() {
-    if (activeScreenStream && activeScreenStream.active && activeScreenStream.getVideoTracks().some(t => t.readyState === 'live')) {
-        return activeScreenStream;
-    }
-
-    activeScreenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-            displaySurface: 'browser',
-            selfBrowserSurface: 'include',
-            surfaceSwitching: 'include'
-        },
-        audio: false
-    });
-
-    activeScreenStream.getVideoTracks().forEach(track => {
-        track.addEventListener('ended', () => {
-            releaseScreenStream();
-        });
-    });
-
-    return activeScreenStream;
-}
-
-// 动态精准测量顶栏 (#top-settings-holder, #top-bar 等) 在视口中的底部物理像素坐标
-function getTopBarBottom() {
-    let maxBottom = 0;
-    const docs = [document];
-    try { if (window.parent && window.parent.document && !docs.includes(window.parent.document)) docs.push(window.parent.document); } catch (e) {}
-    try { if (window.top && window.top.document && !docs.includes(window.top.document)) docs.push(window.top.document); } catch (e) {}
-
-    const selectors = [
-        '#top-settings-holder',
-        '#top-bar',
-        '#top-bar-block',
-        '.topbar',
-        '.top-bar',
-        '#header',
-        '.chat-header'
-    ];
-
-    docs.forEach(doc => {
-        selectors.forEach(sel => {
-            const els = doc.querySelectorAll(sel);
-            els.forEach(el => {
-                if (el && (el.offsetHeight > 0 || el.getBoundingClientRect().height > 0)) {
-                    const r = el.getBoundingClientRect();
-                    if (r.bottom > maxBottom && r.bottom < (window.innerHeight * 0.45)) {
-                        maxBottom = r.bottom;
-                    }
-                }
-            });
-        });
-    });
-
-    return maxBottom;
-}
-
-// 获取真正正文内容开始的 Y 轴视口位置（以第一条可见消息 .mes 顶部为基准）
-function getChatContentTop(chat) {
-    const topBarBottom = getTopBarBottom();
-    const messages = Array.from(chat.querySelectorAll('.mes'));
-    let firstVisibleTop = null;
-
-    for (const mes of messages) {
-        const r = mes.getBoundingClientRect();
-        // 找到在顶栏下方可见的第一条消息
-        if (r.bottom > (topBarBottom + 5) && r.top < window.innerHeight) {
-            firstVisibleTop = Math.max(r.top, topBarBottom);
-            break;
-        }
-    }
-
-    if (firstVisibleTop !== null) {
-        // 保留 10px 气泡上方边距，且决不下探越过顶栏底边
-        return Math.max(topBarBottom, firstVisibleTop - 10);
-    }
-
-    return Math.max(chat.getBoundingClientRect().top, topBarBottom);
-}
-
 export async function captureChatScreenshot() {
     const chat = document.getElementById('chat');
     if (!chat) return;
 
-    // 隐藏菜单
+    if (typeof toastr !== 'undefined') {
+        toastr.info('正在截取当前聊天界面...', '截图', { timeOut: 1500 });
+    }
+
+    const h2c = await ensureHtml2CanvasLoaded();
+    if (!h2c) {
+        if (typeof toastr !== 'undefined') toastr.error('无法加载截图引擎 (html2canvas)', '截图失败');
+        return;
+    }
+
     $('#twt-custom-menu').hide();
 
-    const rect = chat.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return;
-
-    // 1. 优先使用原生屏幕 API (结合媒体流复用 + 6s 自动释放零功耗)
-    if (navigator.mediaDevices && typeof navigator.mediaDevices.getDisplayMedia === 'function') {
-        try {
-            const stream = await getOrCreateScreenStream();
-
-            if (!activeScreenVideo) {
-                activeScreenVideo = document.createElement('video');
-                activeScreenVideo.srcObject = stream;
-                activeScreenVideo.playsInline = true;
-                activeScreenVideo.muted = true;
-                await activeScreenVideo.play();
-                await new Promise(r => setTimeout(r, 100));
-            } else {
-                await new Promise(r => setTimeout(r, 16));
-            }
-
-            const video = activeScreenVideo;
-            const vw = (window.visualViewport ? window.visualViewport.width : window.innerWidth) || window.innerWidth;
-            const vh = (window.visualViewport ? window.visualViewport.height : window.innerHeight) || window.innerHeight;
-
-            const scaleX = video.videoWidth / vw;
-            const scaleY = video.videoHeight / vh;
-
-            // 定位消息起点 contentTop（剥离全量顶栏）
-            const contentTop = getChatContentTop(chat);
-
-            // 获取底栏起点 (send_form 等)
-            const sendForm = (chat.ownerDocument || document).querySelector('#send_form, #input_form, #footer');
-            const sendFormTop = sendForm ? sendForm.getBoundingClientRect().top : vh;
-            const contentBottom = Math.min(rect.bottom, sendFormTop);
-
-            const cropX = Math.max(0, rect.left * scaleX);
-            const cropY = Math.max(0, contentTop * scaleY);
-            const cropW = Math.min(video.videoWidth - cropX, rect.width * scaleX);
-
-            const effectiveHeight = Math.max(50, contentBottom - contentTop);
-            const cropH = Math.min(video.videoHeight - cropY, effectiveHeight * scaleY);
-
-            const dpr = Math.max(window.devicePixelRatio || 1, 2);
-            const canvas = document.createElement('canvas');
-            canvas.width = Math.round(rect.width * dpr);
-            canvas.height = Math.round(effectiveHeight * dpr);
-
-            const ctx = canvas.getContext('2d');
-            ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = 'high';
-
-            ctx.drawImage(
-                video,
-                cropX,
-                cropY,
-                cropW,
-                cropH,
-                0,
-                0,
-                canvas.width,
-                canvas.height
-            );
-
-            // 每次截图成功后计划 6 秒释放流
-            scheduleStreamRelease();
-
-            showScreenshotPreviewModal(canvas);
-            return;
-        } catch (e) {
-            console.log('[TwT] 屏幕捕捉授权取消或环境不支持，回退至移动端/极速 SVG 模式:', e);
-            releaseScreenStream();
-        }
-    }
-
-    // 2. 移动端/手机端环境降级回退：极速 SVG 0-重排渲染
     try {
-        if (typeof toastr !== 'undefined') toastr.info('正在抓取聊天画面...', '截图', { timeOut: 1200 });
-        const canvas = await renderDomWithSvgEngine(chat);
+        const isReadingMode = document.body.classList.contains('twt-reading-mode');
+        const bg = window.getComputedStyle(chat).backgroundColor || 'var(--SmartThemeDarkColor, #1e1e1e)';
+        const dpr = Math.max(window.devicePixelRatio || 1, 2);
+
+        let canvas;
+        if (isReadingMode) {
+            const cw = chat.clientWidth || chat.offsetWidth;
+            const ch = chat.clientHeight || chat.offsetHeight;
+            canvas = await h2c(chat, {
+                backgroundColor: bg,
+                scale: dpr,
+                useCORS: true,
+                allowTaint: true,
+                logging: false,
+                x: chat.scrollLeft,
+                y: 0,
+                width: cw,
+                height: ch
+            });
+        } else {
+            canvas = await h2c(chat, {
+                backgroundColor: bg,
+                scale: dpr,
+                useCORS: true,
+                allowTaint: true,
+                logging: false
+            });
+        }
+
         showScreenshotPreviewModal(canvas);
     } catch (e) {
-        console.error('[TwT] 截图失败:', e);
-        if (typeof toastr !== 'undefined') toastr.error(`截图失败: ${e.message || e}`, '错误');
+        console.error('[TwT] 截图生成失败:', e);
+        if (typeof toastr !== 'undefined') toastr.error(`截图生成失败: ${e.message || e}`, '错误');
     }
-}
-
-async function renderDomWithSvgEngine(chat) {
-    const rect = chat.getBoundingClientRect();
-    const w = Math.round(rect.width || chat.clientWidth || 400);
-    const h = Math.round(rect.height || chat.clientHeight || 600);
-    const dpr = Math.max(window.devicePixelRatio || 1, 2);
-
-    const isReadingMode = document.body.classList.contains('twt-reading-mode');
-
-    // 提取全局样式
-    const styleText = Array.from(document.querySelectorAll('style'))
-        .map(s => s.textContent || '').join('\n')
-        .replace(/(?:color|color-mix|oklch|lab|lch)\([^;}]+\)/gi, 'inherit');
-
-    const fontLinks = Array.from(document.querySelectorAll('link[rel="stylesheet"]'))
-        .map(l => `<link rel="stylesheet" href="${l.href}">`).join('\n');
-
-    const chatClone = chat.cloneNode(true);
-    // 隐藏克隆体里的菜单等辅助元素
-    const menuEl = chatClone.querySelector('#twt-custom-menu');
-    if (menuEl) menuEl.remove();
-
-    if (isReadingMode) {
-        chatClone.style.transform = `translateX(-${chat.scrollLeft}px)`;
-    }
-
-    const bg = window.getComputedStyle(chat).backgroundColor || '#1e1e1e';
-    const color = window.getComputedStyle(chat).color || '#ffffff';
-    const fontFamily = window.getComputedStyle(chat).fontFamily || 'sans-serif';
-
-    const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">
-        <foreignObject width="100%" height="100%">
-            <div xmlns="http://www.w3.org/1999/xhtml" style="width:${w}px; height:${h}px; overflow:hidden; background:${bg}; color:${color}; font-family:${fontFamily}; box-sizing:border-box;">
-                ${fontLinks}
-                <style>${styleText}</style>
-                <div style="width:100%; height:100%; box-sizing:border-box;">
-                    ${chatClone.outerHTML}
-                </div>
-            </div>
-        </foreignObject>
-    </svg>`;
-
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
-        const url = URL.createObjectURL(svgBlob);
-
-        const timeout = setTimeout(() => {
-            URL.revokeObjectURL(url);
-            reject(new Error('SVG 引擎渲染超时'));
-        }, 1500);
-
-        img.onload = () => {
-            clearTimeout(timeout);
-            const canvas = document.createElement('canvas');
-            canvas.width = w * dpr;
-            canvas.height = h * dpr;
-            const ctx = canvas.getContext('2d');
-            ctx.scale(dpr, dpr);
-            ctx.drawImage(img, 0, 0, w, h);
-            URL.revokeObjectURL(url);
-            resolve(canvas);
-        };
-
-        img.onerror = (err) => {
-            clearTimeout(timeout);
-            URL.revokeObjectURL(url);
-            reject(err);
-        };
-
-        img.src = url;
-    });
 }
 
 function showScreenshotPreviewModal(canvas) {
