@@ -209,36 +209,24 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
         $menu.addClass('twt-menu-double-column-layout');
     } else if (menuStyle === 'circle') {
         $menu.addClass('twt-menu-circle-layout');
-    } else if (menuStyle === 'square') {
-        $menu.addClass('twt-menu-square-layout');
     } else {
         $menu.addClass('twt-menu-list-layout');
     }
 
     const useGridLayout = menuStyle === 'grid';
+    const isCircleLayout = menuStyle === 'circle';
+
     const $gridBar = useGridLayout ? $('<div class="twt-menu-grid-row"></div>') : null;
     const $listContainer = useGridLayout ? $('<div class="twt-menu-list-row"></div>') : null;
     let hasItems = false;
+    const circleItems = [];
 
     const appendMenuItem = ({ label, shortLabel, icon, onClick, isDanger = false, isGridItem = false }) => {
         hasItems = true;
         const displayLabel = shortLabel || label;
-        if (menuStyle === 'circle') {
-            const $item = $(`<div class="twt-menu-circle-item ${isDanger ? 'twt-danger' : ''}" title="${label}"><i class="${icon}"></i></div>`);
-            $item.on('click', (evt) => {
-                evt.stopPropagation();
-                $menu.hide();
-                onClick(evt);
-            });
-            $menu.append($item);
-        } else if (menuStyle === 'square') {
-            const $item = $(`<div class="twt-menu-square-item ${isDanger ? 'twt-danger' : ''}" title="${label}"><i class="${icon}"></i></div>`);
-            $item.on('click', (evt) => {
-                evt.stopPropagation();
-                $menu.hide();
-                onClick(evt);
-            });
-            $menu.append($item);
+
+        if (isCircleLayout) {
+            circleItems.push({ label, shortLabel, icon, onClick, isDanger });
         } else if (useGridLayout) {
             if (isGridItem) {
                 const $item = $(`<div class="twt-menu-grid-item ${isDanger ? 'twt-danger' : ''}" title="${label}"><i class="${icon}"></i><span>${displayLabel}</span></div>`);
@@ -506,6 +494,35 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
         }
     }
 
+    if (isCircleLayout && circleItems.length > 0) {
+        const N = circleItems.length;
+        const R = Math.max(52, Math.min(85, 26 + N * 5));
+        const P = 22;
+        const D = (R + P) * 2;
+        const CX = R + P;
+        const CY = R + P;
+
+        $menu.css({
+            width: `${D}px`,
+            height: `${D}px`,
+            position: 'absolute'
+        });
+
+        circleItems.forEach((item, i) => {
+            const angle = (2 * Math.PI * i / N) - (Math.PI / 2);
+            const x = Math.round(CX + R * Math.cos(angle) - 16);
+            const y = Math.round(CY + R * Math.sin(angle) - 16);
+
+            const $item = $(`<div class="twt-menu-circle-item ${item.isDanger ? 'twt-danger' : ''}" title="${item.label}" style="left: ${x}px; top: ${y}px;"><i class="${item.icon}"></i></div>`);
+            $item.on('click', (evt) => {
+                evt.stopPropagation();
+                $menu.hide();
+                item.onClick(evt);
+            });
+            $menu.append($item);
+        });
+    }
+
     if (useGridLayout) {
         if ($listContainer && $listContainer.children().length > 0) {
             $menu.append($listContainer);
@@ -520,32 +537,44 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
     // Show menu offscreen first to measure dimensions
     $menu.css({
         visibility: 'hidden',
-        display: 'block',
-        left: '0px',
-        top: '0px'
+        display: 'block'
     });
+
+    if (!isCircleLayout) {
+        $menu.css({
+            left: '0px',
+            top: '0px',
+            width: 'max-content',
+            height: 'auto'
+        });
+    }
 
     const menuWidth = $menu.outerWidth() || 130;
     const menuHeight = $menu.outerHeight() || 100;
     const screenWidth = window.innerWidth;
     const screenHeight = window.innerHeight;
 
-    const direction = settings.menuDirection || 'bottom-right';
     let posX = clientX;
     let posY = clientY;
 
-    if (direction === 'top-left') {
-        posX = clientX - menuWidth;
-        posY = clientY - menuHeight;
-    } else if (direction === 'top-right') {
-        posX = clientX;
-        posY = clientY - menuHeight;
-    } else if (direction === 'bottom-left') {
-        posX = clientX - menuWidth;
-        posY = clientY;
-    } else { // 'bottom-right'
-        posX = clientX;
-        posY = clientY;
+    if (isCircleLayout) {
+        posX = clientX - (menuWidth / 2);
+        posY = clientY - (menuHeight / 2);
+    } else {
+        const direction = settings.menuDirection || 'bottom-right';
+        if (direction === 'top-left') {
+            posX = clientX - menuWidth;
+            posY = clientY - menuHeight;
+        } else if (direction === 'top-right') {
+            posX = clientX;
+            posY = clientY - menuHeight;
+        } else if (direction === 'bottom-left') {
+            posX = clientX - menuWidth;
+            posY = clientY;
+        } else { // 'bottom-right'
+            posX = clientX;
+            posY = clientY;
+        }
     }
 
     // Clamp to screen boundaries (with scroll offset)

@@ -30,7 +30,6 @@ const extensionName = 'TwT';
 
 const defaultSettings = {
     enabled: true,
-    autoReloadOnUpdate: true,
     swipeEnabled: true,
     messagePageEnabled: false,
     htmlPageBreakEnabled: true,
@@ -956,82 +955,8 @@ function initThemeLinkListener() {
 // ============================================================
 // 拓展更新后自动刷新酒馆机制
 // ============================================================
-function getWin() {
-    try {
-        if (window.parent && window.parent.document) return window.parent;
-    } catch {}
-    return window;
-}
-
-function reloadTavern() {
-    try {
-        const win = getWin();
-        win.location.reload();
-    } catch {
-        window.location.reload();
-    }
-}
-
-let initialManifestVersion = null;
-let initialManifestHash = null;
-let isReloading = false;
-
-export async function checkExtensionUpdate() {
-    if (isReloading) return;
-    if (extension_settings.twt && extension_settings.twt.autoReloadOnUpdate === false) return;
-    try {
-        const res = await fetch('/scripts/extensions/third-party/TwT/manifest.json?t=' + Date.now());
-        if (!res.ok) return;
-        const text = await res.text();
-        const manifest = JSON.parse(text);
-        const currentVersion = manifest.version || '';
-
-        if (initialManifestVersion === null) {
-            initialManifestVersion = currentVersion;
-            initialManifestHash = text;
-            return;
-        }
-
-        if (currentVersion !== initialManifestVersion || text !== initialManifestHash) {
-            isReloading = true;
-            console.log('[TwT] Extension update detected! Reloading page...');
-            toastr.info('检测到 TwT 阅读拓展已更新，即将自动刷新页面以应用最新代码...', '拓展已更新', { timeOut: 2000 });
-            setTimeout(() => {
-                reloadTavern();
-            }, 1200);
-        }
-    } catch (e) {
-        // 静默忽略网络错误
-    }
-}
-
-function initAutoReloadObserver() {
-    checkExtensionUpdate();
-
-    // 1. 页面重获焦点时检测
-    window.addEventListener('focus', checkExtensionUpdate);
-
-    // 2. 8秒轮询检测
-    setInterval(checkExtensionUpdate, 8000);
-
-    // 3. 监听酒馆扩展面板里的“更新”按钮点击或 Ajax 完成
-    $(document).on('click', '.extension_update, #update_extension, .update_extension_button, [data-action="update_extension"]', () => {
-        setTimeout(checkExtensionUpdate, 1500);
-        setTimeout(checkExtensionUpdate, 3500);
-    });
-
-    try {
-        $(document).ajaxComplete((event, xhr, settings) => {
-            if (settings && settings.url && (settings.url.includes('/api/extensions') || settings.url.includes('/update'))) {
-                setTimeout(checkExtensionUpdate, 1000);
-            }
-        });
-    } catch (e) {}
-}
-
 function bindUI() {
     const $enabled = $('#twt_enabled');
-    const $autoReloadOnUpdate = $('#twt_auto_reload_on_update');
     const $swipeEnabled = $('#twt_swipe_enabled');
     const $messagePageEnabled = $('#twt_message_page_enabled');
     const $htmlPageBreakEnabled = $('#twt_html_page_break_enabled');
@@ -1124,7 +1049,6 @@ function bindUI() {
 
     $visualEnabled.prop('checked', extension_settings.twt.visualEnabled);
     $muluEnabled.prop('checked', extension_settings.twt.muluEnabled);
-    $autoReloadOnUpdate.prop('checked', extension_settings.twt.autoReloadOnUpdate !== false);
 
     $autoReloadOnUpdate.on('change', function () {
         extension_settings.twt.autoReloadOnUpdate = $(this).prop('checked');
@@ -3179,67 +3103,4 @@ jQuery(async () => {
     }
 
     // ============================================================
-    // 扩展自动刷新机制：更新扩展后自动刷新整个酒馆/应用界面 (window.top)
-    // ============================================================
-    const TWT_VERSION = '2.3.1';
-
-    function reloadEntireApp() {
-        try {
-            if (window.top && window.top.location && typeof window.top.location.reload === 'function') {
-                window.top.location.reload();
-                return;
-            }
-        } catch (e) {}
-        try {
-            if (window.parent && window.parent.location && typeof window.parent.location.reload === 'function') {
-                window.parent.location.reload();
-                return;
-            }
-        } catch (e) {}
-        window.location.reload();
-    }
-
-    // 1. 版本升级检测：启动时对比版本号，更新后自动刷新主界面
-    try {
-        const autoReloadEnabled = extension_settings.twt?.autoReloadOnUpdate !== false;
-        if (autoReloadEnabled) {
-            const storedVer = localStorage.getItem('twt_installed_version');
-            if (storedVer && storedVer !== TWT_VERSION) {
-                localStorage.setItem('twt_installed_version', TWT_VERSION);
-                toastr.info(`TwT 扩展已成功更新至 v${TWT_VERSION}！正在为您自动刷新整个应用界面...`, '扩展更新成功', { timeOut: 3000 });
-                setTimeout(reloadEntireApp, 1200);
-            } else {
-                localStorage.setItem('twt_installed_version', TWT_VERSION);
-            }
-        }
-    } catch (e) {
-        console.warn('[TwT] Auto reload check failed:', e);
-    }
-
-    // 2. 监听酒馆后台 API：在界面内点击“更新扩展”完成瞬间，自动刷新主界面
-    try {
-        $(document).ajaxComplete((event, xhr, settings) => {
-            if (settings && settings.url && (settings.url.includes('/api/extensions/update') || settings.url.includes('/api/extensions/download'))) {
-                if (extension_settings.twt?.autoReloadOnUpdate !== false) {
-                    toastr.info('检测到扩展更新完成，正在为您自动刷新整个应用界面...', '更新应用中');
-                    setTimeout(reloadEntireApp, 1000);
-                }
-            }
-        });
-    } catch (e) {}
-
-    // 3. 监听酒馆扩展更新 EventSource 事件
-    try {
-        const ctx = getContext();
-        if (ctx && ctx.eventSource && ctx.eventTypes && ctx.eventTypes.EXTENSION_UPDATED) {
-            ctx.eventSource.on(ctx.eventTypes.EXTENSION_UPDATED, (extName) => {
-                if (!extName || String(extName).toLowerCase().includes('twt')) {
-                    if (extension_settings.twt?.autoReloadOnUpdate !== false) {
-                        toastr.info('检测到 TwT 扩展已更新，即将自动刷新整个应用界面...', '更新完成');
-                        setTimeout(reloadEntireApp, 1000);
-                    }
-                }
-            });
-        }
-    } catch (e) {}
-});
+    });
