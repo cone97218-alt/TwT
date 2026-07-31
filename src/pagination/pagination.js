@@ -261,6 +261,7 @@ async function restorePaginationPosition() {
 // 核心状态
 // ============================================================
 let lastUserPage = 0;           // 用户当前所在页（唯一权威来源）
+let lastTouchEndTime = 0;       // 触摸抬起时间戳，防合成 click 事件二次翻页
 let isScrolling = false;        // 正在执行程序化 scrollTo，屏蔽 snap 校正
 let isTouching = false;         // 手指正在触摸屏幕
 let isKeyboardOpen = false;     // 虚拟键盘已弹出
@@ -958,7 +959,10 @@ export function initPaginationEvent(getSettings) {
         if (interactive) return;
 
         // 有文字选区时不翻页
-        if (window.getSelection().toString().length > 0) return;
+        if (window.getSelection().toString().length > 0) return; 
+
+        // 屏蔽触摸抬起后 400ms 内产生的合成 click 事件，防止与 touchend 产生二次双重翻页 (导致 Drift = 406.67px)
+        if (Date.now() - lastTouchEndTime < 400) return;
 
         const cw = getColWidth(chat);
         if (cw <= 0) return;
@@ -1116,6 +1120,7 @@ function bindScrollEvents(getSettings) {
         const cleanup = () => {
             isTouching  = false;
             isScrolling = false;
+            lastTouchEndTime = Date.now();
             clearTimeout(fallback);
         };
         const fallback = setTimeout(cleanup, 600);
