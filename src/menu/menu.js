@@ -1116,10 +1116,32 @@ function ensureHtml2CanvasLoaded() {
 }
 
 // ============================================================
-// 纯净聊天界面截图 (原生 GPU 流复用 0-二次弹窗 + 移动端 1:1 坐标裁切)
+// 纯净聊天界面截图 (6s 自动释放硬件流零功耗 + topbar 底边精准裁切)
 // ============================================================
 let activeScreenStream = null;
 let activeScreenVideo = null;
+let streamReleaseTimeout = null;
+
+function releaseScreenStream() {
+    if (activeScreenStream) {
+        try {
+            activeScreenStream.getTracks().forEach(t => t.stop());
+        } catch (e) {}
+        activeScreenStream = null;
+    }
+    if (activeScreenVideo) {
+        try { activeScreenVideo.pause(); } catch (e) {}
+        activeScreenVideo = null;
+    }
+}
+
+function scheduleStreamRelease() {
+    clearTimeout(streamReleaseTimeout);
+    // 6秒无连续截图操作，立刻彻底关闭硬件视频流，手机零功耗/零性能负担
+    streamReleaseTimeout = setTimeout(() => {
+        releaseScreenStream();
+    }, 6000);
+}
 
 async function getOrCreateScreenStream() {
     if (activeScreenStream && activeScreenStream.active && activeScreenStream.getVideoTracks().some(t => t.readyState === 'live')) {
@@ -1137,15 +1159,34 @@ async function getOrCreateScreenStream() {
 
     activeScreenStream.getVideoTracks().forEach(track => {
         track.addEventListener('ended', () => {
-            activeScreenStream = null;
-            if (activeScreenVideo) {
-                try { activeScreenVideo.pause(); } catch(e){}
-                activeScreenVideo = null;
-            }
+            releaseScreenStream();
         });
     });
 
     return activeScreenStream;
+}
+
+// 动态测量顶栏 (.topbar, #top-bar 等) 在视口中的底部物理像素坐标
+function getTopBarBottom() {
+    const parentDoc = getParentDoc();
+    const selectors = [
+        '#top-bar', '#top-bar-block', '.topbar', '.top-bar',
+        '#header', '#top-settings-holder', '.chat-header'
+    ];
+    let maxBottom = 0;
+    selectors.forEach(sel => {
+        const els = parentDoc.querySelectorAll(sel);
+        els.forEach(el => {
+            if (el && el.offsetHeight > 0) {
+                const r = el.getBoundingClientRect();
+                // 顶栏通常在视口上半部分 (小于屏幕高度的一半)
+                if (r.bottom > maxBottom && r.bottom < (window.innerHeight / 2)) {
+                    maxBottom = r.bottom;
+                }
+            }
+        });
+    });
+    return maxBottom;
 }
 
 export async function captureChatScreenshot() {
@@ -1158,7 +1199,7 @@ export async function captureChatScreenshot() {
     const rect = chat.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
 
-    // 1. 优先使用原生屏幕 API (结合媒体流复用：首次选择授权，后续零弹窗闪电截取)
+    // 1. 优先使用原生屏幕 API (结合媒体流复用 + 6s 自动释放零功耗)
     if (navigator.mediaDevices && typeof navigator.mediaDevices.getDisplayMedia === 'function') {
         try {
             const stream = await getOrCreateScreenStream();
@@ -1181,16 +1222,21 @@ export async function captureChatScreenshot() {
             const scaleX = video.videoWidth / vw;
             const scaleY = video.videoHeight / vh;
 
-            // 精准计算截取坐标：排除 rect.top 以上的顶栏与 rect.bottom 以下的底栏
+            // 获取 topbar (类名为 topbar / top-bar 等) 真实底边 Y 轴位置，彻底剥离顶栏
+            const topBarBottom = getTopBarBottom();
+            const contentTop = Math.max(rect.top, topBarBottom);
+
             const cropX = Math.max(0, rect.left * scaleX);
-            const cropY = Math.max(0, rect.top * scaleY);
+            const cropY = Math.max(0, contentTop * scaleY);
             const cropW = Math.min(video.videoWidth - cropX, rect.width * scaleX);
-            const cropH = Math.min(video.videoHeight - cropY, rect.height * scaleY);
+
+            const effectiveHeight = Math.max(0, rect.height - Math.max(0, topBarBottom - rect.top));
+            const cropH = Math.min(video.videoHeight - cropY, effectiveHeight * scaleY);
 
             const dpr = Math.max(window.devicePixelRatio || 1, 2);
             const canvas = document.createElement('canvas');
             canvas.width = Math.round(rect.width * dpr);
-            canvas.height = Math.round(rect.height * dpr);
+            canvas.height = Math.round(effectiveHeight * dpr);
 
             const ctx = canvas.getContext('2d');
             ctx.imageSmoothingEnabled = true;
@@ -1208,10 +1254,14 @@ export async function captureChatScreenshot() {
                 canvas.height
             );
 
+            // 每次截图成功后计划 6 秒释放流
+            scheduleStreamRelease();
+
             showScreenshotPreviewModal(canvas);
             return;
         } catch (e) {
             console.log('[TwT] 屏幕捕捉授权取消或环境不支持，回退至移动端/极速 SVG 模式:', e);
+            releaseScreenStream();
         }
     }
 
