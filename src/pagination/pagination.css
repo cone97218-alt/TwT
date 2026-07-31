@@ -155,21 +155,22 @@ body.twt-reading-mode .twt-pagination-scrollable::-webkit-scrollbar {
 
 
 
-/* 优化大 HTML 元素在多列布局下的分栏渲染性能：
-   1. 移除强行 break-before: column 强制断页，避免浏览器因硬性分栏产生高昂的 Layout Reflow 重排开销与空白页。
-   2. 允许大 HTML 容器在多列中自然流动分割，提升 AI 增量生成与滑动时的流畅度。 */
+/* 仅对 JS 动态标记为「需要断页」的元素强制展开时从页顶开始，避免展开时布局跳变。
+   不使用 break-after：允许元素后面的文字在同页内自然流动，避免产生空白页。
+   JS 会在以下情况打上 .twt-html-needs-break：
+     1. <details> 等原生折叠元素（无论大小）
+     2. 高度超过列高的大型容器
+     3. 检测到「高度突变」的未知折叠组件 */
 body.twt-reading-mode #chat .mes_text > .twt-html-needs-break {
-    break-before: auto !important;
-    page-break-before: auto !important;
-    -webkit-column-break-before: auto !important;
+    break-before: column !important;
 }
 
-/* 如果是首个元素，保持自然分割 */
+/* 如果是首个元素，不要在前面断页 */
 body.twt-reading-mode #chat .mes_text > .twt-html-needs-break:first-child {
     break-before: auto !important;
 }
 
-/* 连续块保持自然跟随 */
+/* 连续的「需断页」块不重复断页：只在第一个前断，后续的自然跟随 */
 body.twt-reading-mode #chat .mes_text > .twt-html-needs-break + .twt-html-needs-break {
     break-before: auto !important;
 }
