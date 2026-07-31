@@ -320,7 +320,7 @@ function initMutationObserver() {
             } finally {
                 mutationObserver.observe(chat, MUT_OPTS);
             }
-        }, 150);
+        }, 300);
     });
 
     mutationObserver.observe(chat, MUT_OPTS);

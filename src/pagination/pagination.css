@@ -141,8 +141,35 @@ body.twt-reading-mode.twt-message-page #chat .mes {
     -webkit-column-break-before: always !important;
 }
 
-/* 保持元素的自适应与自然跨页流动 */
-body.twt-reading-mode #chat .mes_text details {
-    margin-top: 5px;
-    margin-bottom: 5px;
+/* 超尺寸元素收容：内部可滚动 */
+body.twt-reading-mode .twt-pagination-scrollable {
+    position: relative !important;
+    overflow-y: auto !important;
+    scrollbar-width: none !important;
+    -webkit-overflow-scrolling: touch !important;
+}
+
+body.twt-reading-mode .twt-pagination-scrollable::-webkit-scrollbar {
+    display: none !important;
+}
+
+
+
+/* 优化大 HTML 元素在多列布局下的分栏渲染性能：
+   1. 移除强行 break-before: column 强制断页，避免浏览器因硬性分栏产生高昂的 Layout Reflow 重排开销与空白页。
+   2. 允许大 HTML 容器在多列中自然流动分割，提升 AI 增量生成与滑动时的流畅度。 */
+body.twt-reading-mode #chat .mes_text > .twt-html-needs-break {
+    break-before: auto !important;
+    page-break-before: auto !important;
+    -webkit-column-break-before: auto !important;
+}
+
+/* 如果是首个元素，保持自然分割 */
+body.twt-reading-mode #chat .mes_text > .twt-html-needs-break:first-child {
+    break-before: auto !important;
+}
+
+/* 连续块保持自然跟随 */
+body.twt-reading-mode #chat .mes_text > .twt-html-needs-break + .twt-html-needs-break {
+    break-before: auto !important;
 }
