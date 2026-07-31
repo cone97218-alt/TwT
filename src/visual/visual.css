@@ -41,6 +41,10 @@ body.twt-visual-mode #chat .mes_text span {
     text-align: var(--twt-text-align, left) !important;
     letter-spacing: var(--twt-letter-spacing, 0px) !important;
     font-weight: var(--twt-font-weight, normal) !important;
+    text-align-last: left !important;
+    text-justify: inter-ideograph !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
 }
 
 /* 确保粗体（包括粗体+斜体组合）依然保持粗体 */
