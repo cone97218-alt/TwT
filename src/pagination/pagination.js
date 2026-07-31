@@ -268,7 +268,7 @@ function containOversizedElements() {
         el.classList.add('twt-pagination-scrollable');
     });
 
-    // 越界校正（使用整数列宽，避免小数误差导致错误判断）
+    // 越界校正（使用精准物理列步长）
     if (!isTouching) {
         const cw = getColWidth(chat);
         if (cw > 0) {
@@ -870,7 +870,7 @@ function bindScrollEvents(getSettings) {
         if (!touchIsHorizontal) return;
 
         const dx  = e.touches[0].clientX - touchStartX;
-        // 使用整数列宽计算最大滚动值，与其他地方保持一致，避免小数累积误差
+        // 使用物理步距计算最大滚动值，保证准确边界
         const max = chat.scrollWidth - getColWidth(chat);
         chat.scrollLeft = Math.max(0, Math.min(max, touchStartLeft - dx));
     }, { passive: true, signal });
