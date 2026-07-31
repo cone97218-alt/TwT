@@ -1,24 +1,67 @@
 
 // ============================================================
-// Debug 实时调试控制台 HUD
+// Debug 实时调试控制台 HUD & 浮动常驻诊断入口
 // ============================================================
 let debugHudEl = null;
+let debugToggleBtnEl = null;
 
 export function updateDebugHudVisibility() {
     const doc = typeof getDoc === 'function' ? getDoc() : document;
-    const settings = typeof extension_settings !== 'undefined' ? extension_settings.twt : null;
     const isReading = doc.body.classList.contains('twt-reading-mode');
-    const isDebug = settings?.debugEnabled;
 
-    if (isReading && isDebug) {
+    if (isReading) {
+        if (!debugToggleBtnEl || !doc.body.contains(debugToggleBtnEl)) {
+            createDebugToggleBtn(doc);
+        }
+        debugToggleBtnEl.style.display = 'flex';
+        if (debugHudEl && debugHudEl.style.display !== 'none') {
+            refreshDebugHud();
+        }
+    } else {
+        if (debugToggleBtnEl) debugToggleBtnEl.style.display = 'none';
+        if (debugHudEl) debugHudEl.style.display = 'none';
+    }
+}
+
+function createDebugToggleBtn(doc) {
+    if (doc.getElementById('twt-debug-toggle-btn')) {
+        debugToggleBtnEl = doc.getElementById('twt-debug-toggle-btn');
+        return;
+    }
+    debugToggleBtnEl = doc.createElement('button');
+    debugToggleBtnEl.id = 'twt-debug-toggle-btn';
+    debugToggleBtnEl.style.cssText = `
+        position: fixed;
+        bottom: 15px;
+        right: 15px;
+        z-index: 9999998;
+        background: rgba(0, 122, 255, 0.9);
+        color: #ffffff;
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        border-radius: 20px;
+        padding: 5px 12px;
+        font-size: 12px;
+        font-weight: bold;
+        cursor: pointer;
+        box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+        backdrop-filter: blur(6px);
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        user-select: none;
+        transition: all 0.2s ease;
+    `;
+    debugToggleBtnEl.innerHTML = '<i class="fa-solid fa-bug"></i> 🐞 TwT 诊断';
+    debugToggleBtnEl.addEventListener('click', (e) => {
+        e.stopPropagation();
         if (!debugHudEl || !doc.body.contains(debugHudEl)) {
             createDebugHud(doc);
         }
-        debugHudEl.style.display = 'block';
-        refreshDebugHud();
-    } else if (debugHudEl) {
-        debugHudEl.style.display = 'none';
-    }
+        const isHidden = debugHudEl.style.display === 'none';
+        debugHudEl.style.display = isHidden ? 'block' : 'none';
+        if (isHidden) refreshDebugHud();
+    });
+    doc.body.appendChild(debugToggleBtnEl);
 }
 
 function createDebugHud(doc) {
@@ -30,49 +73,66 @@ function createDebugHud(doc) {
     debugHudEl.id = 'twt-debug-hud';
     debugHudEl.style.cssText = `
         position: fixed;
-        top: 60px;
+        top: 50px;
         right: 15px;
         z-index: 9999999;
-        background: rgba(15, 15, 20, 0.88);
-        backdrop-filter: blur(8px);
-        border: 1px solid rgba(0, 122, 255, 0.4);
-        border-radius: 8px;
-        padding: 10px 14px;
+        background: rgba(12, 14, 20, 0.92);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(0, 122, 255, 0.5);
+        border-radius: 10px;
+        padding: 12px 16px;
         color: #00e5ff;
-        font-family: monospace, SFMono-Regular, Consolas;
+        font-family: Consolas, SFMono-Regular, monospace;
         font-size: 11px;
-        line-height: 1.5;
-        box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+        line-height: 1.6;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.6);
         pointer-events: auto;
         user-select: text;
-        max-width: 340px;
+        width: 380px;
+        max-width: 90vw;
+        max-height: 80vh;
+        overflow-y: auto;
     `;
 
     debugHudEl.innerHTML = `
-        <div style="display:flex; justify-space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.15); padding-bottom:4px; margin-bottom:6px; font-weight:bold; color:#fff;">
-            <span><i class="fa-solid fa-bug" style="color:#007aff;margin-right:4px;"></i>TwT 排版诊断控制台</span>
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.15); padding-bottom:6px; margin-bottom:8px; font-weight:bold; color:#fff;">
+            <span><i class="fa-solid fa-bug" style="color:#007aff;margin-right:6px;"></i>TwT 排版诊断报告控制台</span>
             <div>
-                <button id="twt-debug-copy-btn" style="padding:1px 6px; font-size:10px; background:#007aff; color:#fff; border:none; border-radius:3px; cursor:pointer; margin-right:4px;">复制报告</button>
-                <button id="twt-debug-close-btn" style="padding:1px 5px; font-size:10px; background:rgba(255,255,255,0.1); color:#fff; border:none; border-radius:3px; cursor:pointer;">✕</button>
+                <button id="twt-debug-copy-btn" style="padding:2px 8px; font-size:11px; background:#007aff; color:#fff; border:none; border-radius:4px; cursor:pointer; margin-right:6px; font-weight:bold;"><i class="fa-solid fa-copy"></i> 复制报告</button>
+                <button id="twt-debug-close-btn" style="padding:2px 6px; font-size:11px; background:rgba(255,255,255,0.15); color:#fff; border:none; border-radius:4px; cursor:pointer;">✕</button>
             </div>
         </div>
-        <div id="twt-debug-content" style="white-space:pre-wrap; word-break:break-all;">初始化中...</div>
+        <div id="twt-debug-content" style="white-space:pre-wrap; word-break:break-all; background:rgba(0,0,0,0.3); padding:8px; border-radius:6px; border:1px solid rgba(255,255,255,0.08);">初始化数据中...</div>
     `;
 
     doc.body.appendChild(debugHudEl);
 
     doc.getElementById('twt-debug-copy-btn')?.addEventListener('click', () => {
         const text = doc.getElementById('twt-debug-content')?.innerText || '';
-        navigator.clipboard.writeText('=== TwT 诊断报告 ===\n' + text).then(() => {
-            if (typeof toastr !== 'undefined') toastr.success('诊断报告已复制到剪贴板！', '成功');
-        });
+        const fullReport = `=== TwT 翻页模式实时排版诊断报告 ===\n生成时间: ${new Date().toLocaleString()}\n\n${text}`;
+        
+        // 双重剪贴板写入兼容
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(fullReport).then(() => {
+                if (typeof toastr !== 'undefined') toastr.success('诊断报告已成功复制到剪贴板！', '成功');
+            }).catch(fallbackCopy);
+        } else {
+            fallbackCopy();
+        }
+
+        function fallbackCopy() {
+            const ta = doc.createElement('textarea');
+            ta.value = fullReport;
+            doc.body.appendChild(ta);
+            ta.select();
+            doc.execCommand('copy');
+            doc.body.removeChild(ta);
+            if (typeof toastr !== 'undefined') toastr.success('诊断报告已成功复制到剪贴板！', '成功');
+        }
     });
 
     doc.getElementById('twt-debug-close-btn')?.addEventListener('click', () => {
-        if (typeof extension_settings !== 'undefined' && extension_settings.twt) {
-            extension_settings.twt.debugEnabled = false;
-        }
-        updateDebugHudVisibility();
+        debugHudEl.style.display = 'none';
     });
 }
 
@@ -445,6 +505,7 @@ function scrollToPage(chat, page, cw) {
     lastUserPage = page;
     refreshDebugHud();
     debouncedSavePaginationPosition();
+    updateDebugHudVisibility();
     isScrolling = true;
 
     clearTimeout(scrollUnlockTimer);
