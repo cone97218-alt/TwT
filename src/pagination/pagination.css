@@ -141,36 +141,8 @@ body.twt-reading-mode.twt-message-page #chat .mes {
     -webkit-column-break-before: always !important;
 }
 
-/* 超尺寸元素收容：内部可滚动 */
-body.twt-reading-mode .twt-pagination-scrollable {
-    position: relative !important;
-    overflow-y: auto !important;
-    scrollbar-width: none !important;
-    -webkit-overflow-scrolling: touch !important;
-}
-
-body.twt-reading-mode .twt-pagination-scrollable::-webkit-scrollbar {
-    display: none !important;
-}
-
-
-
-/* 仅对 JS 动态标记为「需要断页」的元素强制展开时从页顶开始，避免展开时布局跳变。
-   不使用 break-after：允许元素后面的文字在同页内自然流动，避免产生空白页。
-   JS 会在以下情况打上 .twt-html-needs-break：
-     1. <details> 等原生折叠元素（无论大小）
-     2. 高度超过列高的大型容器
-     3. 检测到「高度突变」的未知折叠组件 */
-body.twt-reading-mode #chat .mes_text > .twt-html-needs-break {
-    break-before: column !important;
-}
-
-/* 如果是首个元素，不要在前面断页 */
-body.twt-reading-mode #chat .mes_text > .twt-html-needs-break:first-child {
-    break-before: auto !important;
-}
-
-/* 连续的「需断页」块不重复断页：只在第一个前断，后续的自然跟随 */
-body.twt-reading-mode #chat .mes_text > .twt-html-needs-break + .twt-html-needs-break {
-    break-before: auto !important;
+/* 保持元素的自适应与自然跨页流动 */
+body.twt-reading-mode #chat .mes_text details {
+    margin-top: 5px;
+    margin-bottom: 5px;
 }
