@@ -1062,7 +1062,6 @@ function bindUI() {
     const $menuStyle = $('#twt_menu_style');
     const $visualEnabled = $('#twt_visual_enabled');
     const $muluEnabled = $('#twt_mulu_enabled');
-    const $autoReloadOnUpdate = $('#twt_auto_reload_on_update');
     
     const $paddingTop = $('#twt_padding_top');
     const $paddingBottom = $('#twt_padding_bottom');
@@ -1125,7 +1124,6 @@ function bindUI() {
 
     $visualEnabled.prop('checked', extension_settings.twt.visualEnabled);
     $muluEnabled.prop('checked', extension_settings.twt.muluEnabled);
-    $autoReloadOnUpdate.prop('checked', extension_settings.twt.autoReloadOnUpdate !== false);
     $autoReloadOnUpdate.prop('checked', extension_settings.twt.autoReloadOnUpdate !== false);
 
     $autoReloadOnUpdate.on('change', function () {
