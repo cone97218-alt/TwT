@@ -287,19 +287,31 @@ function containOversizedElements() {
 function getChat() { return document.getElementById('chat'); }
 
 /**
- * 获取整数列宽（列宽权威来源）
- * TauriTavern 等环境下 getBoundingClientRect().width 可能返回小数，
- * 必须 Math.round() 取整，否则 scrollLeft 目标累积误差会导致跳页混乱。
+ * 获取多列布局下 Chromium / WebKit 渲染引擎排版每一列的绝对精确物理步长 (Column Step S)
+ * 在 CSS Multi-column 布局下，总可滚动宽度为 chat.scrollWidth，总列数为 N。
+ * 每列精准步长 S = chat.scrollWidth / N。
+ * 任何一页 page 的精确 scrollLeft 均为 page * S。
+ * 彻底抹平因 Math.round() 整数化与亚像素 (subpixel) 渲染不匹配导致的“逐页累积偏移/左移”Bug！
  */
+function getColStep(chat) {
+    if (!chat) return 0;
+    const rawWidth = chat.getBoundingClientRect().width || chat.clientWidth;
+    if (rawWidth <= 0) return 0;
+    const scrollW = chat.scrollWidth;
+    if (scrollW <= 0) return rawWidth;
+    const n = Math.max(1, Math.round(scrollW / rawWidth));
+    return scrollW / n;
+}
+
 function getColWidth(chat) {
-    return Math.round(chat.getBoundingClientRect().width);
+    return getColStep(chat);
 }
 
 let scrollUnlockTimer = null;
 
 function scrollToPage(chat, page, cw) {
     if (!chat) return;
-    // 用整数列宽计算总页数，避免浮点误差
+    // 用精确步长计算总页数，避免浮点误差
     const total = Math.round(chat.scrollWidth / cw);
     page = Math.max(0, Math.min(page, total - 1));
     lastUserPage = page;
@@ -343,10 +355,10 @@ function doSnap(chat) {
 function updateColWidth() {
     const chat = getChat();
     if (!chat || !document.body.classList.contains('twt-reading-mode')) return;
-    const w = getColWidth(chat);
-    if (w > 0) {
-        // 始终使用整数列宽，避免小数像素引发的 scrollLeft 累积误差
-        chat.style.setProperty('--twt-col-width', `${w}px`, 'important');
+    const rawW = chat.getBoundingClientRect().width || chat.clientWidth;
+    if (rawW > 0) {
+        // 使用精确视口浮点宽度，保证 CSS column-width 匹配视口真实宽度
+        chat.style.setProperty('--twt-col-width', `${rawW}px`, 'important');
         containOversizedElements();
     }
 }
@@ -356,8 +368,8 @@ function updateColWidthWhenReady(retries = 20, interval = 150) {
     const chat = getChat();
     if (!chat || !document.body.classList.contains('twt-reading-mode')) return;
 
-    const w = getColWidth(chat);
-    if (w <= 0) {
+    const rawW = chat.getBoundingClientRect().width || chat.clientWidth;
+    if (rawW <= 0) {
         if (retries > 0) colWidthRetryTimer = setTimeout(() => updateColWidthWhenReady(retries - 1, interval), interval);
         return;
     }
@@ -371,7 +383,7 @@ function updateColWidthWhenReady(retries = 20, interval = 150) {
             colWidthRetryTimer = setTimeout(() => updateColWidthWhenReady(retries - 1, interval), interval);
             return;
         }
-        chat.style.setProperty('--twt-col-width', `${w}px`, 'important');
+        chat.style.setProperty('--twt-col-width', `${rawW}px`, 'important');
         containOversizedElements();
         // ③ layout 稳定后恢复阅读位置（P1 核心）
         // 先异步读取 metadata，再在下一帧安全跳页
