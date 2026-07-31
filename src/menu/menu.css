@@ -417,3 +417,118 @@ body.twt-reading-mode.twt-excerpt-active #chat {
     font-size: 0.9em;
 }
 
+/* 竖向双列排版风格专用菜单样式 */
+#twt-custom-menu.twt-menu-double-column-layout {
+    width: 270px !important;
+    display: flex;
+    flex-wrap: wrap;
+    padding: 4px;
+}
+
+#twt-custom-menu.twt-menu-double-column-layout .twt-menu-item {
+    width: 50%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    font-size: 0.9em;
+}
+
+/* 圆形（仅图标）排版风格专用菜单样式 */
+#twt-custom-menu.twt-menu-circle-layout {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px;
+    max-width: 230px;
+    justify-content: center;
+    align-items: center;
+}
+
+#twt-custom-menu .twt-menu-circle-item {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--SmartThemeBorderColor);
+    color: var(--SmartThemeBodyColor);
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    box-sizing: border-box;
+}
+
+#twt-custom-menu .twt-menu-circle-item:hover {
+    background: var(--SmartThemeBorderColor);
+    transform: scale(1.1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+#twt-custom-menu .twt-menu-circle-item:active {
+    transform: scale(0.95);
+}
+
+#twt-custom-menu .twt-menu-circle-item i {
+    font-size: 1.1em;
+    opacity: 0.9;
+}
+
+#twt-custom-menu .twt-menu-circle-item.twt-danger {
+    color: #ff4444;
+}
+
+#twt-custom-menu .twt-menu-circle-item.twt-danger:hover {
+    background: rgba(255, 68, 68, 0.2);
+    border-color: rgba(255, 68, 68, 0.4);
+}
+
+/* 方形（仅图标）排版风格专用菜单样式 */
+#twt-custom-menu.twt-menu-square-layout {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px;
+    max-width: 230px;
+    justify-content: center;
+    align-items: center;
+}
+
+#twt-custom-menu .twt-menu-square-item {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--SmartThemeBorderColor);
+    color: var(--SmartThemeBodyColor);
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    box-sizing: border-box;
+}
+
+#twt-custom-menu .twt-menu-square-item:hover {
+    background: var(--SmartThemeBorderColor);
+    transform: translateY(-2px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+#twt-custom-menu .twt-menu-square-item:active {
+    transform: translateY(0);
+}
+
+#twt-custom-menu .twt-menu-square-item i {
+    font-size: 1.1em;
+    opacity: 0.9;
+}
+
+#twt-custom-menu .twt-menu-square-item.twt-danger {
+    color: #ff4444;
+}
+
+#twt-custom-menu .twt-menu-square-item.twt-danger:hover {
+    background: rgba(255, 68, 68, 0.2);
+    border-color: rgba(255, 68, 68, 0.4);
+}
+

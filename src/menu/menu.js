@@ -200,16 +200,76 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
     }
     $menu.empty();
 
-    const useGridLayout = settings.menuStyle === 'grid';
-    if (useGridLayout) {
+    $menu.removeClass('twt-menu-grid-layout twt-menu-list-layout twt-menu-double-column-layout twt-menu-circle-layout twt-menu-square-layout');
+
+    const menuStyle = settings.menuStyle || 'grid';
+    if (menuStyle === 'grid') {
         $menu.addClass('twt-menu-grid-layout');
+    } else if (menuStyle === 'double-column') {
+        $menu.addClass('twt-menu-double-column-layout');
+    } else if (menuStyle === 'circle') {
+        $menu.addClass('twt-menu-circle-layout');
+    } else if (menuStyle === 'square') {
+        $menu.addClass('twt-menu-square-layout');
     } else {
-        $menu.removeClass('twt-menu-grid-layout');
+        $menu.addClass('twt-menu-list-layout');
     }
 
+    const useGridLayout = menuStyle === 'grid';
     const $gridBar = useGridLayout ? $('<div class="twt-menu-grid-row"></div>') : null;
     const $listContainer = useGridLayout ? $('<div class="twt-menu-list-row"></div>') : null;
     let hasItems = false;
+
+    const appendMenuItem = ({ label, shortLabel, icon, onClick, isDanger = false, isGridItem = false }) => {
+        hasItems = true;
+        if (menuStyle === 'circle') {
+            const $item = $(`<div class="twt-menu-circle-item ${isDanger ? 'twt-danger' : ''}" title="${label}"><i class="${icon}"></i></div>`);
+            $item.on('click', (evt) => {
+                evt.stopPropagation();
+                $menu.hide();
+                onClick(evt);
+            });
+            $menu.append($item);
+        } else if (menuStyle === 'square') {
+            const $item = $(`<div class="twt-menu-square-item ${isDanger ? 'twt-danger' : ''}" title="${label}"><i class="${icon}"></i></div>`);
+            $item.on('click', (evt) => {
+                evt.stopPropagation();
+                $menu.hide();
+                onClick(evt);
+            });
+            $menu.append($item);
+        } else if (useGridLayout) {
+            if (isGridItem) {
+                const displayLabel = shortLabel || label;
+                const $item = $(`<div class="twt-menu-grid-item ${isDanger ? 'twt-danger' : ''}" title="${label}"><i class="${icon}"></i><span>${displayLabel}</span></div>`);
+                $item.on('click', (evt) => {
+                    evt.stopPropagation();
+                    $menu.hide();
+                    onClick(evt);
+                });
+                $gridBar.append($item);
+            } else {
+                const dangerStyle = isDanger ? 'style="color: #ff4444;"' : '';
+                const $item = $(`<div class="twt-menu-item ${isDanger ? 'twt-danger' : ''}" ${dangerStyle}><i class="${icon}"></i><span>${label}</span></div>`);
+                $item.on('click', (evt) => {
+                    evt.stopPropagation();
+                    $menu.hide();
+                    onClick(evt);
+                });
+                $listContainer.append($item);
+            }
+        } else {
+            // 'list' or 'double-column'
+            const dangerStyle = isDanger ? 'style="color: #ff4444;"' : '';
+            const $item = $(`<div class="twt-menu-item ${isDanger ? 'twt-danger' : ''}" ${dangerStyle}><i class="${icon}"></i><span>${label}</span></div>`);
+            $item.on('click', (evt) => {
+                evt.stopPropagation();
+                $menu.hide();
+                onClick(evt);
+            });
+            $menu.append($item);
+        }
+    };
 
     const order = settings.menuOrder || [
         'menuOptRegenerate',
@@ -228,319 +288,221 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
 
     for (const key of order) {
         if (key === 'menuOptRegenerate' && settings.menuOptRegenerate && isLatestAi) {
-            if (useGridLayout) {
-                const $item = $('<div class="twt-menu-grid-item" title="重新生成"><i class="fa-solid fa-rotate-right"></i><span>生成</span></div>');
-                $item.on('click', (evt) => {
-                    evt.stopPropagation();
-                    $menu.hide();
-                    $('#option_regenerate').trigger('click');
-                });
-                $gridBar.append($item);
-                hasItems = true;
-            } else {
-                const $item = $('<div class="twt-menu-item"><i class="fa-solid fa-rotate-right"></i><span>重新生成</span></div>');
-                $item.on('click', (evt) => {
-                    evt.stopPropagation();
-                    $menu.hide();
-                    $('#option_regenerate').trigger('click');
-                });
-                $menu.append($item);
-                hasItems = true;
-            }
+            appendMenuItem({
+                label: '重新生成',
+                shortLabel: '生成',
+                icon: 'fa-solid fa-rotate-right',
+                isGridItem: true,
+                onClick: () => $('#option_regenerate').trigger('click')
+            });
         }
 
         if (key === 'menuOptSwipe') {
             if (settings.menuOptSwipe && isLatestAi) {
-                if (useGridLayout) {
-                    const $item = $('<div class="twt-menu-grid-item" title="滑动"><i class="fa-solid fa-chevron-right"></i><span>滑动</span></div>');
-                    $item.on('click', (evt) => {
-                        evt.stopPropagation();
-                        $menu.hide();
-                        $('.last_mes .swipe_right').trigger('click');
-                    });
-                    $gridBar.append($item);
-                    hasItems = true;
-                } else {
-                    const $item = $('<div class="twt-menu-item"><i class="fa-solid fa-chevron-right"></i><span>滑动</span></div>');
-                    $item.on('click', (evt) => {
-                        evt.stopPropagation();
-                        $menu.hide();
-                        $('.last_mes .swipe_right').trigger('click');
-                    });
-                    $menu.append($item);
-                    hasItems = true;
-                }
+                appendMenuItem({
+                    label: '滑动',
+                    shortLabel: '滑动',
+                    icon: 'fa-solid fa-chevron-right',
+                    isGridItem: true,
+                    onClick: () => $('.last_mes .swipe_right').trigger('click')
+                });
             }
             // Add Paragraph Comment (小说段评) right after Swipe
             if (settings.commentsEnabled) {
-                if (useGridLayout) {
-                    const $item = $('<div class="twt-menu-grid-item" title="小说段评"><i class="fa-regular fa-comment-dots"></i><span>段评</span></div>');
-                    $item.on('click', async (evt) => {
-                        evt.stopPropagation();
-                        $menu.hide();
+                appendMenuItem({
+                    label: '小说段评',
+                    shortLabel: '段评',
+                    icon: 'fa-regular fa-comment-dots',
+                    isGridItem: true,
+                    onClick: async () => {
                         const { triggerBatchCommentsForMessage } = await import('../paragraph/paragraph.js');
                         await triggerBatchCommentsForMessage(mesId);
-                    });
-                    $gridBar.append($item);
-                    hasItems = true;
-                } else {
-                    const $item = $('<div class="twt-menu-item"><i class="fa-regular fa-comment-dots"></i><span>段评</span></div>');
-                    $item.on('click', async (evt) => {
-                        evt.stopPropagation();
-                        $menu.hide();
-                        const { triggerBatchCommentsForMessage } = await import('../paragraph/paragraph.js');
-                        await triggerBatchCommentsForMessage(mesId);
-                    });
-                    $menu.append($item);
-                    hasItems = true;
-                }
+                    }
+                });
             }
         }
 
         if (key === 'menuOptManage' && settings.menuOptManage) {
-            const $item = $('<div class="twt-menu-item"><i class="fa-solid fa-list-check"></i><span>管理</span></div>');
-            $item.on('click', (evt) => {
-                evt.stopPropagation();
-                $menu.hide();
-                openMessageManagerModal(mesId);
+            appendMenuItem({
+                label: '管理消息',
+                shortLabel: '管理',
+                icon: 'fa-solid fa-list-check',
+                isGridItem: false,
+                onClick: () => openMessageManagerModal(mesId)
             });
-            if (useGridLayout) {
-                $listContainer.append($item);
-            } else {
-                $menu.append($item);
-            }
-            hasItems = true;
 
             // Add Hide Current Message (隐藏/显示本条) Shortcut -> 隐藏 / 显示
             const currentMsg = getContext().chat[mesId];
             const isCurrentHidden = currentMsg ? (currentMsg.is_system || currentMsg.extra?.is_system) : false;
             const hideLabel = isCurrentHidden ? '显示' : '隐藏';
             const hideIcon = isCurrentHidden ? 'fa-regular fa-eye' : 'fa-regular fa-eye-slash';
-            
-            if (useGridLayout) {
-                const $hideItem = $(`<div class="twt-menu-grid-item" title="${hideLabel}消息"><i class="${hideIcon}"></i><span>${hideLabel}</span></div>`);
-                $hideItem.on('click', async (evt) => {
-                    evt.stopPropagation();
-                    $menu.hide();
-                    await hideChatMessageRange(mesId, mesId, isCurrentHidden);
-                });
-                $gridBar.append($hideItem);
 
-                const $deleteItem = $('<div class="twt-menu-grid-item twt-danger" title="删除消息"><i class="fa-regular fa-trash-can"></i><span>删除</span></div>');
-                $deleteItem.on('click', async (evt) => {
-                    evt.stopPropagation();
-                    $menu.hide();
+            appendMenuItem({
+                label: `${hideLabel}消息`,
+                shortLabel: hideLabel,
+                icon: hideIcon,
+                isGridItem: true,
+                onClick: async () => await hideChatMessageRange(mesId, mesId, isCurrentHidden)
+            });
+
+            appendMenuItem({
+                label: '删除消息',
+                shortLabel: '删除',
+                icon: 'fa-regular fa-trash-can',
+                isDanger: true,
+                isGridItem: true,
+                onClick: async () => {
                     if (confirm('确定要删除这条消息吗？')) {
                         await getContext().deleteMessage(mesId, undefined, false);
                     }
-                });
-                $gridBar.append($deleteItem);
-            } else {
-                const $hideItem = $(`<div class="twt-menu-item"><i class="${hideIcon}"></i><span>${hideLabel}</span></div>`);
-                $hideItem.on('click', async (evt) => {
-                    evt.stopPropagation();
-                    $menu.hide();
-                    await hideChatMessageRange(mesId, mesId, isCurrentHidden);
-                });
-                $menu.append($hideItem);
-
-                const $deleteItem = $('<div class="twt-menu-item" style="color: #ff4444;"><i class="fa-regular fa-trash-can"></i><span>删除</span></div>');
-                $deleteItem.on('click', async (evt) => {
-                    evt.stopPropagation();
-                    $menu.hide();
-                    if (confirm('确定要删除这条消息吗？')) {
-                        await getContext().deleteMessage(mesId, undefined, false);
-                    }
-                });
-                $menu.append($deleteItem);
-            }
+                }
+            });
         }
 
         if (key === 'menuOptEdit' && settings.menuOptEdit) {
-            if (useGridLayout) {
-                const $item = $('<div class="twt-menu-grid-item" title="分段编辑"><i class="fa-regular fa-pen-to-square"></i><span>编辑</span></div>');
-                $item.on('click', (evt) => {
-                    evt.stopPropagation();
-                    $menu.hide();
-                    openParagraphEditor(mesId, clientX, clientY);
-                });
-                $gridBar.append($item);
-                hasItems = true;
-            } else {
-                const $item = $('<div class="twt-menu-item"><i class="fa-regular fa-pen-to-square"></i><span>编辑</span></div>');
-                $item.on('click', (evt) => {
-                    evt.stopPropagation();
-                    $menu.hide();
-                    openParagraphEditor(mesId, clientX, clientY);
-                });
-                $menu.append($item);
-                hasItems = true;
-            }
+            appendMenuItem({
+                label: '分段编辑',
+                shortLabel: '编辑',
+                icon: 'fa-regular fa-pen-to-square',
+                isGridItem: true,
+                onClick: () => openParagraphEditor(mesId, clientX, clientY)
+            });
         }
 
         if (key === 'menuOptExcerpt' && settings.menuOptExcerpt) {
-            const $item = $('<div class="twt-menu-item"><i class="fa-regular fa-bookmark"></i><span>摘抄</span></div>');
-            $item.on('click', (evt) => {
-                evt.stopPropagation();
-                $menu.hide();
-                startExcerptLinkage();
+            appendMenuItem({
+                label: '摘抄',
+                shortLabel: '摘抄',
+                icon: 'fa-regular fa-bookmark',
+                isGridItem: false,
+                onClick: () => startExcerptLinkage()
             });
-            if (useGridLayout) {
-                $listContainer.append($item);
-            } else {
-                $menu.append($item);
-            }
-            hasItems = true;
         }
 
         if (key === 'menuOptFullscreen' && settings.menuOptFullscreen) {
             const isCurrentlyFullscreen = settings.isFullscreen;
-            const label = isCurrentlyFullscreen ? '退出' : '全屏';
+            const label = isCurrentlyFullscreen ? '退出全屏' : '全屏模式';
+            const shortLabel = isCurrentlyFullscreen ? '退出' : '全屏';
             const icon = isCurrentlyFullscreen ? 'fa-solid fa-compress' : 'fa-solid fa-expand';
-            const $item = $(`<div class="twt-menu-item"><i class="${icon}"></i><span>${label}</span></div>`);
-            $item.on('click', (evt) => {
-                evt.stopPropagation();
-                $menu.hide();
-                settings.isFullscreen = !isCurrentlyFullscreen;
-                applyFullscreenMode(settings.isFullscreen);
-                getContext().saveSettingsDebounced();
+            appendMenuItem({
+                label: label,
+                shortLabel: shortLabel,
+                icon: icon,
+                isGridItem: false,
+                onClick: () => {
+                    settings.isFullscreen = !isCurrentlyFullscreen;
+                    applyFullscreenMode(settings.isFullscreen);
+                    getContext().saveSettingsDebounced();
+                }
             });
-            if (useGridLayout) {
-                $listContainer.append($item);
-            } else {
-                $menu.append($item);
-            }
-            hasItems = true;
         }
 
         if (key === 'menuOptApi' && settings.menuOptApi) {
-            const $item = $('<div class="twt-menu-item"><i class="fa-solid fa-plug"></i><span>API</span></div>');
-            $item.on('click', (evt) => {
-                evt.stopPropagation();
-                $menu.hide();
-                if (window.ApiConfigManager && typeof window.ApiConfigManager.show === 'function') {
-                    window.ApiConfigManager.show();
-                } else {
-                    console.error('API 配置管理器扩展未加载或未启用');
-                    if (typeof toastr !== 'undefined') {
-                        toastr.warning('API 配置管理器扩展未加载或未启用', '提示');
+            appendMenuItem({
+                label: 'API',
+                shortLabel: 'API',
+                icon: 'fa-solid fa-plug',
+                isGridItem: false,
+                onClick: () => {
+                    if (window.ApiConfigManager && typeof window.ApiConfigManager.show === 'function') {
+                        window.ApiConfigManager.show();
+                    } else {
+                        console.error('API 配置管理器扩展未加载或未启用');
+                        if (typeof toastr !== 'undefined') {
+                            toastr.warning('API 配置管理器扩展未加载或未启用', '提示');
+                        }
                     }
                 }
             });
-            if (useGridLayout) {
-                $listContainer.append($item);
-            } else {
-                $menu.append($item);
-            }
-            hasItems = true;
         }
 
         if (key === 'menuOptPurifier' && settings.menuOptPurifier) {
-            const $item = $('<div class="twt-menu-item"><i class="fa-solid fa-language"></i><span>词汇映射</span></div>');
-            $item.on('click', (evt) => {
-                evt.stopPropagation();
-                $menu.hide();
-                const $btn = $('#bl-wand-btn');
-                if ($btn.length) {
-                    $btn.trigger('click');
-                } else {
-                    const $btnPanel = $('#bl-wand-btn-panel');
-                    if ($btnPanel.length) {
-                        $btnPanel.trigger('click');
+            appendMenuItem({
+                label: '词汇映射',
+                shortLabel: '映射',
+                icon: 'fa-solid fa-language',
+                isGridItem: false,
+                onClick: () => {
+                    const $btn = $('#bl-wand-btn');
+                    if ($btn.length) {
+                        $btn.trigger('click');
                     } else {
-                        const $popup = $('#bl-purifier-popup');
-                        if ($popup.length) {
-                            $popup.css('display', 'flex').hide().fadeIn(200);
+                        const $btnPanel = $('#bl-wand-btn-panel');
+                        if ($btnPanel.length) {
+                            $btnPanel.trigger('click');
                         } else {
-                            if (typeof toastr !== 'undefined') {
-                                toastr.warning('屏蔽词净化助手扩展未加载或未启用', '提示');
+                            const $popup = $('#bl-purifier-popup');
+                            if ($popup.length) {
+                                $popup.css('display', 'flex').hide().fadeIn(200);
+                            } else {
+                                if (typeof toastr !== 'undefined') {
+                                    toastr.warning('屏蔽词净化助手扩展未加载或未启用', '提示');
+                                }
                             }
                         }
                     }
                 }
             });
-            if (useGridLayout) {
-                $listContainer.append($item);
-            } else {
-                $menu.append($item);
-            }
-            hasItems = true;
         }
 
         if (key === 'menuOptPurifierDiff' && settings.menuOptPurifierDiff) {
-            const $item = $('<div class="twt-menu-item"><i class="fa-solid fa-eye"></i><span>净化前文</span></div>');
-            $item.on('click', (evt) => {
-                evt.stopPropagation();
-                $menu.hide();
-                const $diffBtn = $(`.bl-diff-btn[data-index="${mesId}"]`);
-                if ($diffBtn.length) {
-                    $diffBtn.trigger('click');
-                } else {
-                    if (typeof toastr !== 'undefined') {
-                        toastr.warning('该消息未被修改或没有净化记录', '提示');
+            appendMenuItem({
+                label: '净化前文',
+                shortLabel: '前文',
+                icon: 'fa-solid fa-eye',
+                isGridItem: false,
+                onClick: () => {
+                    const $diffBtn = $(`.bl-diff-btn[data-index="${mesId}"]`);
+                    if ($diffBtn.length) {
+                        $diffBtn.trigger('click');
+                    } else {
+                        if (typeof toastr !== 'undefined') {
+                            toastr.warning('该消息未被修改或没有净化记录', '提示');
+                        }
                     }
                 }
             });
-            if (useGridLayout) {
-                $listContainer.append($item);
-            } else {
-                $menu.append($item);
-            }
-            hasItems = true;
         }
 
         if (key === 'menuOptNewChat' && settings.menuOptNewChat) {
-            const $item = $('<div class="twt-menu-item"><i class="fa-solid fa-comments"></i><span>新对话</span></div>');
-            $item.on('click', (evt) => {
-                evt.stopPropagation();
-                $menu.hide();
-                $('#option_start_new_chat').trigger('click');
+            appendMenuItem({
+                label: '新对话',
+                shortLabel: '新建',
+                icon: 'fa-solid fa-comments',
+                isGridItem: false,
+                onClick: () => $('#option_start_new_chat').trigger('click')
             });
-            if (useGridLayout) {
-                $listContainer.append($item);
-            } else {
-                $menu.append($item);
-            }
-            hasItems = true;
         }
 
         if (key === 'menuOptCloseChat' && settings.menuOptCloseChat) {
-            const $item = $('<div class="twt-menu-item"><i class="fa-solid fa-xmark"></i><span>关闭</span></div>');
-            $item.on('click', (evt) => {
-                evt.stopPropagation();
-                $menu.hide();
-                $('#option_close_chat').trigger('click');
+            appendMenuItem({
+                label: '关闭',
+                shortLabel: '关闭',
+                icon: 'fa-solid fa-xmark',
+                isGridItem: false,
+                onClick: () => $('#option_close_chat').trigger('click')
             });
-            if (useGridLayout) {
-                $listContainer.append($item);
-            } else {
-                $menu.append($item);
-            }
-            hasItems = true;
         }
 
         if (key === 'menuOptPromptViewer' && settings.menuOptPromptViewer) {
-            const $item = $('<div class="twt-menu-item"><i class="fa-solid fa-magnifying-glass"></i><span>提示词</span></div>');
-            $item.on('click', (evt) => {
-                evt.stopPropagation();
-                $menu.hide();
-                const promptBtn = Array.from(document.querySelectorAll('.list-group-item'))
-                    .find(el => el.textContent && el.textContent.includes('提示词查看器'));
-                if (promptBtn) {
-                    promptBtn.click();
-                } else {
-                    console.warn('未找到酒馆助手(JS-Slash-Runner)提示词查看器接口');
-                    if (typeof toastr !== 'undefined') {
-                        toastr.warning('未找到酒馆助手(JS-Slash-Runner)提示词查看器接口', '提示');
+            appendMenuItem({
+                label: '提示词',
+                shortLabel: '提示词',
+                icon: 'fa-solid fa-magnifying-glass',
+                isGridItem: false,
+                onClick: () => {
+                    const promptBtn = Array.from(document.querySelectorAll('.list-group-item'))
+                        .find(el => el.textContent && el.textContent.includes('提示词查看器'));
+                    if (promptBtn) {
+                        promptBtn.click();
+                    } else {
+                        console.warn('未找到酒馆助手(JS-Slash-Runner)提示词查看器接口');
+                        if (typeof toastr !== 'undefined') {
+                            toastr.warning('未找到酒馆助手(JS-Slash-Runner)提示词查看器接口', '提示');
+                        }
                     }
                 }
             });
-            if (useGridLayout) {
-                $listContainer.append($item);
-            } else {
-                $menu.append($item);
-            }
-            hasItems = true;
         }
     }
 

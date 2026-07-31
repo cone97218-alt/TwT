@@ -122,15 +122,11 @@ body.twt-reading-mode #chat .mes_text .markdown-table {
     max-width: 100%;
 }
 
-/* 使用 :where 低特异性规则，确保绝不覆盖用户自定义 CSS 美化主题对思维链、角色名、头像及容器的 display / margin / flex / position 布局 */
-:where(body.twt-reading-mode #chat .thought-block),
-:where(body.twt-reading-mode #chat .mes_reasoning_details),
-:where(body.twt-reading-mode #chat details.mes_reasoning_details),
-:where(body.twt-reading-mode #chat .ch_name),
-:where(body.twt-reading-mode #chat .name_text),
-:where(body.twt-reading-mode #chat .mes_header) {
+/* 代码块和思维链：只控制横向溢出，绝对不能加 break-inside: avoid，必须允许垂直自然断页 */
+body.twt-reading-mode #chat .mes_text pre,
+body.twt-reading-mode #chat .thought-block {
+    overflow-x: auto !important;
     max-width: 100%;
-    box-sizing: border-box;
 }
 
 /* 禁用滑动翻页 */
