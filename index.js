@@ -4,7 +4,6 @@ import { applyPaginationMode, initPaginationEvent, resetPaginationBinding } from
 import { applyVisualMode } from './src/visual/visual.js';
 import { initMulu, applyMuluSettings } from './src/mulu/mulu.js';
 import { initMenu, applyMenuMode, applyFullscreenMode } from './src/menu/menu.js';
-import { updateDebugConsoleVisibility } from './src/debug/debug.js';
 
 let parentDoc = document;
 try {
@@ -31,8 +30,7 @@ const extensionName = 'TwT';
 
 const defaultSettings = {
     enabled: true,
-    debugEnabled: false,
-    debugConsoleEnabled: false,
+    autoReloadOnUpdate: true,
     swipeEnabled: true,
     messagePageEnabled: false,
     htmlPageBreakEnabled: true,
@@ -707,8 +705,7 @@ function applyPreset(presetName) {
         if (preset.avatarLayoutMode !== undefined) extension_settings.twt.avatarLayoutMode = preset.avatarLayoutMode;
         else extension_settings.twt.avatarLayoutMode = 'float';
         $('#twt_avatar_layout_mode').val(extension_settings.twt.avatarLayoutMode);
-        updateDebugConsoleVisibility();
-    applyPaginationMode(extension_settings.twt.enabled, extension_settings.twt);
+        applyPaginationMode(extension_settings.twt.enabled, extension_settings.twt);
         
         // Typography
         if (preset.fontSize !== undefined) extension_settings.twt.fontSize = preset.fontSize;
@@ -957,6 +954,7 @@ function initThemeLinkListener() {
 
 function bindUI() {
     const $enabled = $('#twt_enabled');
+    const $autoReloadOnUpdate = $('#twt_auto_reload_on_update');
     const $swipeEnabled = $('#twt_swipe_enabled');
     const $messagePageEnabled = $('#twt_message_page_enabled');
     const $htmlPageBreakEnabled = $('#twt_html_page_break_enabled');
@@ -1049,6 +1047,12 @@ function bindUI() {
 
     $visualEnabled.prop('checked', extension_settings.twt.visualEnabled);
     $muluEnabled.prop('checked', extension_settings.twt.muluEnabled);
+    $autoReloadOnUpdate.prop('checked', extension_settings.twt.autoReloadOnUpdate !== false);
+
+    $autoReloadOnUpdate.on('change', function () {
+        extension_settings.twt.autoReloadOnUpdate = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+    });
 
 
     $paddingTop.val(extension_settings.twt.paddingTop);
@@ -3081,9 +3085,6 @@ jQuery(async () => {
         }
     }, true);
 
-    // 自动刷新逻辑：当在酒馆中点击更新扩展成功后自动刷新界面
-    initAutoReloadOnUpdate();
-
     // 聊天切换时重新绑定翻页事件到新的 #chat 元素
     // 解决：旧 #chat 被销毁后事件监听器失效导致翻页失控的竞态问题
     try {
@@ -3098,64 +3099,41 @@ jQuery(async () => {
     } catch (e) {
         console.warn('[TwT] Failed to register CHAT_CHANGED listener for pagination reset:', e);
     }
-});
 
-let isAutoReloading = false;
-function triggerAutoReload(msg) {
-    if (isAutoReloading) return;
-    isAutoReloading = true;
+    // ============================================================
+    // 扩展自动刷新机制：更新扩展后自动刷新浏览器页面
+    // ============================================================
+    const TWT_VERSION = '2.3.0';
     try {
-        toastr.success(msg || 'TwT 扩展更新成功，即将在 1.5 秒后自动刷新界面...', '更新完成', { timeOut: 3000 });
-    } catch {}
-    setTimeout(() => {
-        try {
-            if (window.parent && window.parent.location) {
-                window.parent.location.reload();
-                return;
+        const autoReloadEnabled = extension_settings.twt?.autoReloadOnUpdate !== false;
+        if (autoReloadEnabled) {
+            const storedVer = localStorage.getItem('twt_installed_version');
+            if (storedVer && storedVer !== TWT_VERSION) {
+                localStorage.setItem('twt_installed_version', TWT_VERSION);
+                toastr.info(`TwT 扩展已成功更新至 v${TWT_VERSION}！正在为您自动刷新页面...`, '扩展更新成功', { timeOut: 3000 });
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1200);
+            } else {
+                localStorage.setItem('twt_installed_version', TWT_VERSION);
             }
-        } catch {}
-        window.location.reload();
-    }, 1500);
-}
+        }
+    } catch (e) {
+        console.warn('[TwT] Auto reload check failed:', e);
+    }
 
-function initAutoReloadOnUpdate() {
-    // ① 监听 SillyTavern / TauriTavern 事件源
+    // 监听酒馆扩展更新事件
     try {
         const ctx = getContext();
-        if (ctx && ctx.eventSource && ctx.eventTypes) {
-            const updateEvents = ['EXTENSION_UPDATED', 'EXTENSIONS_UPDATED', 'extension_updated', 'extensions_updated'];
-            updateEvents.forEach(evtName => {
-                const evtType = ctx.eventTypes[evtName] || evtName;
-                ctx.eventSource.on(evtType, (data) => {
-                    console.log('[TwT] Extension update event detected:', evtName, data);
-                    triggerAutoReload('检测到扩展已更新，即将在 1.5 秒后自动刷新界面...');
-                });
+        if (ctx && ctx.eventSource && ctx.eventTypes && ctx.eventTypes.EXTENSION_UPDATED) {
+            ctx.eventSource.on(ctx.eventTypes.EXTENSION_UPDATED, (extName) => {
+                if (!extName || String(extName).toLowerCase().includes('twt')) {
+                    if (extension_settings.twt?.autoReloadOnUpdate !== false) {
+                        toastr.info('检测到 TwT 扩展已更新，即将自动刷新页面...', '更新完成');
+                        setTimeout(() => window.location.reload(), 1000);
+                    }
+                }
             });
         }
-    } catch (e) {
-        console.warn('[TwT] Failed to bind eventSource update listener:', e);
-    }
-
-    // ② 拦截扩展更新 API (fetch)
-    try {
-        const targetWindow = (window.parent && window.parent.fetch) ? window.parent : window;
-        const originalFetch = targetWindow.fetch;
-        if (typeof originalFetch === 'function') {
-            targetWindow.fetch = async function(...args) {
-                const response = await originalFetch.apply(this, args);
-                try {
-                    const url = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
-                    if (url.includes('/api/extensions/update') || url.includes('/api/extensions/update_extension')) {
-                        if (response.ok) {
-                            triggerAutoReload('🎉 TwT 扩展已成功更新！即将在 1.5 秒后自动刷新界面...');
-                        }
-                    }
-                } catch (err) {}
-                return response;
-            };
-        }
-    } catch (e) {
-        console.warn('[TwT] Failed to intercept fetch for auto-reload:', e);
-    }
-}
-
+    } catch (e) {}
+});

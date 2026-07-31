@@ -1,188 +1,3 @@
-
-// ============================================================
-// Debug 实时调试控制台 HUD & 浮动常驻诊断入口
-// ============================================================
-let debugHudEl = null;
-let debugToggleBtnEl = null;
-
-export function updateDebugHudVisibility() {
-    const doc = typeof getDoc === 'function' ? getDoc() : document;
-    const isReading = doc.body.classList.contains('twt-reading-mode');
-
-    if (isReading) {
-        if (!debugToggleBtnEl || !doc.body.contains(debugToggleBtnEl)) {
-            createDebugToggleBtn(doc);
-        }
-        debugToggleBtnEl.style.display = 'flex';
-        if (debugHudEl && debugHudEl.style.display !== 'none') {
-            refreshDebugHud();
-        }
-    } else {
-        if (debugToggleBtnEl) debugToggleBtnEl.style.display = 'none';
-        if (debugHudEl) debugHudEl.style.display = 'none';
-    }
-}
-
-function createDebugToggleBtn(doc) {
-    if (doc.getElementById('twt-debug-toggle-btn')) {
-        debugToggleBtnEl = doc.getElementById('twt-debug-toggle-btn');
-        return;
-    }
-    debugToggleBtnEl = doc.createElement('button');
-    debugToggleBtnEl.id = 'twt-debug-toggle-btn';
-    debugToggleBtnEl.style.cssText = `
-        position: fixed;
-        bottom: 15px;
-        right: 15px;
-        z-index: 9999998;
-        background: rgba(0, 122, 255, 0.9);
-        color: #ffffff;
-        border: 1px solid rgba(255, 255, 255, 0.4);
-        border-radius: 20px;
-        padding: 5px 12px;
-        font-size: 12px;
-        font-weight: bold;
-        cursor: pointer;
-        box-shadow: 0 4px 14px rgba(0,0,0,0.4);
-        backdrop-filter: blur(6px);
-        display: flex;
-        align-items: center;
-        gap: 5px;
-        user-select: none;
-        transition: all 0.2s ease;
-    `;
-    debugToggleBtnEl.innerHTML = '<i class="fa-solid fa-bug"></i> 🐞 TwT 诊断';
-    debugToggleBtnEl.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (!debugHudEl || !doc.body.contains(debugHudEl)) {
-            createDebugHud(doc);
-        }
-        const isHidden = debugHudEl.style.display === 'none';
-        debugHudEl.style.display = isHidden ? 'block' : 'none';
-        if (isHidden) refreshDebugHud();
-    });
-    doc.body.appendChild(debugToggleBtnEl);
-}
-
-function createDebugHud(doc) {
-    if (doc.getElementById('twt-debug-hud')) {
-        debugHudEl = doc.getElementById('twt-debug-hud');
-        return;
-    }
-    debugHudEl = doc.createElement('div');
-    debugHudEl.id = 'twt-debug-hud';
-    debugHudEl.style.cssText = `
-        position: fixed;
-        top: 50px;
-        right: 15px;
-        z-index: 9999999;
-        background: rgba(12, 14, 20, 0.92);
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(0, 122, 255, 0.5);
-        border-radius: 10px;
-        padding: 12px 16px;
-        color: #00e5ff;
-        font-family: Consolas, SFMono-Regular, monospace;
-        font-size: 11px;
-        line-height: 1.6;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.6);
-        pointer-events: auto;
-        user-select: text;
-        width: 380px;
-        max-width: 90vw;
-        max-height: 80vh;
-        overflow-y: auto;
-    `;
-
-    debugHudEl.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.15); padding-bottom:6px; margin-bottom:8px; font-weight:bold; color:#fff;">
-            <span><i class="fa-solid fa-bug" style="color:#007aff;margin-right:6px;"></i>TwT 排版诊断报告控制台</span>
-            <div>
-                <button id="twt-debug-copy-btn" style="padding:2px 8px; font-size:11px; background:#007aff; color:#fff; border:none; border-radius:4px; cursor:pointer; margin-right:6px; font-weight:bold;"><i class="fa-solid fa-copy"></i> 复制报告</button>
-                <button id="twt-debug-close-btn" style="padding:2px 6px; font-size:11px; background:rgba(255,255,255,0.15); color:#fff; border:none; border-radius:4px; cursor:pointer;">✕</button>
-            </div>
-        </div>
-        <div id="twt-debug-content" style="white-space:pre-wrap; word-break:break-all; background:rgba(0,0,0,0.3); padding:8px; border-radius:6px; border:1px solid rgba(255,255,255,0.08);">初始化数据中...</div>
-    `;
-
-    doc.body.appendChild(debugHudEl);
-
-    doc.getElementById('twt-debug-copy-btn')?.addEventListener('click', () => {
-        const text = doc.getElementById('twt-debug-content')?.innerText || '';
-        const fullReport = `=== TwT 翻页模式实时排版诊断报告 ===\n生成时间: ${new Date().toLocaleString()}\n\n${text}`;
-        
-        // 双重剪贴板写入兼容
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(fullReport).then(() => {
-                if (typeof toastr !== 'undefined') toastr.success('诊断报告已成功复制到剪贴板！', '成功');
-            }).catch(fallbackCopy);
-        } else {
-            fallbackCopy();
-        }
-
-        function fallbackCopy() {
-            const ta = doc.createElement('textarea');
-            ta.value = fullReport;
-            doc.body.appendChild(ta);
-            ta.select();
-            doc.execCommand('copy');
-            doc.body.removeChild(ta);
-            if (typeof toastr !== 'undefined') toastr.success('诊断报告已成功复制到剪贴板！', '成功');
-        }
-    });
-
-    doc.getElementById('twt-debug-close-btn')?.addEventListener('click', () => {
-        debugHudEl.style.display = 'none';
-    });
-}
-
-export function refreshDebugHud() {
-    if (!debugHudEl || debugHudEl.style.display === 'none') return;
-    const doc = typeof getDoc === 'function' ? getDoc() : document;
-    const chat = doc.getElementById('chat');
-    const contentEl = doc.getElementById('twt-debug-content');
-    if (!chat || !contentEl) return;
-
-    const cw = getColWidth(chat);
-    const rect = chat.getBoundingClientRect();
-    const scrollLeft = chat.scrollLeft;
-    const scrollWidth = chat.scrollWidth;
-    const clientWidth = chat.clientWidth;
-    const expectedLeft = lastUserPage * cw;
-    const drift = (scrollLeft - expectedLeft).toFixed(2);
-    const dpr = window.devicePixelRatio || 1;
-
-    const mesList = chat.querySelectorAll('.mes');
-    const mesCount = mesList.length;
-
-    // 获取首条消息与容器计算样式
-    let mesMargin = 'N/A';
-    let mesPadding = 'N/A';
-    if (mesCount > 0) {
-        const cs = window.getComputedStyle(mesList[0]);
-        mesMargin = `L:${cs.marginLeft} R:${cs.marginRight} T:${cs.marginTop} B:${cs.marginBottom}`;
-        mesPadding = `L:${cs.paddingLeft} R:${cs.paddingRight} T:${cs.paddingTop} B:${cs.paddingBottom}`;
-    }
-
-    const chatStyle = window.getComputedStyle(chat);
-    const chatPadding = `L:${chatStyle.paddingLeft} R:${chatStyle.paddingRight}`;
-    const chatColWidth = chatStyle.getPropertyValue('column-width') || 'none';
-    const chatVarColWidth = chatStyle.getPropertyValue('--twt-col-width') || 'none';
-
-    contentEl.innerHTML = 
-`[页码状态] 当前页: ${lastUserPage} | 目标: ${expectedLeft.toFixed(1)}px
-[滚动状态] scrollLeft: ${scrollLeft.toFixed(2)}px
-[偏移差值] Drift: <span style="color:${Math.abs(drift) > 1 ? '#ff5252' : '#69f0ae'}">${drift}px</span>
-[列宽计算] cw: ${cw.toFixed(2)}px | clientW: ${clientWidth}px | rectW: ${rect.width.toFixed(2)}px
-[CSS 列宽] --twt-col-width: ${chatVarColWidth} | column-width: ${chatColWidth}
-[容器尺寸] scrollWidth: ${scrollWidth}px | dpr: ${dpr}
-[容器边距] #chat padding: ${chatPadding}
-[消息统计] 消息数: ${mesCount}
-[消息边距] margin: ${mesMargin}
-[消息内距] padding: ${mesPadding}`;
-}
-
-import { addDebugLog } from '../debug/debug.js';
 // @ts-nocheck
 import { extension_settings } from '../../../../../extensions.js';
 
@@ -261,7 +76,6 @@ async function restorePaginationPosition() {
 // 核心状态
 // ============================================================
 let lastUserPage = 0;           // 用户当前所在页（唯一权威来源）
-let lastTouchEndTime = 0;       // 触摸抬起时间戳，防合成 click 事件二次翻页
 let isScrolling = false;        // 正在执行程序化 scrollTo，屏蔽 snap 校正
 let isTouching = false;         // 手指正在触摸屏幕
 let isKeyboardOpen = false;     // 虚拟键盘已弹出
@@ -313,7 +127,7 @@ function startPositionLock(chat) {
     const expected = lastUserPage * cw;
     function lock() {
         if (!isKeyboardOpen && !isFocusGuarding) { positionLockRaf = null; return; }
-        if (Math.abs(chat.scrollLeft - expected) > 1) {
+        if (Math.abs(chat.scrollLeft - expected) > 2) {
             chat.scrollLeft = expected;
         }
         positionLockRaf = requestAnimationFrame(lock);
@@ -477,24 +291,9 @@ function getChat() { return document.getElementById('chat'); }
  * TauriTavern 等环境下 getBoundingClientRect().width 可能返回小数，
  * 必须 Math.round() 取整，否则 scrollLeft 目标累积误差会导致跳页混乱。
  */
-/**
- * 获取列宽（列宽唯一权威来源）
- * 必须严格使用 chat.clientWidth（内容区域渲染宽度，排除 border 和 scrollbar）。
- * CSS Multi-column 多列布局严格基于 clientWidth 划分列，使用 getBoundingClientRect().width
- * 会因为包含 border/scrollbar 导致 cw 比实际列宽大 1~2px，在多页下产生 cumulative right margin drift（右边距随页数累积变大）。
- */
-/**
- * 获取多列布局下 Chromium 引擎排版每一列的绝对精确步长 (Column Step S)
- * 在 CSS Multi-column 布局下，chat.scrollWidth 恰好等于 N * S（N 为总列数，S 为实际列步长）。
- * 通过 S = chat.scrollWidth / N 计算得到的步长包含亚像素浮点值，
- * 无论翻到第 1 页还是第 100 页，都能实现 0.000px 绝对精确对齐，彻底从根源抹平右边距累积放大 Bug！
- */
-function getColStep(chat) {
-    if (!chat) return 0;
-    // 使用 getBoundingClientRect().width 准确精准的 406.6666...px，100% 匹配容器物理宽
-    return chat.getBoundingClientRect().width || chat.clientWidth;
+function getColWidth(chat) {
+    return Math.round(chat.getBoundingClientRect().width);
 }
-function getColWidth(chat) { return getColStep(chat); }
 
 let scrollUnlockTimer = null;
 
@@ -504,9 +303,7 @@ function scrollToPage(chat, page, cw) {
     const total = Math.round(chat.scrollWidth / cw);
     page = Math.max(0, Math.min(page, total - 1));
     lastUserPage = page;
-    refreshDebugHud();
     debouncedSavePaginationPosition();
-    updateDebugHudVisibility();
     isScrolling = true;
 
     clearTimeout(scrollUnlockTimer);
@@ -515,7 +312,6 @@ function scrollToPage(chat, page, cw) {
         isScrolling = false;
     }, 350);
 
-    addDebugLog('scrollToPage', `目标页: ${page}, 列宽cw: ${cw.toFixed(2)}px, 预期left: ${(page*cw).toFixed(2)}px`);
     chat.scrollTo({ left: page * cw, behavior: 'smooth' });
 }
 
@@ -533,7 +329,7 @@ function doSnap(chat) {
     const nearest = Math.round(chat.scrollLeft / cw);
     const expected = nearest * cw;
 
-    if (Math.abs(chat.scrollLeft - expected) > 1) {
+    if (Math.abs(chat.scrollLeft - expected) > 2) {
         chat.scrollLeft = expected;
     }
     lastUserPage = Math.round(chat.scrollLeft / cw);
@@ -775,11 +571,10 @@ function initVirtualKeyboardGuard() {
 export function applyPaginationMode(enabled, settings) {
     if (enabled) {
         document.body.classList.add('twt-reading-mode');
-    updateDebugHudVisibility();
         if (settings) {
             document.body.classList.toggle('twt-swipe-disabled',      !settings.swipeEnabled);
             document.body.classList.toggle('twt-message-page',        !!settings.messagePageEnabled);
-            document.body.classList.toggle(settings.avatarLayoutMode === 'theme');
+            document.body.classList.toggle('twt-avatar-theme-layout', settings.avatarLayoutMode === 'theme');
         }
         updateColWidthWhenReady();
         window.addEventListener('resize', onWindowResize);
@@ -790,7 +585,7 @@ export function applyPaginationMode(enabled, settings) {
     } else {
         document.body.classList.remove(
             'twt-reading-mode', 'twt-swipe-disabled',
-            'twt-message-page'
+            'twt-message-page', 'twt-avatar-theme-layout'
         );
         window.removeEventListener('resize', onWindowResize);
 
@@ -946,7 +741,7 @@ export function initPaginationEvent(getSettings) {
         if (!chat?.contains(e.target)) return;
 
         // 交互元素判断
-        const baseSelector = 'button, a, input, textarea, select, label, summary, [onclick], [role="button"], [tabindex], .mes_button, .swipe-button, .ch_name, img, .svg-icon';
+        const baseSelector = 'button, a, input, textarea, select, label, summary, [onclick], [role="button"], [tabindex], .mes_button, .swipe-button, .ch_name, .avatar, img, .svg-icon';
         let interactive = false;
         if (settings.customWhitelist?.trim()) {
             try { interactive = !!e.target.closest(settings.customWhitelist.trim()); }
@@ -959,10 +754,7 @@ export function initPaginationEvent(getSettings) {
         if (interactive) return;
 
         // 有文字选区时不翻页
-        if (window.getSelection().toString().length > 0) return; 
-
-        // 屏蔽触摸抬起后 400ms 内产生的合成 click 事件，防止与 touchend 产生二次双重翻页 (导致 Drift = 406.67px)
-        if (Date.now() - lastTouchEndTime < 400) return;
+        if (window.getSelection().toString().length > 0) return;
 
         const cw = getColWidth(chat);
         if (cw <= 0) return;
@@ -1120,7 +912,6 @@ function bindScrollEvents(getSettings) {
         const cleanup = () => {
             isTouching  = false;
             isScrolling = false;
-            lastTouchEndTime = Date.now();
             clearTimeout(fallback);
         };
         const fallback = setTimeout(cleanup, 600);
