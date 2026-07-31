@@ -3065,6 +3065,35 @@ jQuery(async () => {
         }, 1200);
     }
 
+    // 0. 全局拦截 fetch 请求 (SillyTavern 原生使用 fetch 接口更新扩展)
+    function hookFetch(targetWin) {
+        try {
+            if (!targetWin || !targetWin.fetch || targetWin.fetch.__twt_hooked__) return;
+            const origFetch = targetWin.fetch;
+            const hooked = async function (...args) {
+                const res = await origFetch.apply(this, args);
+                try {
+                    const url = String(args[0] || '').toLowerCase();
+                    if (url.includes('/api/extensions/update') || 
+                        url.includes('/api/extensions/download') || 
+                        url.includes('/api/extensions/install') || 
+                        url.includes('/api/extensions/switch')) {
+                        if (res && res.ok) {
+                            autoReloadApp('检测到拓展更新/变更完成 (fetch)');
+                        }
+                    }
+                } catch (e) {}
+                return res;
+            };
+            hooked.__twt_hooked__ = true;
+            targetWin.fetch = hooked;
+        } catch(e) {}
+    }
+
+    try { hookFetch(window); } catch(e) {}
+    try { if (window.parent && window.parent !== window) hookFetch(window.parent); } catch(e) {}
+    try { if (window.top && window.top !== window) hookFetch(window.top); } catch(e) {}
+
     // 1. 监听扩展更新相关的 AJAX 请求完成
     try {
         const rootDoc = (window.parent && window.parent.document) ? window.parent.document : document;
