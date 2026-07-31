@@ -1,3 +1,127 @@
+
+// ============================================================
+// Debug 实时调试控制台 HUD
+// ============================================================
+let debugHudEl = null;
+
+export function updateDebugHudVisibility() {
+    const doc = typeof getDoc === 'function' ? getDoc() : document;
+    const settings = typeof extension_settings !== 'undefined' ? extension_settings.twt : null;
+    const isReading = doc.body.classList.contains('twt-reading-mode');
+    const isDebug = settings?.debugEnabled;
+
+    if (isReading && isDebug) {
+        if (!debugHudEl || !doc.body.contains(debugHudEl)) {
+            createDebugHud(doc);
+        }
+        debugHudEl.style.display = 'block';
+        refreshDebugHud();
+    } else if (debugHudEl) {
+        debugHudEl.style.display = 'none';
+    }
+}
+
+function createDebugHud(doc) {
+    if (doc.getElementById('twt-debug-hud')) {
+        debugHudEl = doc.getElementById('twt-debug-hud');
+        return;
+    }
+    debugHudEl = doc.createElement('div');
+    debugHudEl.id = 'twt-debug-hud';
+    debugHudEl.style.cssText = `
+        position: fixed;
+        top: 60px;
+        right: 15px;
+        z-index: 9999999;
+        background: rgba(15, 15, 20, 0.88);
+        backdrop-filter: blur(8px);
+        border: 1px solid rgba(0, 122, 255, 0.4);
+        border-radius: 8px;
+        padding: 10px 14px;
+        color: #00e5ff;
+        font-family: monospace, SFMono-Regular, Consolas;
+        font-size: 11px;
+        line-height: 1.5;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+        pointer-events: auto;
+        user-select: text;
+        max-width: 340px;
+    `;
+
+    debugHudEl.innerHTML = `
+        <div style="display:flex; justify-space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.15); padding-bottom:4px; margin-bottom:6px; font-weight:bold; color:#fff;">
+            <span><i class="fa-solid fa-bug" style="color:#007aff;margin-right:4px;"></i>TwT 排版诊断控制台</span>
+            <div>
+                <button id="twt-debug-copy-btn" style="padding:1px 6px; font-size:10px; background:#007aff; color:#fff; border:none; border-radius:3px; cursor:pointer; margin-right:4px;">复制报告</button>
+                <button id="twt-debug-close-btn" style="padding:1px 5px; font-size:10px; background:rgba(255,255,255,0.1); color:#fff; border:none; border-radius:3px; cursor:pointer;">✕</button>
+            </div>
+        </div>
+        <div id="twt-debug-content" style="white-space:pre-wrap; word-break:break-all;">初始化中...</div>
+    `;
+
+    doc.body.appendChild(debugHudEl);
+
+    doc.getElementById('twt-debug-copy-btn')?.addEventListener('click', () => {
+        const text = doc.getElementById('twt-debug-content')?.innerText || '';
+        navigator.clipboard.writeText('=== TwT 诊断报告 ===\n' + text).then(() => {
+            if (typeof toastr !== 'undefined') toastr.success('诊断报告已复制到剪贴板！', '成功');
+        });
+    });
+
+    doc.getElementById('twt-debug-close-btn')?.addEventListener('click', () => {
+        if (typeof extension_settings !== 'undefined' && extension_settings.twt) {
+            extension_settings.twt.debugEnabled = false;
+        }
+        updateDebugHudVisibility();
+    });
+}
+
+export function refreshDebugHud() {
+    if (!debugHudEl || debugHudEl.style.display === 'none') return;
+    const doc = typeof getDoc === 'function' ? getDoc() : document;
+    const chat = doc.getElementById('chat');
+    const contentEl = doc.getElementById('twt-debug-content');
+    if (!chat || !contentEl) return;
+
+    const cw = getColWidth(chat);
+    const rect = chat.getBoundingClientRect();
+    const scrollLeft = chat.scrollLeft;
+    const scrollWidth = chat.scrollWidth;
+    const clientWidth = chat.clientWidth;
+    const expectedLeft = lastUserPage * cw;
+    const drift = (scrollLeft - expectedLeft).toFixed(2);
+    const dpr = window.devicePixelRatio || 1;
+
+    const mesList = chat.querySelectorAll('.mes');
+    const mesCount = mesList.length;
+
+    // 获取首条消息与容器计算样式
+    let mesMargin = 'N/A';
+    let mesPadding = 'N/A';
+    if (mesCount > 0) {
+        const cs = window.getComputedStyle(mesList[0]);
+        mesMargin = `L:${cs.marginLeft} R:${cs.marginRight} T:${cs.marginTop} B:${cs.marginBottom}`;
+        mesPadding = `L:${cs.paddingLeft} R:${cs.paddingRight} T:${cs.paddingTop} B:${cs.paddingBottom}`;
+    }
+
+    const chatStyle = window.getComputedStyle(chat);
+    const chatPadding = `L:${chatStyle.paddingLeft} R:${chatStyle.paddingRight}`;
+    const chatColWidth = chatStyle.getPropertyValue('column-width') || 'none';
+    const chatVarColWidth = chatStyle.getPropertyValue('--twt-col-width') || 'none';
+
+    contentEl.innerHTML = 
+`[页码状态] 当前页: ${lastUserPage} | 目标: ${expectedLeft.toFixed(1)}px
+[滚动状态] scrollLeft: ${scrollLeft.toFixed(2)}px
+[偏移差值] Drift: <span style="color:${Math.abs(drift) > 1 ? '#ff5252' : '#69f0ae'}">${drift}px</span>
+[列宽计算] cw: ${cw.toFixed(2)}px | clientW: ${clientWidth}px | rectW: ${rect.width.toFixed(2)}px
+[CSS 列宽] --twt-col-width: ${chatVarColWidth} | column-width: ${chatColWidth}
+[容器尺寸] scrollWidth: ${scrollWidth}px | dpr: ${dpr}
+[容器边距] #chat padding: ${chatPadding}
+[消息统计] 消息数: ${mesCount}
+[消息边距] margin: ${mesMargin}
+[消息内距] padding: ${mesPadding}`;
+}
+
 import { addDebugLog } from '../debug/debug.js';
 // @ts-nocheck
 import { extension_settings } from '../../../../../extensions.js';
@@ -319,6 +443,7 @@ function scrollToPage(chat, page, cw) {
     const total = Math.round(chat.scrollWidth / cw);
     page = Math.max(0, Math.min(page, total - 1));
     lastUserPage = page;
+    refreshDebugHud();
     debouncedSavePaginationPosition();
     isScrolling = true;
 
@@ -588,9 +713,11 @@ function initVirtualKeyboardGuard() {
 export function applyPaginationMode(enabled, settings) {
     if (enabled) {
         document.body.classList.add('twt-reading-mode');
+    updateDebugHudVisibility();
         if (settings) {
             document.body.classList.toggle('twt-swipe-disabled',      !settings.swipeEnabled);
             document.body.classList.toggle('twt-message-page',        !!settings.messagePageEnabled);
+            document.body.classList.toggle(settings.avatarLayoutMode === 'theme');
         }
         updateColWidthWhenReady();
         window.addEventListener('resize', onWindowResize);

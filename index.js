@@ -31,6 +31,7 @@ const extensionName = 'TwT';
 
 const defaultSettings = {
     enabled: true,
+    debugEnabled: false,
     debugConsoleEnabled: false,
     swipeEnabled: true,
     messagePageEnabled: false,
