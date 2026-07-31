@@ -177,3 +177,31 @@ body.twt-reading-mode #chat .mes_text > .twt-html-needs-break:first-child {
 body.twt-reading-mode #chat .mes_text > .twt-html-needs-break + .twt-html-needs-break {
     break-before: auto !important;
 }
+
+
+/* 解决 .mes 横向跨列拉伸 Bug：
+   SillyTavern 默认主题为 .mes 设置了 display: flex / width: max-content，
+   导致在 CSS 多列 (column-width) 下 .mes 被横向强行撑大至 7 列宽 (2846.67px)，
+   造成每条消息结尾处产生巨大的右侧空白列余量（即右边距随翻页越来越大）。
+   必须强行设为 display: block 与 min-width: 0 / max-width: 100%！ */
+body.twt-reading-mode #chat > *,
+body.twt-reading-mode #chat .mes,
+body.twt-reading-mode #chat .mes_block,
+body.twt-reading-mode #chat .mes_text {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+    float: none !important;
+    flex: none !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+}
+
+body.twt-reading-mode #chat .mes .avatar {
+    float: left !important;
+    margin-right: 12px !important;
+    margin-bottom: 6px !important;
+    display: block !important;
+}
