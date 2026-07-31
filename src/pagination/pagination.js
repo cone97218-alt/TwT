@@ -305,12 +305,8 @@ function getChat() { return document.getElementById('chat'); }
  */
 function getColStep(chat) {
     if (!chat) return 0;
-    const rawWidth = chat.getBoundingClientRect().width || chat.clientWidth;
-    if (rawWidth <= 0) return 0;
-    const scrollW = chat.scrollWidth;
-    if (scrollW <= 0) return rawWidth;
-    const n = Math.max(1, Math.round(scrollW / rawWidth));
-    return scrollW / n;
+    // 使用 getBoundingClientRect().width 准确精准的 406.6666...px，100% 匹配容器物理宽
+    return chat.getBoundingClientRect().width || chat.clientWidth;
 }
 function getColWidth(chat) { return getColStep(chat); }
 

@@ -89,6 +89,8 @@ body.twt-reading-mode #chat .mes {
     max-width: 100% !important;
     margin-left: 0 !important;
     margin-right: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
     box-sizing: border-box !important;
     overflow: visible !important; 
     break-inside: auto !important; 
@@ -106,6 +108,8 @@ body.twt-reading-mode #chat .mes_text {
     max-width: 100% !important;
     margin-left: 0 !important;
     margin-right: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
     box-sizing: border-box !important;
     overflow: visible !important; 
     break-inside: auto !important; 
