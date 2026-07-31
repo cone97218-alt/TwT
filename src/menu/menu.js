@@ -1133,8 +1133,32 @@ export async function captureChatScreenshot() {
 
     try {
         const isReadingMode = document.body.classList.contains('twt-reading-mode');
-        const bg = window.getComputedStyle(chat).backgroundColor || 'var(--SmartThemeDarkColor, #1e1e1e)';
+        let bg = window.getComputedStyle(chat).backgroundColor || '#1e1e1e';
+        if (bg.includes('color(') || bg.includes('color-mix(') || bg.includes('rgba(0, 0, 0, 0)')) {
+            bg = '#1e1e1e';
+        }
         const dpr = Math.max(window.devicePixelRatio || 1, 2);
+
+        const oncloneHook = (clonedDoc) => {
+            try {
+                // 清洗包含 html2canvas 不支持的现代 CSS 颜色函数 (color, color-mix, oklch, lab, lch)
+                const styles = clonedDoc.querySelectorAll('style');
+                styles.forEach(st => {
+                    if (st.textContent && (st.textContent.includes('color(') || st.textContent.includes('color-mix(') || st.textContent.includes('oklch(') || st.textContent.includes('lab('))) {
+                        st.textContent = st.textContent.replace(/(?:color|color-mix|oklch|lab|lch)\([^;}]+\)/gi, 'inherit');
+                    }
+                });
+                const allEls = clonedDoc.querySelectorAll('*[style]');
+                allEls.forEach(el => {
+                    const cssText = el.getAttribute('style');
+                    if (cssText && (cssText.includes('color(') || cssText.includes('color-mix(') || cssText.includes('oklch('))) {
+                        el.setAttribute('style', cssText.replace(/(?:color|color-mix|oklch|lab|lch)\([^;}]+\)/gi, 'inherit'));
+                    }
+                });
+            } catch (err) {
+                console.warn('[TwT] onclone sanitize failed:', err);
+            }
+        };
 
         let canvas;
         if (isReadingMode) {
@@ -1149,7 +1173,8 @@ export async function captureChatScreenshot() {
                 x: chat.scrollLeft,
                 y: 0,
                 width: cw,
-                height: ch
+                height: ch,
+                onclone: oncloneHook
             });
         } else {
             canvas = await h2c(chat, {
@@ -1157,7 +1182,8 @@ export async function captureChatScreenshot() {
                 scale: dpr,
                 useCORS: true,
                 allowTaint: true,
-                logging: false
+                logging: false,
+                onclone: oncloneHook
             });
         }
 
