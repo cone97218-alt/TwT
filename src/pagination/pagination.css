@@ -1,53 +1,39 @@
-body.twt-reading-mode {
-    overflow-x: hidden !important;
-}
-
 body.twt-reading-mode #chat {
-    border: none !important;
     max-height: 100% !important;
     overflow-y: hidden !important;
     overflow-x: auto !important;
     display: block !important;
     column-width: var(--twt-col-width, 100vw) !important;
-    -webkit-column-width: var(--twt-col-width, 100vw) !important;
     column-gap: 0 !important;
     -webkit-column-gap: 0 !important;
     gap: 0 !important;
     row-gap: 0 !important;
     column-fill: auto !important;
+    /* 不使用 scroll-behavior: smooth，由 JS touchmove 实时跟随 + scrollTo instant 接管 */
     scroll-behavior: auto !important;
     scrollbar-width: none;
     padding-left: 0 !important;
     padding-right: 0 !important;
-    margin-left: 0 !important;
-    margin-right: 0 !important;
-    margin-top: 0 !important;
-    margin-bottom: 0 !important;
     border-left: none !important;
     border-right: none !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    left: 0 !important;
-    box-sizing: border-box !important;
 
+    /* 不使用 CSS scroll-snap-type：column 布局无 snap-align 锚点，会导致 touchmove 时跳多页 */
+    /* 不使用 -webkit-overflow-scrolling: touch：对横向同样触发惯性，由 touchmove preventDefault 接管 */
+
+    /* GPU 合成层提升 */
     will-change: scroll-position;
     transform: translateZ(0);
+
+    /* 关键：横向手势完全由 JS 接管，浏览器不处理横向滚动和惯性 */
+    /* 比 preventDefault 更底层，无 passive 冲突问题 */
     touch-action: pan-y;
+
+    /* 防护 TauriTavern 2.2.0+ 离屏渲染优化：强行关闭 content-visibility 与 contain，避免多列布局离屏高度坍缩 */
     content-visibility: visible !important;
     contain: none !important;
 }
 
-body.twt-reading-mode #sheathed,
-body.twt-reading-mode #chat_parent,
-body.twt-reading-mode #form_sheath {
-    padding-left: 0 !important;
-    padding-right: 0 !important;
-    margin-left: 0 !important;
-    margin-right: 0 !important;
-    max-width: 100vw !important;
-    box-sizing: border-box !important;
-}
-
+/* 防护所有子元素与消息块的离屏隔离 */
 body.twt-reading-mode #chat *,
 body.twt-reading-mode #chat .mes,
 body.twt-reading-mode #chat .mes_text,
@@ -61,43 +47,42 @@ body.twt-reading-mode #chat::-webkit-scrollbar {
     display: none;
 }
 
+/* 对 #chat 的所有直接子元素进行宽度和边距归一化，防止系统消息、输入指示器等其他元素破坏列对齐，同时消除 margin 在 WebKit 多列布局下的断页偏移 Bug */
+/* 对 #chat 的所有直接子元素进行宽度和排版归一化，消除 margin 在 WebKit 多列布局下的断页偏移 Bug */
 body.twt-reading-mode #chat > * {
     width: 100% !important;
-    max-width: 100% !important;
-    margin-left: 0 !important;
-    margin-right: 0 !important;
     box-sizing: border-box !important;
     break-inside: auto !important; 
     page-break-inside: auto !important;
     -webkit-column-break-inside: auto !important;
 }
 
+/* 非消息的辅助元素（如系统消息、输入提示等）强制重置外边距和内边距，保证排版整齐 */
 body.twt-reading-mode #chat > :not(.mes) {
     margin: 0 !important;
-    padding-top: 5px !important;
-    padding-bottom: 5px !important;
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
 }
 
+/* 消息元素默认重置外边距和内边距，但使用 :where 降低特异性，允许用户自定义美化主题进行覆盖 */
 :where(body.twt-reading-mode #chat > .mes) {
-    margin: 0 !important;
-    padding-top: 5px;
-    padding-bottom: 5px;
+    margin: 0;
+    padding-top: 10px;
+    padding-bottom: 10px;
 }
 
+/* 消息主体 */
 body.twt-reading-mode #chat .mes {
     width: 100% !important;
-    max-width: 100% !important;
-    margin-left: 0 !important;
-    margin-right: 0 !important;
-    padding-left: 0 !important;
-    padding-right: 0 !important;
-    box-sizing: border-box !important;
+    box-sizing: border-box;
     overflow: visible !important; 
     break-inside: auto !important; 
     page-break-inside: auto !important;
     -webkit-column-break-inside: auto !important;
+    /* 不在每个 .mes 上单独提升合成层，避免 column layout 下合成层碎片化 */
 }
 
+/* 默认使用 BFC 自动收容浮动 avatar，除非启用主题头像布局 */
 body.twt-reading-mode:not(.twt-avatar-theme-layout) #chat .mes {
     display: flow-root !important;
 }
@@ -105,25 +90,27 @@ body.twt-reading-mode:not(.twt-avatar-theme-layout) #chat .mes {
 body.twt-reading-mode #chat .mes_block,
 body.twt-reading-mode #chat .mes_text {
     width: 100% !important;
-    max-width: 100% !important;
-    margin-left: 0 !important;
-    margin-right: 0 !important;
-    padding-left: 0 !important;
-    padding-right: 0 !important;
-    box-sizing: border-box !important;
+    box-sizing: border-box;
     overflow: visible !important; 
     break-inside: auto !important; 
     page-break-inside: auto !important;
     -webkit-column-break-inside: auto !important;
 }
 
+/* 默认强制使用 block 排版以配合浮动，除非启用主题头像布局 */
 body.twt-reading-mode:not(.twt-avatar-theme-layout) #chat .mes_block,
 body.twt-reading-mode:not(.twt-avatar-theme-layout) #chat .mes_text {
     display: block !important; 
 }
 
+/* 默认使用文字环绕，但当启用主题布局时跳过覆盖 */
+body.twt-reading-mode:not(.twt-avatar-theme-layout) #chat .mes .avatar {
+    float: left;
+    margin-right: 15px;
+    margin-bottom: 5px;
+}
 
-
+/* 保护层：仅针对无法分割的原子元素使用防断页，防止渲染重组引发排版崩塌 */
 body.twt-reading-mode #chat .mes_text img,
 body.twt-reading-mode #chat .mes_text video,
 body.twt-reading-mode #chat .mes_text iframe,
@@ -135,22 +122,45 @@ body.twt-reading-mode #chat .mes_text .markdown-table {
     max-width: 100%;
 }
 
-body.twt-reading-mode #chat .mes_text pre,
-body.twt-reading-mode #chat .thought-block {
+/* 代码块和思维链：控制溢出并强制换行清除浮动，防止被头像挤压或发生位移 */
+body.twt-reading-mode #chat .mes_text pre {
     overflow-x: auto !important;
-    max-width: 100%;
+    max-width: 100% !important;
 }
 
+body.twt-reading-mode #chat .thought-block,
+body.twt-reading-mode #chat .mes_reasoning_details,
+body.twt-reading-mode #chat details.mes_reasoning_details {
+    clear: both !important;
+    display: block !important;
+    margin-top: 8px !important;
+    margin-bottom: 8px !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    box-sizing: border-box !important;
+}
+
+/* 保护角色名与消息头部：防止被文字环绕/浮动推挤发生位移 */
+body.twt-reading-mode #chat .ch_name,
+body.twt-reading-mode #chat .name_text,
+body.twt-reading-mode #chat .mes_header {
+    box-sizing: border-box !important;
+    max-width: 100% !important;
+}
+
+/* 禁用滑动翻页 */
 body.twt-reading-mode.twt-swipe-disabled #chat {
     overflow-x: hidden !important;
 }
 
+/* 启用消息分页：强制每条消息另起一列/一页 */
 body.twt-reading-mode.twt-message-page #chat .mes {
     break-before: column !important;
     page-break-before: always !important;
     -webkit-column-break-before: always !important;
 }
 
+/* 超尺寸元素收容：内部可滚动 */
 body.twt-reading-mode .twt-pagination-scrollable {
     position: relative !important;
     overflow-y: auto !important;
@@ -162,168 +172,25 @@ body.twt-reading-mode .twt-pagination-scrollable::-webkit-scrollbar {
     display: none !important;
 }
 
+
+
+/* 仅对 JS 动态标记为「需要断页」的元素强制展开时从页顶开始，避免展开时布局跳变。
+   不使用 break-after：允许元素后面的文字在同页内自然流动，避免产生空白页。
+   JS 会在以下情况打上 .twt-html-needs-break：
+     1. <details> 等原生折叠元素（无论大小）
+     2. 高度超过列高的大型容器
+     3. 检测到「高度突变」的未知折叠组件 */
 body.twt-reading-mode #chat .mes_text > .twt-html-needs-break {
     break-before: column !important;
 }
 
+/* 如果是首个元素，不要在前面断页 */
 body.twt-reading-mode #chat .mes_text > .twt-html-needs-break:first-child {
     break-before: auto !important;
 }
 
+/* 连续的「需断页」块不重复断页：只在第一个前断，后续的自然跟随 */
 body.twt-reading-mode #chat .mes_text > .twt-html-needs-break + .twt-html-needs-break {
     break-before: auto !important;
 }
 
-
-/* 解决 .mes 横向跨列拉伸 Bug：
-   SillyTavern 默认主题为 .mes 设置了 display: flex / width: max-content，
-   导致在 CSS 多列 (column-width) 下 .mes 被横向强行撑大至 7 列宽 (2846.67px)，
-   造成每条消息结尾处产生巨大的右侧空白列余量（即右边距随翻页越来越大）。
-   必须强行设为 display: block 与 min-width: 0 / max-width: 100%！ */
-body.twt-reading-mode #chat > *,
-body.twt-reading-mode #chat .mes,
-body.twt-reading-mode #chat .mes_block,
-body.twt-reading-mode #chat .mes_text {
-    display: block !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 0 !important;
-    box-sizing: border-box !important;
-    float: none !important;
-    flex: none !important;
-    margin-left: 0 !important;
-    margin-right: 0 !important;
-}
-
-
-
-/* 阅读模式下清理 .mes 容器在跨多页时的内边距与外边距，防范垂直偏移折行到下一页 */
-body.twt-reading-mode #chat .mes {
-    margin-top: 0 !important;
-    margin-bottom: 0 !important;
-    padding-top: 0 !important;
-    padding-bottom: 0 !important;
-}
-
-/* ============================================================
-   彻底覆盖 SillyTavern 气泡聊天主题 (bubblechat) 及第三方 CSS 干扰：
-   在 bubblechat 模式下，SillyTavern 会给 .mes 强行注入 max-width: 85% / margin-left: auto 等居左/居右气泡边距，
-   导致在多列排版下，每一页的文字一侧留有 15% 的巨大空白边距（左右间距空白严重不一致）。
-   在阅读模式下，强制将 bubblechat 布局重置为 100% 满幅排版！
-   ============================================================ */
-body.twt-reading-mode.bubblechat #chat,
-body.twt-reading-mode #chat {
-    display: block !important;
-    padding-left: 0 !important;
-    padding-right: 0 !important;
-}
-
-body.twt-reading-mode.bubblechat #chat > *,
-body.twt-reading-mode.bubblechat #chat .mes,
-body.twt-reading-mode #chat > *,
-body.twt-reading-mode #chat .mes {
-    display: block !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 100% !important;
-    margin-left: 0 !important;
-    margin-right: 0 !important;
-    margin-top: 0 !important;
-    margin-bottom: 0 !important;
-    padding-left: 0 !important;
-    padding-right: 0 !important;
-    padding-top: 0 !important;
-    padding-bottom: 0 !important;
-    float: none !important;
-    clear: both !important;
-    align-self: stretch !important;
-    box-sizing: border-box !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-}
-
-body.twt-reading-mode.bubblechat #chat .mes_block,
-body.twt-reading-mode #chat .mes_block {
-    display: block !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 100% !important;
-    margin-left: 0 !important;
-    margin-right: 0 !important;
-    padding-left: 0 !important;
-    padding-right: 0 !important;
-    float: none !important;
-    align-self: stretch !important;
-    box-sizing: border-box !important;
-}
-
-body.twt-reading-mode.bubblechat #chat .mes_text,
-body.twt-reading-mode #chat .mes_text {
-    display: block !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 100% !important;
-    margin-left: 0 !important;
-    margin-right: 0 !important;
-    padding-left: var(--twt-padding-left, 15px) !important;
-    padding-right: var(--twt-padding-right, 15px) !important;
-    box-sizing: border-box !important;
-    float: none !important;
-}
-
-/* ============================================================
-   解决视觉上边距（空白）随翻页越来越大的终极防御规则：
-   1. 彻底防范代码块 (pre/code)、表格 (table)、思维链 (.thought-block) 及 Flex 容器
-      在多列布局 (column-width) 下横向跨列撑大 (width: max-content / white-space: nowrap)，
-      导致 Chromium 在其前后产生巨大的空白列余量（视觉表现为右侧/顶部边距随翻页越来越大）。
-   2. 消除多列折行布局中 margin-top 在列首渲染引发的垂直空白逐页累积放大 Bug。
-   ============================================================ */
-
-/* 1. 所有容器与子节点强制不超出单列宽度 */
-body.twt-reading-mode #chat *,
-body.twt-reading-mode #chat .mes *,
-body.twt-reading-mode #chat .mes_text * {
-    max-width: 100% !important;
-    box-sizing: border-box !important;
-}
-
-/* 2. 文本、代码块与思维链强行自动折行，禁止 nowrap 横向伸展 */
-body.twt-reading-mode #chat pre,
-body.twt-reading-mode #chat code,
-body.twt-reading-mode #chat .thought-block,
-body.twt-reading-mode #chat .mes_reasoning_details,
-body.twt-reading-mode #chat .twt-p-wrapper,
-body.twt-reading-mode #chat .paragraph {
-    max-width: 100% !important;
-    min-width: 0 !important;
-    white-space: pre-wrap !important;
-    word-break: break-word !important;
-    overflow-x: auto !important;
-}
-
-/* 3. 消除段落与块级元素的 margin-top 列首分栏垂直边距累积 */
-body.twt-reading-mode #chat p,
-body.twt-reading-mode #chat h1,
-body.twt-reading-mode #chat h2,
-body.twt-reading-mode #chat h3,
-body.twt-reading-mode #chat h4,
-body.twt-reading-mode #chat h5,
-body.twt-reading-mode #chat h6,
-body.twt-reading-mode #chat blockquote,
-body.twt-reading-mode #chat ul,
-body.twt-reading-mode #chat ol,
-body.twt-reading-mode #chat pre,
-body.twt-reading-mode #chat div,
-body.twt-reading-mode #chat .mes,
-body.twt-reading-mode #chat .mes_block,
-body.twt-reading-mode #chat .mes_text,
-body.twt-reading-mode #chat .twt-p-wrapper,
-body.twt-reading-mode #chat .paragraph,
-body.twt-reading-mode #chat .thought-block,
-body.twt-reading-mode #chat .mes_reasoning_details {
-    margin-top: 0 !important;
-}
-
-body.twt-reading-mode #chat > .mes:first-child {
-    margin-top: 0 !important;
-}
