@@ -122,30 +122,15 @@ body.twt-reading-mode #chat .mes_text .markdown-table {
     max-width: 100%;
 }
 
-/* 代码块和思维链：控制溢出并强制换行清除浮动，防止被头像挤压或发生位移 */
-body.twt-reading-mode #chat .mes_text pre {
-    overflow-x: auto !important;
-    max-width: 100% !important;
-}
-
-body.twt-reading-mode #chat .thought-block,
-body.twt-reading-mode #chat .mes_reasoning_details,
-body.twt-reading-mode #chat details.mes_reasoning_details {
-    clear: both !important;
-    display: block !important;
-    margin-top: 8px !important;
-    margin-bottom: 8px !important;
-    max-width: 100% !important;
-    overflow-x: auto !important;
-    box-sizing: border-box !important;
-}
-
-/* 保护角色名与消息头部：防止被文字环绕/浮动推挤发生位移 */
-body.twt-reading-mode #chat .ch_name,
-body.twt-reading-mode #chat .name_text,
-body.twt-reading-mode #chat .mes_header {
-    box-sizing: border-box !important;
-    max-width: 100% !important;
+/* 使用 :where 低特异性规则，确保绝不覆盖用户自定义 CSS 美化主题对思维链、角色名、头像及容器的 display / margin / flex / position 布局 */
+:where(body.twt-reading-mode #chat .thought-block),
+:where(body.twt-reading-mode #chat .mes_reasoning_details),
+:where(body.twt-reading-mode #chat details.mes_reasoning_details),
+:where(body.twt-reading-mode #chat .ch_name),
+:where(body.twt-reading-mode #chat .name_text),
+:where(body.twt-reading-mode #chat .mes_header) {
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 /* 禁用滑动翻页 */
