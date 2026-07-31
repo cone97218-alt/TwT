@@ -205,3 +205,11 @@ body.twt-reading-mode #chat .mes .avatar {
     margin-bottom: 6px !important;
     display: block !important;
 }
+
+/* 阅读模式下清理 .mes 容器在跨多页时的内边距与外边距，防范垂直偏移折行到下一页 */
+body.twt-reading-mode #chat .mes {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}

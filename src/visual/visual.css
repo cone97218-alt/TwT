@@ -3,10 +3,26 @@ body.twt-visual-mode #chat {
     padding-bottom: var(--twt-padding-bottom, 60px) !important; 
 }
 
-/* 覆盖 pagination 的默认左右边距 */
-body.twt-visual-mode #chat .mes {
+/* 上下滚动模式下边距作用于 .mes */
+body.twt-visual-mode:not(.twt-reading-mode) #chat .mes {
     padding-left: var(--twt-padding-left, 15px) !important;
     padding-right: var(--twt-padding-right, 15px) !important;
+}
+
+/* 翻页阅读模式下：左右边距必须作用于 #chat 容器，确保每一列/每一页拥有绝对一致对称的内边距，
+   彻底解决 .mes 跨多页时中间页零边距、终点页留白巨大的问题 */
+body.twt-reading-mode.twt-visual-mode #chat {
+    padding-left: var(--twt-padding-left, 15px) !important;
+    padding-right: var(--twt-padding-right, 15px) !important;
+}
+
+body.twt-reading-mode.twt-visual-mode #chat .mes {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
 }
 
 body.twt-visual-mode #chat .mes_text,
@@ -47,4 +63,3 @@ body.twt-visual-mode #chat .mes_text p {
 body.twt-visual-mode.twt-custom-font-active *:not(i):not([class*="fa-"]):not([class*="material-"]):not(.fa):not(.fas):not(.far):not(.fal):not(.fab):not(.fad):not(.fa-solid):not(.fa-regular):not(.fa-brands):not(.material-icons):not([class*="material-symbols"]):not([style*="FontAwesome"]):not([style*="Font Awesome"]):not([style*="Material"]) {
     font-family: var(--twt-global-font-family) !important;
 }
-
