@@ -9,11 +9,11 @@ body.twt-visual-mode:not(.twt-reading-mode) #chat .mes {
     padding-right: var(--twt-padding-right, 15px) !important;
 }
 
-/* 翻页阅读模式下：左右边距必须作用于 #chat 容器，确保每一列/每一页拥有绝对一致对称的内边距，
-   彻底解决 .mes 跨多页时中间页零边距、终点页留白巨大的问题 */
-body.twt-reading-mode.twt-visual-mode #chat {
-    padding-left: var(--twt-padding-left, 15px) !important;
-    padding-right: var(--twt-padding-right, 15px) !important;
+/* 翻页阅读模式下：#chat 容器决不能加左右 padding（否则会缩减多列内容宽导致一屏出现两个半页！），
+   左右边距加在 .mes_text 上，使每页文字两侧拥有一致对称的 15px 边距 */
+body.twt-reading-mode #chat {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
 }
 
 body.twt-reading-mode.twt-visual-mode #chat .mes {
@@ -23,6 +23,12 @@ body.twt-reading-mode.twt-visual-mode #chat .mes {
     padding-bottom: 0 !important;
     margin-top: 0 !important;
     margin-bottom: 0 !important;
+}
+
+body.twt-reading-mode.twt-visual-mode #chat .mes_text {
+    padding-left: var(--twt-padding-left, 15px) !important;
+    padding-right: var(--twt-padding-right, 15px) !important;
+    box-sizing: border-box !important;
 }
 
 body.twt-visual-mode #chat .mes_text,
