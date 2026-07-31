@@ -591,7 +591,6 @@ export function applyPaginationMode(enabled, settings) {
         if (settings) {
             document.body.classList.toggle('twt-swipe-disabled',      !settings.swipeEnabled);
             document.body.classList.toggle('twt-message-page',        !!settings.messagePageEnabled);
-            document.body.classList.toggle('twt-avatar-theme-layout', settings.avatarLayoutMode === 'theme');
         }
         updateColWidthWhenReady();
         window.addEventListener('resize', onWindowResize);
@@ -602,7 +601,7 @@ export function applyPaginationMode(enabled, settings) {
     } else {
         document.body.classList.remove(
             'twt-reading-mode', 'twt-swipe-disabled',
-            'twt-message-page', 'twt-avatar-theme-layout'
+            'twt-message-page'
         );
         window.removeEventListener('resize', onWindowResize);
 
@@ -758,7 +757,7 @@ export function initPaginationEvent(getSettings) {
         if (!chat?.contains(e.target)) return;
 
         // 交互元素判断
-        const baseSelector = 'button, a, input, textarea, select, label, summary, [onclick], [role="button"], [tabindex], .mes_button, .swipe-button, .ch_name, .avatar, img, .svg-icon';
+        const baseSelector = 'button, a, input, textarea, select, label, summary, [onclick], [role="button"], [tabindex], .mes_button, .swipe-button, .ch_name, img, .svg-icon';
         let interactive = false;
         if (settings.customWhitelist?.trim()) {
             try { interactive = !!e.target.closest(settings.customWhitelist.trim()); }

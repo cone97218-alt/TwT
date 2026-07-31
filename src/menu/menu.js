@@ -109,7 +109,7 @@ export function initMenu(getSettings, onToggleExcerpt) {
         // PC right click:
         const target = e.target;
         // Avoid launching menu when interacting with already interactive controls
-        if ($(target).closest('button, a, input, textarea, select, .mes_button, .swipe-button, .ch_name, .avatar, img, .svg-icon').length) {
+        if ($(target).closest('button, a, input, textarea, select, .mes_button, .swipe-button, .ch_name, img, .svg-icon').length) {
             return;
         }
 
@@ -126,7 +126,7 @@ export function initMenu(getSettings, onToggleExcerpt) {
 
         const target = e.target;
         // Avoid launching menu when interacting with already interactive controls
-        if ($(target).closest('button, a, input, textarea, select, .mes_button, .swipe-button, .ch_name, .avatar, img, .svg-icon').length) {
+        if ($(target).closest('button, a, input, textarea, select, .mes_button, .swipe-button, .ch_name, img, .svg-icon').length) {
             return;
         }
 

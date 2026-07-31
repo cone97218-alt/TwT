@@ -122,11 +122,7 @@ body.twt-reading-mode:not(.twt-avatar-theme-layout) #chat .mes_text {
     display: block !important; 
 }
 
-body.twt-reading-mode:not(.twt-avatar-theme-layout) #chat .mes .avatar {
-    float: left;
-    margin-right: 15px;
-    margin-bottom: 5px;
-}
+
 
 body.twt-reading-mode #chat .mes_text img,
 body.twt-reading-mode #chat .mes_text video,
@@ -199,12 +195,7 @@ body.twt-reading-mode #chat .mes_text {
     margin-right: 0 !important;
 }
 
-body.twt-reading-mode #chat .mes .avatar {
-    float: left !important;
-    margin-right: 12px !important;
-    margin-bottom: 6px !important;
-    display: block !important;
-}
+
 
 /* 阅读模式下清理 .mes 容器在跨多页时的内边距与外边距，防范垂直偏移折行到下一页 */
 body.twt-reading-mode #chat .mes {
