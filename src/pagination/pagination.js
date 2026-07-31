@@ -127,7 +127,7 @@ function startPositionLock(chat) {
     const expected = lastUserPage * cw;
     function lock() {
         if (!isKeyboardOpen && !isFocusGuarding) { positionLockRaf = null; return; }
-        if (Math.abs(chat.scrollLeft - expected) > 5) {
+        if (Math.abs(chat.scrollLeft - expected) > 1) {
             chat.scrollLeft = expected;
         }
         positionLockRaf = requestAnimationFrame(lock);
@@ -291,9 +291,15 @@ function getChat() { return document.getElementById('chat'); }
  * TauriTavern 等环境下 getBoundingClientRect().width 可能返回小数，
  * 必须 Math.round() 取整，否则 scrollLeft 目标累积误差会导致跳页混乱。
  */
+/**
+ * 获取列宽（列宽唯一权威来源）
+ * 必须严格使用 chat.clientWidth（内容区域渲染宽度，排除 border 和 scrollbar）。
+ * CSS Multi-column 多列布局严格基于 clientWidth 划分列，使用 getBoundingClientRect().width
+ * 会因为包含 border/scrollbar 导致 cw 比实际列宽大 1~2px，在多页下产生 cumulative right margin drift（右边距随页数累积变大）。
+ */
 function getColWidth(chat) {
     if (!chat) return 0;
-    return chat.clientWidth || chat.getBoundingClientRect().width;
+    return chat.clientWidth || Math.round(chat.getBoundingClientRect().width);
 }
 
 let scrollUnlockTimer = null;
@@ -330,7 +336,7 @@ function doSnap(chat) {
     const nearest = Math.round(chat.scrollLeft / cw);
     const expected = nearest * cw;
 
-    if (Math.abs(chat.scrollLeft - expected) > 5) {
+    if (Math.abs(chat.scrollLeft - expected) > 1) {
         chat.scrollLeft = expected;
     }
     lastUserPage = Math.round(chat.scrollLeft / cw);

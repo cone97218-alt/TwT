@@ -3115,7 +3115,23 @@ function triggerAutoReload(msg) {
 }
 
 function initAutoReloadOnUpdate() {
-    // ① 监听 SillyTavern / TauriTavern 事件源
+    // ① 监听 jQuery AJAX 完成事件（SillyTavern 与 TauriTavern 扩展更新面板均使用 $.ajax）
+    try {
+        $(document).ajaxComplete((event, xhr, settings) => {
+            if (settings && settings.url) {
+                const url = settings.url.toLowerCase();
+                if (url.includes('/api/extensions/update') || url.includes('/api/extensions/git_pull') || url.includes('/api/extensions/update_extension')) {
+                    if (xhr.status === 200) {
+                        triggerAutoReload('🎉 TwT 扩展已更新成功，即将在 1.5 秒后自动刷新界面...');
+                    }
+                }
+            }
+        });
+    } catch (e) {
+        console.warn('[TwT] Failed to bind ajaxComplete for auto-reload:', e);
+    }
+
+    // ② 监听 SillyTavern / TauriTavern 事件源
     try {
         const ctx = getContext();
         if (ctx && ctx.eventSource && ctx.eventTypes) {
@@ -3132,7 +3148,7 @@ function initAutoReloadOnUpdate() {
         console.warn('[TwT] Failed to bind eventSource update listener:', e);
     }
 
-    // ② 拦截扩展更新 API (fetch)
+    // ③ 拦截 fetch API 备份防护
     try {
         const targetWindow = (window.parent && window.parent.fetch) ? window.parent : window;
         const originalFetch = targetWindow.fetch;
@@ -3141,7 +3157,7 @@ function initAutoReloadOnUpdate() {
                 const response = await originalFetch.apply(this, args);
                 try {
                     const url = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
-                    if (url.includes('/api/extensions/update') || url.includes('/api/extensions/update_extension')) {
+                    if (url.includes('/api/extensions/update') || url.includes('/api/extensions/git_pull')) {
                         if (response.ok) {
                             triggerAutoReload('🎉 TwT 扩展已成功更新！即将在 1.5 秒后自动刷新界面...');
                         }
@@ -3150,8 +3166,6 @@ function initAutoReloadOnUpdate() {
                 return response;
             };
         }
-    } catch (e) {
-        console.warn('[TwT] Failed to intercept fetch for auto-reload:', e);
-    }
+    } catch (e) {}
 }
 

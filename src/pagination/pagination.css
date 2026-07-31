@@ -3,6 +3,7 @@ body.twt-reading-mode {
 }
 
 body.twt-reading-mode #chat {
+    border: none !important;
     max-height: 100% !important;
     overflow-y: hidden !important;
     overflow-x: auto !important;
