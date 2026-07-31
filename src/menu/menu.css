@@ -349,7 +349,7 @@ body.twt-reading-mode.twt-excerpt-active #chat {
 
 /* 网格排版风格专用菜单样式 */
 #twt-custom-menu.twt-menu-grid-layout {
-    width: 270px !important;
+    width: 250px !important;
     padding: 4px 0;
 }
 
@@ -413,55 +413,83 @@ body.twt-reading-mode.twt-excerpt-active #chat {
 #twt-custom-menu.twt-menu-grid-layout .twt-menu-item {
     width: 50%;
     box-sizing: border-box;
-    padding: 8px 10px;
-    font-size: 0.9em;
+    padding: 6px 8px;
+    font-size: 0.88em;
+}
+
+/* 单列经典列表风格 */
+#twt-custom-menu.twt-menu-list-layout {
+    width: max-content !important;
+    min-width: 100px;
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+#twt-custom-menu.twt-menu-list-layout .twt-menu-item {
+    padding: 6px 10px;
+    font-size: 0.88em;
+    border-radius: 4px;
+    white-space: nowrap;
 }
 
 /* 竖向双列排版风格专用菜单样式 */
 #twt-custom-menu.twt-menu-double-column-layout {
-    width: 270px !important;
-    display: flex;
-    flex-wrap: wrap;
-    padding: 4px;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(70px, 1fr));
+    gap: 2px 4px;
+    padding: 4px 6px;
+    width: max-content !important;
+    min-width: 150px;
+    box-sizing: border-box;
 }
 
 #twt-custom-menu.twt-menu-double-column-layout .twt-menu-item {
-    width: 50%;
+    width: 100%;
     box-sizing: border-box;
-    padding: 8px 10px;
-    font-size: 0.9em;
+    padding: 6px 8px;
+    font-size: 0.88em;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
 }
 
 /* 圆形（仅图标）排版风格专用菜单样式 */
 #twt-custom-menu.twt-menu-circle-layout {
-    display: flex;
+    display: flex !important;
     flex-wrap: wrap;
-    gap: 8px;
-    padding: 10px;
-    max-width: 230px;
-    justify-content: center;
+    gap: 6px;
+    padding: 6px 8px;
+    max-width: 190px;
+    width: max-content !important;
+    justify-content: flex-start;
     align-items: center;
+    box-sizing: border-box;
+    border-radius: 18px;
 }
 
 #twt-custom-menu .twt-menu-circle-item {
-    width: 40px;
-    height: 40px;
+    width: 34px;
+    height: 34px;
     border-radius: 50%;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--SmartThemeBorderColor);
+    background: rgba(128, 128, 128, 0.12);
+    border: none;
     color: var(--SmartThemeBodyColor);
     cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
     box-sizing: border-box;
 }
 
 #twt-custom-menu .twt-menu-circle-item:hover {
     background: var(--SmartThemeBorderColor);
+    color: var(--SmartThemeUnderlineColor, var(--SmartThemePrimaryColor, #007aff));
     transform: scale(1.1);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 #twt-custom-menu .twt-menu-circle-item:active {
@@ -469,7 +497,7 @@ body.twt-reading-mode.twt-excerpt-active #chat {
 }
 
 #twt-custom-menu .twt-menu-circle-item i {
-    font-size: 1.1em;
+    font-size: 1.05em;
     opacity: 0.9;
 }
 
@@ -479,39 +507,42 @@ body.twt-reading-mode.twt-excerpt-active #chat {
 
 #twt-custom-menu .twt-menu-circle-item.twt-danger:hover {
     background: rgba(255, 68, 68, 0.2);
-    border-color: rgba(255, 68, 68, 0.4);
+    color: #ff4444;
 }
 
 /* 方形（仅图标）排版风格专用菜单样式 */
 #twt-custom-menu.twt-menu-square-layout {
-    display: flex;
+    display: flex !important;
     flex-wrap: wrap;
-    gap: 8px;
-    padding: 10px;
-    max-width: 230px;
-    justify-content: center;
+    gap: 6px;
+    padding: 6px 8px;
+    max-width: 190px;
+    width: max-content !important;
+    justify-content: flex-start;
     align-items: center;
+    box-sizing: border-box;
+    border-radius: 10px;
 }
 
 #twt-custom-menu .twt-menu-square-item {
-    width: 40px;
-    height: 40px;
-    border-radius: 8px;
+    width: 34px;
+    height: 34px;
+    border-radius: 6px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--SmartThemeBorderColor);
+    background: rgba(128, 128, 128, 0.12);
+    border: none;
     color: var(--SmartThemeBodyColor);
     cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
     box-sizing: border-box;
 }
 
 #twt-custom-menu .twt-menu-square-item:hover {
     background: var(--SmartThemeBorderColor);
-    transform: translateY(-2px);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    color: var(--SmartThemeUnderlineColor, var(--SmartThemePrimaryColor, #007aff));
+    transform: translateY(-1px);
 }
 
 #twt-custom-menu .twt-menu-square-item:active {
@@ -519,7 +550,7 @@ body.twt-reading-mode.twt-excerpt-active #chat {
 }
 
 #twt-custom-menu .twt-menu-square-item i {
-    font-size: 1.1em;
+    font-size: 1.05em;
     opacity: 0.9;
 }
 
@@ -529,6 +560,6 @@ body.twt-reading-mode.twt-excerpt-active #chat {
 
 #twt-custom-menu .twt-menu-square-item.twt-danger:hover {
     background: rgba(255, 68, 68, 0.2);
-    border-color: rgba(255, 68, 68, 0.4);
+    color: #ff4444;
 }
 

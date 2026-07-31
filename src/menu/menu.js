@@ -222,6 +222,7 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
 
     const appendMenuItem = ({ label, shortLabel, icon, onClick, isDanger = false, isGridItem = false }) => {
         hasItems = true;
+        const displayLabel = shortLabel || label;
         if (menuStyle === 'circle') {
             const $item = $(`<div class="twt-menu-circle-item ${isDanger ? 'twt-danger' : ''}" title="${label}"><i class="${icon}"></i></div>`);
             $item.on('click', (evt) => {
@@ -240,7 +241,6 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
             $menu.append($item);
         } else if (useGridLayout) {
             if (isGridItem) {
-                const displayLabel = shortLabel || label;
                 const $item = $(`<div class="twt-menu-grid-item ${isDanger ? 'twt-danger' : ''}" title="${label}"><i class="${icon}"></i><span>${displayLabel}</span></div>`);
                 $item.on('click', (evt) => {
                     evt.stopPropagation();
@@ -250,7 +250,7 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
                 $gridBar.append($item);
             } else {
                 const dangerStyle = isDanger ? 'style="color: #ff4444;"' : '';
-                const $item = $(`<div class="twt-menu-item ${isDanger ? 'twt-danger' : ''}" ${dangerStyle}><i class="${icon}"></i><span>${label}</span></div>`);
+                const $item = $(`<div class="twt-menu-item ${isDanger ? 'twt-danger' : ''}" ${dangerStyle}><i class="${icon}"></i><span>${displayLabel}</span></div>`);
                 $item.on('click', (evt) => {
                     evt.stopPropagation();
                     $menu.hide();
@@ -261,7 +261,7 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
         } else {
             // 'list' or 'double-column'
             const dangerStyle = isDanger ? 'style="color: #ff4444;"' : '';
-            const $item = $(`<div class="twt-menu-item ${isDanger ? 'twt-danger' : ''}" ${dangerStyle}><i class="${icon}"></i><span>${label}</span></div>`);
+            const $item = $(`<div class="twt-menu-item ${isDanger ? 'twt-danger' : ''}" ${dangerStyle}><i class="${icon}"></i><span>${displayLabel}</span></div>`);
             $item.on('click', (evt) => {
                 evt.stopPropagation();
                 $menu.hide();
