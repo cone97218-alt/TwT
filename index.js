@@ -3101,64 +3101,65 @@ jQuery(async () => {
     }
 
     // ============================================================
-    // 扩展自动刷新机制：主动检测 manifest.json 文件更新 + 酒馆事件监听
+    // 扩展自动刷新机制：更新扩展后自动刷新整个酒馆/应用界面 (window.top)
     // ============================================================
-    let isReloading = false;
+    const TWT_VERSION = '2.3.1';
 
-    async function checkExtensionUpdate() {
-        if (isReloading) return;
-        if (extension_settings.twt?.autoReloadOnUpdate === false) return;
-
+    function reloadEntireApp() {
         try {
-            const res = await fetch(`/scripts/extensions/third-party/TwT/manifest.json?_t=${Date.now()}`);
-            if (!res.ok) return;
-            const manifest = await res.json();
-            const diskVer = manifest?.version;
-            if (!diskVer) return;
-
-            const installedVer = localStorage.getItem('twt_installed_version');
-            if (!installedVer) {
-                localStorage.setItem('twt_installed_version', diskVer);
+            if (window.top && window.top.location && typeof window.top.location.reload === 'function') {
+                window.top.location.reload();
                 return;
             }
-
-            if (installedVer !== diskVer) {
-                isReloading = true;
-                localStorage.setItem('twt_installed_version', diskVer);
-                toastr.info(`TwT 扩展已成功更新至 v${diskVer}！正在为您自动刷新页面...`, '扩展已更新', { timeOut: 3000 });
-                setTimeout(() => {
-                    window.location.reload();
-                }, 1200);
+        } catch (e) {}
+        try {
+            if (window.parent && window.parent.location && typeof window.parent.location.reload === 'function') {
+                window.parent.location.reload();
+                return;
             }
-        } catch (e) {
-            console.warn('[TwT] Auto-reload version check failed:', e);
-        }
+        } catch (e) {}
+        window.location.reload();
     }
 
-    // 1. 初始化时检查
-    checkExtensionUpdate();
+    // 1. 版本升级检测：启动时对比版本号，更新后自动刷新主界面
+    try {
+        const autoReloadEnabled = extension_settings.twt?.autoReloadOnUpdate !== false;
+        if (autoReloadEnabled) {
+            const storedVer = localStorage.getItem('twt_installed_version');
+            if (storedVer && storedVer !== TWT_VERSION) {
+                localStorage.setItem('twt_installed_version', TWT_VERSION);
+                toastr.info(`TwT 扩展已成功更新至 v${TWT_VERSION}！正在为您自动刷新整个应用界面...`, '扩展更新成功', { timeOut: 3000 });
+                setTimeout(reloadEntireApp, 1200);
+            } else {
+                localStorage.setItem('twt_installed_version', TWT_VERSION);
+            }
+        }
+    } catch (e) {
+        console.warn('[TwT] Auto reload check failed:', e);
+    }
 
-    // 2. 窗口重新获得焦点时检查（用户从控制台/Git更新后切回浏览器）
-    window.addEventListener('focus', checkExtensionUpdate);
+    // 2. 监听酒馆后台 API：在界面内点击“更新扩展”完成瞬间，自动刷新主界面
+    try {
+        $(document).ajaxComplete((event, xhr, settings) => {
+            if (settings && settings.url && (settings.url.includes('/api/extensions/update') || settings.url.includes('/api/extensions/download'))) {
+                if (extension_settings.twt?.autoReloadOnUpdate !== false) {
+                    toastr.info('检测到扩展更新完成，正在为您自动刷新整个应用界面...', '更新应用中');
+                    setTimeout(reloadEntireApp, 1000);
+                }
+            }
+        });
+    } catch (e) {}
 
-    // 3. 定时器轮询检测（每 10 秒无感检测 manifest.json 是否变化）
-    setInterval(checkExtensionUpdate, 10000);
-
-    // 4. 监听酒馆扩展界面中的更新按钮点击
-    $(document).on('click', '#extensions_third_party .extension_update, .extension_update_button, button[id*="update"]', function() {
-        if (extension_settings.twt?.autoReloadOnUpdate === false) return;
-        toastr.info('正在检测扩展更新，更新完成后将自动为您刷新页面...', '更新检测中');
-        setTimeout(checkExtensionUpdate, 2500);
-        setTimeout(checkExtensionUpdate, 5000);
-    });
-
-    // 5. 监听酒馆 Extension 事件
+    // 3. 监听酒馆扩展更新 EventSource 事件
     try {
         const ctx = getContext();
-        if (ctx?.eventSource && ctx?.eventTypes?.EXTENSION_UPDATED) {
+        if (ctx && ctx.eventSource && ctx.eventTypes && ctx.eventTypes.EXTENSION_UPDATED) {
             ctx.eventSource.on(ctx.eventTypes.EXTENSION_UPDATED, (extName) => {
                 if (!extName || String(extName).toLowerCase().includes('twt')) {
-                    checkExtensionUpdate();
+                    if (extension_settings.twt?.autoReloadOnUpdate !== false) {
+                        toastr.info('检测到 TwT 扩展已更新，即将自动刷新整个应用界面...', '更新完成');
+                        setTimeout(reloadEntireApp, 1000);
+                    }
                 }
             });
         }
