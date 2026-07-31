@@ -252,11 +252,12 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
         }
     };
 
-    const order = settings.menuOrder || [
+    let order = (Array.isArray(settings.menuOrder) && settings.menuOrder.length > 0) ? [...settings.menuOrder] : [
         'menuOptRegenerate',
         'menuOptSwipe',
         'menuOptManage',
         'menuOptEdit',
+        'menuOptScreenshot',
         'menuOptNewChat',
         'menuOptCloseChat',
         'menuOptExcerpt',
@@ -266,6 +267,15 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
         'menuOptPurifierDiff',
         'menuOptPromptViewer'
     ];
+
+    if (!order.includes('menuOptScreenshot')) {
+        const editIdx = order.indexOf('menuOptEdit');
+        if (editIdx !== -1) {
+            order.splice(editIdx + 1, 0, 'menuOptScreenshot');
+        } else {
+            order.splice(4, 0, 'menuOptScreenshot');
+        }
+    }
 
     for (const key of order) {
         if (key === 'menuOptRegenerate' && settings.menuOptRegenerate && isLatestAi) {
