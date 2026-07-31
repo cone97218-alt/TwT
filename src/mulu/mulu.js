@@ -22,6 +22,41 @@ async function getMuluTTHandle() {
     }
 }
 
+
+function positionDropdown(dropdown, anchor, parentDoc, options = {}) {
+    const { width = 130, height = 0, clientX = null, clientY = null } = options;
+    const bodyRect = parentDoc.body.getBoundingClientRect();
+    const viewportWidth = parentDoc.documentElement.clientWidth;
+    const viewportHeight = parentDoc.documentElement.clientHeight;
+
+    let left, top;
+    if (clientX !== null && clientY !== null) {
+        left = clientX - bodyRect.left;
+        top = clientY - bodyRect.top;
+    } else {
+        const rect = anchor.getBoundingClientRect();
+        left = rect.left - bodyRect.left;
+        top = rect.bottom - bodyRect.top + 4;
+    }
+
+    if (left + width > viewportWidth - 10) {
+        if (anchor && clientX === null) {
+            left = anchor.getBoundingClientRect().right - bodyRect.left - width;
+        } else {
+            left = viewportWidth - width - 10;
+        }
+    }
+    if (left < 10) left = 10;
+
+    if (height > 0 && top + height > viewportHeight - 10) {
+        top = viewportHeight - height - 10;
+    }
+    if (top < 10) top = 10;
+
+    dropdown.style.left = left + 'px';
+    dropdown.style.top = top + 'px';
+}
+
 let _muluStoreCache = null;
 let _muluStoreCacheChatId = null;
 

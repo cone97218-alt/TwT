@@ -242,11 +242,12 @@ if (!extension_settings.twt) {
     }
 }
 
-function updatePageTabVisibility() {
-    const $tabBtn = $('#tab-btn-page');
-    const $tabContent = $('#twt-tab-page');
+
+function updateTabVisibility(btnId, contentId, isEnabled) {
+    const $tabBtn = $(btnId);
+    const $tabContent = $(contentId);
     
-    if (extension_settings.twt.enabled) {
+    if (isEnabled) {
         $tabBtn.show();
     } else {
         $tabBtn.hide();
@@ -259,74 +260,11 @@ function updatePageTabVisibility() {
     }
 }
 
-function updateMenuTabVisibility() {
-    const $tabBtn = $('#tab-btn-menu');
-    const $tabContent = $('#twt-tab-menu');
-    
-    if (extension_settings.twt.menuEnabled) {
-        $tabBtn.show();
-    } else {
-        $tabBtn.hide();
-        if ($tabBtn.hasClass('active')) {
-            $tabBtn.removeClass('active');
-            $tabContent.hide().removeClass('active');
-            $('[data-tab="twt-tab-settings"]').addClass('active');
-            $('#twt-tab-settings').show().addClass('active');
-        }
-    }
-}
-
-function updateVisualTabVisibility() {
-    const $tabBtn = $('#tab-btn-visual');
-    const $tabContent = $('#twt-tab-visual');
-    
-    if (extension_settings.twt.visualEnabled) {
-        $tabBtn.show();
-    } else {
-        $tabBtn.hide();
-        if ($tabBtn.hasClass('active')) {
-            $tabBtn.removeClass('active');
-            $tabContent.hide().removeClass('active');
-            $('[data-tab="twt-tab-settings"]').addClass('active');
-            $('#twt-tab-settings').show().addClass('active');
-        }
-    }
-}
-
-function updateMuluTabVisibility() {
-    const $tabBtn = $('#tab-btn-mulu');
-    const $tabContent = $('#twt-tab-mulu');
-    
-    if (extension_settings.twt.muluEnabled) {
-        $tabBtn.show();
-    } else {
-        $tabBtn.hide();
-        if ($tabBtn.hasClass('active')) {
-            $tabBtn.removeClass('active');
-            $tabContent.hide().removeClass('active');
-            $('[data-tab="twt-tab-settings"]').addClass('active');
-            $('#twt-tab-settings').show().addClass('active');
-        }
-    }
-}
-
-
-function updateCommentsTabVisibility() {
-    const $tabBtn = $('#tab-btn-comments');
-    const $tabContent = $('#twt-tab-comments');
-    
-    if (extension_settings.twt.commentsEnabled) {
-        $tabBtn.show();
-    } else {
-        $tabBtn.hide();
-        if ($tabBtn.hasClass('active')) {
-            $tabBtn.removeClass('active');
-            $tabContent.hide().removeClass('active');
-            $('[data-tab="twt-tab-settings"]').addClass('active');
-            $('#twt-tab-settings').show().addClass('active');
-        }
-    }
-}
+function updatePageTabVisibility() { updateTabVisibility('#tab-btn-page', '#twt-tab-page', extension_settings.twt.enabled); }
+function updateMenuTabVisibility() { updateTabVisibility('#tab-btn-menu', '#twt-tab-menu', extension_settings.twt.menuEnabled); }
+function updateVisualTabVisibility() { updateTabVisibility('#tab-btn-visual', '#twt-tab-visual', extension_settings.twt.visualEnabled); }
+function updateMuluTabVisibility() { updateTabVisibility('#tab-btn-mulu', '#twt-tab-mulu', extension_settings.twt.muluEnabled); }
+function updateCommentsTabVisibility() { updateTabVisibility('#tab-btn-comments', '#twt-tab-comments', extension_settings.twt.commentsEnabled); }
 
 function renderCommentsPresetList() {
     const $select = $('#twt_comments_preset');

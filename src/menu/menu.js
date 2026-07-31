@@ -800,10 +800,8 @@ export function openMessageManagerModal(mesId) {
         
         if (rangeSelectMode) {
             rangeSelectStartIdx = null;
-            $modal.find('.twt-range-item').removeClass('range-start-selected');
-        } else {
-            $modal.find('.twt-range-item').removeClass('range-start-selected');
         }
+        $modal.find('.twt-range-item').removeClass('range-start-selected');
     });
 
     let lastCheckedIdx = mesId;
