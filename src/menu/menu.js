@@ -360,6 +360,18 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
             });
         }
 
+        if (key === 'menuOptScreenshot' && settings.menuOptScreenshot !== false) {
+            appendMenuItem({
+                label: '截图',
+                shortLabel: '截图',
+                icon: 'fa-solid fa-camera',
+                isGridItem: true,
+                onClick: async () => {
+                    await captureChatScreenshot();
+                }
+            });
+        }
+
         if (key === 'menuOptExcerpt' && settings.menuOptExcerpt) {
             appendMenuItem({
                 label: '摘抄',
