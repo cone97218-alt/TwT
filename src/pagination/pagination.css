@@ -270,3 +270,60 @@ body.twt-reading-mode #chat .mes_text {
     box-sizing: border-box !important;
     float: none !important;
 }
+
+/* ============================================================
+   解决视觉上边距（空白）随翻页越来越大的终极防御规则：
+   1. 彻底防范代码块 (pre/code)、表格 (table)、思维链 (.thought-block) 及 Flex 容器
+      在多列布局 (column-width) 下横向跨列撑大 (width: max-content / white-space: nowrap)，
+      导致 Chromium 在其前后产生巨大的空白列余量（视觉表现为右侧/顶部边距随翻页越来越大）。
+   2. 消除多列折行布局中 margin-top 在列首渲染引发的垂直空白逐页累积放大 Bug。
+   ============================================================ */
+
+/* 1. 所有容器与子节点强制不超出单列宽度 */
+body.twt-reading-mode #chat *,
+body.twt-reading-mode #chat .mes *,
+body.twt-reading-mode #chat .mes_text * {
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+/* 2. 文本、代码块与思维链强行自动折行，禁止 nowrap 横向伸展 */
+body.twt-reading-mode #chat pre,
+body.twt-reading-mode #chat code,
+body.twt-reading-mode #chat .thought-block,
+body.twt-reading-mode #chat .mes_reasoning_details,
+body.twt-reading-mode #chat .twt-p-wrapper,
+body.twt-reading-mode #chat .paragraph {
+    max-width: 100% !important;
+    min-width: 0 !important;
+    white-space: pre-wrap !important;
+    word-break: break-word !important;
+    overflow-x: auto !important;
+}
+
+/* 3. 消除段落与块级元素的 margin-top 列首分栏垂直边距累积 */
+body.twt-reading-mode #chat p,
+body.twt-reading-mode #chat h1,
+body.twt-reading-mode #chat h2,
+body.twt-reading-mode #chat h3,
+body.twt-reading-mode #chat h4,
+body.twt-reading-mode #chat h5,
+body.twt-reading-mode #chat h6,
+body.twt-reading-mode #chat blockquote,
+body.twt-reading-mode #chat ul,
+body.twt-reading-mode #chat ol,
+body.twt-reading-mode #chat pre,
+body.twt-reading-mode #chat div,
+body.twt-reading-mode #chat .mes,
+body.twt-reading-mode #chat .mes_block,
+body.twt-reading-mode #chat .mes_text,
+body.twt-reading-mode #chat .twt-p-wrapper,
+body.twt-reading-mode #chat .paragraph,
+body.twt-reading-mode #chat .thought-block,
+body.twt-reading-mode #chat .mes_reasoning_details {
+    margin-top: 0 !important;
+}
+
+body.twt-reading-mode #chat > .mes:first-child {
+    margin-top: 0 !important;
+}
