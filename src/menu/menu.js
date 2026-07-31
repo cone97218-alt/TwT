@@ -1189,7 +1189,6 @@ function getTopBarBottom() {
             els.forEach(el => {
                 if (el && (el.offsetHeight > 0 || el.getBoundingClientRect().height > 0)) {
                     const r = el.getBoundingClientRect();
-                    // 顶栏通常在视口上半部分
                     if (r.bottom > maxBottom && r.bottom < (window.innerHeight * 0.45)) {
                         maxBottom = r.bottom;
                     }
@@ -1199,6 +1198,29 @@ function getTopBarBottom() {
     });
 
     return maxBottom;
+}
+
+// 获取真正正文内容开始的 Y 轴视口位置（以第一条可见消息 .mes 顶部为基准）
+function getChatContentTop(chat) {
+    const topBarBottom = getTopBarBottom();
+    const messages = Array.from(chat.querySelectorAll('.mes'));
+    let firstVisibleTop = null;
+
+    for (const mes of messages) {
+        const r = mes.getBoundingClientRect();
+        // 找到在顶栏下方可见的第一条消息
+        if (r.bottom > (topBarBottom + 5) && r.top < window.innerHeight) {
+            firstVisibleTop = Math.max(r.top, topBarBottom);
+            break;
+        }
+    }
+
+    if (firstVisibleTop !== null) {
+        // 保留 10px 气泡上方边距，且决不下探越过顶栏底边
+        return Math.max(topBarBottom, firstVisibleTop - 10);
+    }
+
+    return Math.max(chat.getBoundingClientRect().top, topBarBottom);
 }
 
 export async function captureChatScreenshot() {
@@ -1234,15 +1256,19 @@ export async function captureChatScreenshot() {
             const scaleX = video.videoWidth / vw;
             const scaleY = video.videoHeight / vh;
 
-            // 获取 topbar (类名为 topbar / top-bar 等) 真实底边 Y 轴位置，彻底剥离顶栏
-            const topBarBottom = getTopBarBottom();
-            const contentTop = Math.max(rect.top, topBarBottom);
+            // 定位消息起点 contentTop（剥离全量顶栏）
+            const contentTop = getChatContentTop(chat);
+
+            // 获取底栏起点 (send_form 等)
+            const sendForm = (chat.ownerDocument || document).querySelector('#send_form, #input_form, #footer');
+            const sendFormTop = sendForm ? sendForm.getBoundingClientRect().top : vh;
+            const contentBottom = Math.min(rect.bottom, sendFormTop);
 
             const cropX = Math.max(0, rect.left * scaleX);
             const cropY = Math.max(0, contentTop * scaleY);
             const cropW = Math.min(video.videoWidth - cropX, rect.width * scaleX);
 
-            const effectiveHeight = Math.max(0, rect.height - Math.max(0, topBarBottom - rect.top));
+            const effectiveHeight = Math.max(50, contentBottom - contentTop);
             const cropH = Math.min(video.videoHeight - cropY, effectiveHeight * scaleY);
 
             const dpr = Math.max(window.devicePixelRatio || 1, 2);
