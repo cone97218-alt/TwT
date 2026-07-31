@@ -15,6 +15,68 @@ try {
 }
 let isExcerptModeActive = false;
 
+// ============================================================
+// 拓展更新后自动刷新酒馆页面 (顶层立即挂载)
+// ============================================================
+let isAutoReloading = false;
+function autoReloadApp(reason) {
+    if (isAutoReloading) return;
+    isAutoReloading = true;
+    console.log(`[TwT] ${reason}，准备自动刷新页面...`);
+    if (typeof toastr !== 'undefined') {
+        toastr.info('拓展更新完成，正在为您自动刷新页面...', '自动刷新', { timeOut: 2000 });
+    }
+    setTimeout(() => {
+        try {
+            if (window.top && window.top.location && typeof window.top.location.reload === 'function') {
+                window.top.location.reload();
+                return;
+            }
+        } catch (e) {}
+        try {
+            if (window.parent && window.parent.location && typeof window.parent.location.reload === 'function') {
+                window.parent.location.reload();
+                return;
+            }
+        } catch (e) {}
+        window.location.reload();
+    }, 1200);
+}
+
+function hookFetch(targetWin) {
+    try {
+        if (!targetWin || !targetWin.fetch || targetWin.fetch.__twt_hooked__) return;
+        const origFetch = targetWin.fetch;
+        const hooked = async function (...args) {
+            const res = await origFetch.apply(this, args);
+            try {
+                let url = '';
+                if (args[0]) {
+                    if (typeof args[0] === 'string') url = args[0];
+                    else if (typeof args[0] === 'object' && args[0].url) url = String(args[0].url);
+                    else url = String(args[0]);
+                }
+                url = url.toLowerCase();
+                if (url.includes('/api/extensions/') && (
+                    url.includes('update') || url.includes('download') || url.includes('install') || url.includes('switch')
+                )) {
+                    if (res && (res.ok || res.status === 200 || res.status === 304)) {
+                        autoReloadApp('检测到拓展更新完成');
+                    }
+                }
+            } catch (e) {}
+            return res;
+        };
+        hooked.__twt_hooked__ = true;
+        targetWin.fetch = hooked;
+    } catch(e) {}
+}
+
+try { hookFetch(window); } catch(e) {}
+try { if (window.parent && window.parent !== window) hookFetch(window.parent); } catch(e) {}
+try { if (window.top && window.top !== window) hookFetch(window.top); } catch(e) {}
+
+
 function getEl(selector) {
     return $(parentDoc).find(selector);
 }
@@ -3064,35 +3126,6 @@ jQuery(async () => {
             window.location.reload();
         }, 1200);
     }
-
-    // 0. 全局拦截 fetch 请求 (SillyTavern 原生使用 fetch 接口更新扩展)
-    function hookFetch(targetWin) {
-        try {
-            if (!targetWin || !targetWin.fetch || targetWin.fetch.__twt_hooked__) return;
-            const origFetch = targetWin.fetch;
-            const hooked = async function (...args) {
-                const res = await origFetch.apply(this, args);
-                try {
-                    const url = String(args[0] || '').toLowerCase();
-                    if (url.includes('/api/extensions/update') || 
-                        url.includes('/api/extensions/download') || 
-                        url.includes('/api/extensions/install') || 
-                        url.includes('/api/extensions/switch')) {
-                        if (res && res.ok) {
-                            autoReloadApp('检测到拓展更新/变更完成 (fetch)');
-                        }
-                    }
-                } catch (e) {}
-                return res;
-            };
-            hooked.__twt_hooked__ = true;
-            targetWin.fetch = hooked;
-        } catch(e) {}
-    }
-
-    try { hookFetch(window); } catch(e) {}
-    try { if (window.parent && window.parent !== window) hookFetch(window.parent); } catch(e) {}
-    try { if (window.top && window.top !== window) hookFetch(window.top); } catch(e) {}
 
     // 1. 监听扩展更新相关的 AJAX 请求完成
     try {
