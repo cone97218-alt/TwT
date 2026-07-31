@@ -984,6 +984,7 @@ function bindUI() {
     const $menuOptNewChat = $('#twt_menu_opt_new_chat');
     const $menuOptCloseChat = $('#twt_menu_opt_close_chat');
     const $menuOptPromptViewer = $('#twt_menu_opt_prompt_viewer');
+    const $menuOptScreenshot = $('#twt_menu_opt_screenshot');
     const $menuStyle = $('#twt_menu_style');
     const $visualEnabled = $('#twt_visual_enabled');
     const $muluEnabled = $('#twt_mulu_enabled');
@@ -1033,6 +1034,7 @@ function bindUI() {
     $menuOptNewChat.prop('checked', extension_settings.twt.menuOptNewChat);
     $menuOptCloseChat.prop('checked', extension_settings.twt.menuOptCloseChat);
     $menuOptPromptViewer.prop('checked', extension_settings.twt.menuOptPromptViewer);
+    $menuOptScreenshot.prop('checked', extension_settings.twt.menuOptScreenshot !== false);
     $menuStyle.val(extension_settings.twt.menuStyle || 'grid');
     
     updateParagraphSubOptionsVisibility();

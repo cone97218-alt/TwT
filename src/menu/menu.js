@@ -1061,3 +1061,183 @@ function startExcerptLinkage() {
         toggleExcerptCallback(true);
     }
 }
+
+// ============================================================
+// 纯净聊天界面截图 (仅截取 #chat 消息内容，去顶栏和底栏)
+// ============================================================
+const H2C_CDN_URLS = [
+    'https://cdn.staticfile.org/html2canvas/1.4.1/html2canvas.min.js',
+    'https://cdn.bootcdn.net/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
+    'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js',
+    'https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js'
+];
+
+let _h2cPromise = null;
+function ensureHtml2CanvasLoaded() {
+    if (window.html2canvas) return Promise.resolve(window.html2canvas);
+    if (window.parent && window.parent.html2canvas) return Promise.resolve(window.parent.html2canvas);
+    if (_h2cPromise) return _h2cPromise;
+
+    _h2cPromise = new Promise((resolve) => {
+        let idx = 0;
+        function tryNext() {
+            if (idx >= H2C_CDN_URLS.length) { resolve(null); return; }
+            const script = document.createElement('script');
+            script.src = H2C_CDN_URLS[idx++];
+            script.onload = () => resolve(window.html2canvas || null);
+            script.onerror = () => tryNext();
+            document.head.appendChild(script);
+        }
+        tryNext();
+    });
+    return _h2cPromise;
+}
+
+export async function captureChatScreenshot() {
+    const chat = document.getElementById('chat');
+    if (!chat) return;
+
+    if (typeof toastr !== 'undefined') {
+        toastr.info('正在截取当前聊天界面...', '截图', { timeOut: 1500 });
+    }
+
+    const h2c = await ensureHtml2CanvasLoaded();
+    if (!h2c) {
+        if (typeof toastr !== 'undefined') toastr.error('无法加载截图引擎 (html2canvas)', '截图失败');
+        return;
+    }
+
+    $('#twt-custom-menu').hide();
+
+    try {
+        const isReadingMode = document.body.classList.contains('twt-reading-mode');
+        const bg = window.getComputedStyle(chat).backgroundColor || 'var(--SmartThemeDarkColor, #1e1e1e)';
+        const dpr = Math.max(window.devicePixelRatio || 1, 2);
+
+        let canvas;
+        if (isReadingMode) {
+            const cw = chat.clientWidth || chat.offsetWidth;
+            const ch = chat.clientHeight || chat.offsetHeight;
+            canvas = await h2c(chat, {
+                backgroundColor: bg,
+                scale: dpr,
+                useCORS: true,
+                allowTaint: true,
+                logging: false,
+                x: chat.scrollLeft,
+                y: 0,
+                width: cw,
+                height: ch
+            });
+        } else {
+            canvas = await h2c(chat, {
+                backgroundColor: bg,
+                scale: dpr,
+                useCORS: true,
+                allowTaint: true,
+                logging: false
+            });
+        }
+
+        showScreenshotPreviewModal(canvas);
+    } catch (e) {
+        console.error('[TwT] 截图生成失败:', e);
+        if (typeof toastr !== 'undefined') toastr.error(`截图生成失败: ${e.message || e}`, '错误');
+    }
+}
+
+function showScreenshotPreviewModal(canvas) {
+    const parentDoc = getParentDoc();
+    const oldModal = parentDoc.getElementById('twt-screenshot-modal');
+    if (oldModal) oldModal.remove();
+
+    const dataUrl = canvas.toDataURL('image/png');
+
+    const modal = parentDoc.createElement('div');
+    modal.id = 'twt-screenshot-modal';
+    modal.style.cssText = `
+        position: fixed;
+        top: 0; left: 0; width: 100vw; height: 100vh;
+        z-index: 1000005;
+        background: rgba(0, 0, 0, 0.75);
+        backdrop-filter: blur(8px);
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        padding: 20px; box-sizing: border-box;
+        font-family: var(--monoFontFamily, sans-serif);
+    `;
+
+    const container = parentDoc.createElement('div');
+    container.style.cssText = `
+        background: var(--SmartThemeBlurTintColor, var(--SmartThemePanelColor, #1e1e1e));
+        border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.2));
+        border-radius: 12px;
+        padding: 16px;
+        max-width: 90vw; max-height: 85vh;
+        display: flex; flex-direction: column;
+        align-items: center;
+        box-shadow: 0 12px 36px rgba(0,0,0,0.6);
+    `;
+
+    const titleRow = parentDoc.createElement('div');
+    titleRow.style.cssText = 'width: 100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; color: var(--SmartThemeBodyColor, #fff); font-weight: bold; font-size: 1.1em;';
+    titleRow.innerHTML = '<span><i class="fa-solid fa-camera" style="margin-right:8px;"></i>聊天截图预览</span>';
+
+    const imgWrapper = parentDoc.createElement('div');
+    imgWrapper.style.cssText = 'flex: 1; overflow: auto; max-width: 100%; max-height: 65vh; border-radius: 6px; border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.1)); background: rgba(0,0,0,0.3);';
+
+    const img = parentDoc.createElement('img');
+    img.src = dataUrl;
+    img.style.cssText = 'display: block; max-width: 100%; height: auto; margin: 0 auto;';
+    imgWrapper.appendChild(img);
+
+    const btnRow = parentDoc.createElement('div');
+    btnRow.style.cssText = 'display: flex; gap: 12px; margin-top: 16px; width: 100%; justify-content: flex-end;';
+
+    const downloadBtn = parentDoc.createElement('button');
+    downloadBtn.className = 'menu_button';
+    downloadBtn.innerHTML = '<i class="fa-solid fa-download" style="margin-right:6px;"></i>下载保存';
+    downloadBtn.addEventListener('click', () => {
+        const a = parentDoc.createElement('a');
+        a.href = dataUrl;
+        a.download = `TwT_Chat_Screenshot_${Date.now()}.png`;
+        a.click();
+        if (typeof toastr !== 'undefined') toastr.success('图片已保存！', '成功');
+    });
+
+    const copyBtn = parentDoc.createElement('button');
+    copyBtn.className = 'menu_button';
+    copyBtn.innerHTML = '<i class="fa-solid fa-copy" style="margin-right:6px;"></i>复制到剪贴板';
+    copyBtn.addEventListener('click', async () => {
+        try {
+            canvas.toBlob(async (blob) => {
+                if (!blob) throw new Error('Blob Error');
+                await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+                if (typeof toastr !== 'undefined') toastr.success('截图已复制到剪贴板！', '成功');
+            });
+        } catch (err) {
+            console.warn('[TwT] Clipboard copy failed:', err);
+            if (typeof toastr !== 'undefined') toastr.warning('复制到剪贴板失败，请使用下载功能', '提示');
+        }
+    });
+
+    const closeBtn = parentDoc.createElement('button');
+    closeBtn.className = 'menu_button';
+    closeBtn.innerText = '关闭';
+    closeBtn.addEventListener('click', () => modal.remove());
+
+    btnRow.appendChild(copyBtn);
+    btnRow.appendChild(downloadBtn);
+    btnRow.appendChild(closeBtn);
+
+    container.appendChild(titleRow);
+    container.appendChild(imgWrapper);
+    container.appendChild(btnRow);
+    modal.appendChild(container);
+
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+    });
+
+    parentDoc.body.appendChild(modal);
+}
