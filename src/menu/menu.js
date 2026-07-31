@@ -1115,76 +1115,19 @@ function ensureHtml2CanvasLoaded() {
     return _h2cPromise;
 }
 
+// ============================================================
+// 纯净聊天界面截图 (零弹窗打扰，彻底剔除顶栏与底栏，毫秒级导出)
+// ============================================================
 export async function captureChatScreenshot() {
     const chat = document.getElementById('chat');
     if (!chat) return;
 
-    // 立即隐藏弹出菜单
+    // 1. 立即隐藏上下文操作菜单
     $('#twt-custom-menu').hide();
 
-    // 等待 16ms 让菜单在屏幕帧上彻底消失
-    await new Promise(r => setTimeout(r, 16));
-
-    const rect = chat.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return;
-
-    // 1. 优先尝试原生 API 屏幕捕捉 (getDisplayMedia) -> 真正100%原画屏幕截图，无任何二次渲染
-    if (navigator.mediaDevices && typeof navigator.mediaDevices.getDisplayMedia === 'function') {
-        try {
-            const stream = await navigator.mediaDevices.getDisplayMedia({
-                video: {
-                    displaySurface: 'browser',
-                    selfBrowserSurface: 'include',
-                    surfaceSwitching: 'include'
-                },
-                audio: false
-            });
-
-            const video = document.createElement('video');
-            video.srcObject = stream;
-            await video.play();
-
-            // 等待视频流首帧加载
-            await new Promise(r => setTimeout(r, 30));
-
-            const canvas = document.createElement('canvas');
-            const dpr = window.devicePixelRatio || 1;
-            canvas.width = Math.round(rect.width * dpr);
-            canvas.height = Math.round(rect.height * dpr);
-
-            const ctx = canvas.getContext('2d');
-
-            // 图像处理
-            const scaleX = video.videoWidth / window.innerWidth;
-            const scaleY = video.videoHeight / window.innerHeight;
-
-            ctx.drawImage(
-                video,
-                rect.left * scaleX,
-                rect.top * scaleY,
-                rect.width * scaleX,
-                rect.height * scaleY,
-                0,
-                0,
-                canvas.width,
-                canvas.height
-            );
-
-            // 停止媒体流
-            stream.getTracks().forEach(track => track.stop());
-            video.srcObject = null;
-
-            showScreenshotPreviewModal(canvas);
-            return;
-        } catch (e) {
-            console.log('[TwT] getDisplayMedia 授权取消或不可用，自动切换至极速 DOM 画布捕捉:', e);
-        }
-    }
-
-    // 2. 回退方案：极速 DOM 图像捕捉 (不走慢速 html2canvas 重排)
     try {
         if (typeof toastr !== 'undefined') {
-            toastr.info('正在抓取聊天画面...', '截图', { timeOut: 1200 });
+            toastr.info('正在截取聊天画面...', '截图', { timeOut: 1200 });
         }
 
         const h2c = await ensureHtml2CanvasLoaded();
@@ -1194,15 +1137,51 @@ export async function captureChatScreenshot() {
         const bg = '#1e1e1e';
         const dpr = Math.max(window.devicePixelRatio || 1, 2);
 
+        // 2. onclone 钩子：彻底把顶栏 (#top-bar 等) 和底栏 (#send_form 等) 从克隆树中物理删除，确保 0 顶栏残余！
         const oncloneHook = (clonedDoc) => {
             try {
+                // 强制隐藏/移除所有顶部栏、系统图标栏、顶部固定块
+                const topElements = clonedDoc.querySelectorAll([
+                    '#top-bar',
+                    '#top-bar-block',
+                    '.top-bar',
+                    '.topbar',
+                    '#header',
+                    '#top-settings-holder',
+                    '#extensionsMenu',
+                    '.chat-header'
+                ].join(','));
+                topElements.forEach(el => el.remove());
+
+                // 强制隐藏/移除所有底部输入栏、发送表单、Footer 块
+                const bottomElements = clonedDoc.querySelectorAll([
+                    '#send_form',
+                    '#input_form',
+                    '#footer',
+                    '#footer_bar',
+                    '.footer-bar',
+                    '#twt-excerpt-float-bar'
+                ].join(','));
+                bottomElements.forEach(el => el.remove());
+
+                // 如果 #chat 内有任何残留的顶部按钮或工具栏，强制清除
+                const clonedChat = clonedDoc.getElementById('chat');
+                if (clonedChat) {
+                    // 移除 #chat 头部可能插入的非消息子元素 (例如顶栏关联的控制按钮)
+                    const extraTopControls = clonedChat.querySelectorAll('.mes_button, .swipe-button-container, #twt-custom-menu');
+                    extraTopControls.forEach(el => el.remove());
+                }
+
+                // 清洗现代 CSS color() / color-mix() 颜色函数，防止 html2canvas 语法抛错
                 const styles = clonedDoc.querySelectorAll('style');
                 styles.forEach(st => {
                     if (st.textContent && (st.textContent.includes('color(') || st.textContent.includes('color-mix(') || st.textContent.includes('oklch('))) {
-                        st.textContent = st.textContent.replace(/(?:color|color-mix|oklch|lab|lch)\([^;}]+\)/gi, 'inherit');
+                        st.textContent = st.textContent.replace(/(?:color|color-mix|oklch|lab|lch)([^;}]+)/gi, 'inherit');
                     }
                 });
-            } catch (err) {}
+            } catch (err) {
+                console.warn('[TwT] onclone clean failed:', err);
+            }
         };
 
         let canvas;
