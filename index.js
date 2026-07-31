@@ -3037,7 +3037,6 @@ function updateCommentsBgSolid() {
 }
 
 jQuery(async () => {
-    initAutoReloadObserver();
     const html = await renderExtensionTemplateAsync('third-party/TwT', 'index');
     $('#extensions_settings').append(html);
 
