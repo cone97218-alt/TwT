@@ -1,3 +1,4 @@
+import { addDebugLog } from '../debug/debug.js';
 // @ts-nocheck
 import { extension_settings } from '../../../../../extensions.js';
 
@@ -327,6 +328,7 @@ function scrollToPage(chat, page, cw) {
         isScrolling = false;
     }, 350);
 
+    addDebugLog('scrollToPage', `目标页: ${page}, 列宽cw: ${cw.toFixed(2)}px, 预期left: ${(page*cw).toFixed(2)}px`);
     chat.scrollTo({ left: page * cw, behavior: 'smooth' });
 }
 

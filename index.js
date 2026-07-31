@@ -4,7 +4,7 @@ import { applyPaginationMode, initPaginationEvent, resetPaginationBinding } from
 import { applyVisualMode } from './src/visual/visual.js';
 import { initMulu, applyMuluSettings } from './src/mulu/mulu.js';
 import { initMenu, applyMenuMode, applyFullscreenMode } from './src/menu/menu.js';
-import { initDebugConsole, logDebugMessage } from './src/debug/debug.js';
+import { updateDebugConsoleVisibility } from './src/debug/debug.js';
 
 let parentDoc = document;
 try {
@@ -31,6 +31,7 @@ const extensionName = 'TwT';
 
 const defaultSettings = {
     enabled: true,
+    debugConsoleEnabled: false,
     swipeEnabled: true,
     messagePageEnabled: false,
     htmlPageBreakEnabled: true,
@@ -705,7 +706,8 @@ function applyPreset(presetName) {
         if (preset.avatarLayoutMode !== undefined) extension_settings.twt.avatarLayoutMode = preset.avatarLayoutMode;
         else extension_settings.twt.avatarLayoutMode = 'float';
         $('#twt_avatar_layout_mode').val(extension_settings.twt.avatarLayoutMode);
-        applyPaginationMode(extension_settings.twt.enabled, extension_settings.twt);
+        updateDebugConsoleVisibility();
+    applyPaginationMode(extension_settings.twt.enabled, extension_settings.twt);
         
         // Typography
         if (preset.fontSize !== undefined) extension_settings.twt.fontSize = preset.fontSize;
@@ -3054,7 +3056,6 @@ jQuery(async () => {
     applyFullscreenMode(extension_settings.twt.isFullscreen);
     updateInjectedStyles();
     initMulu();
-    initDebugConsole();
     initThemeLinkListener();
     initPaginationEvent(() => extension_settings.twt);
     initMenu(() => extension_settings.twt, (active) => {
@@ -3117,23 +3118,7 @@ function triggerAutoReload(msg) {
 }
 
 function initAutoReloadOnUpdate() {
-    // ① 监听 jQuery AJAX 完成事件（SillyTavern 与 TauriTavern 扩展更新面板均使用 $.ajax）
-    try {
-        $(document).ajaxComplete((event, xhr, settings) => {
-            if (settings && settings.url) {
-                const url = settings.url.toLowerCase();
-                if (url.includes('/api/extensions/update') || url.includes('/api/extensions/git_pull') || url.includes('/api/extensions/update_extension')) {
-                    if (xhr.status === 200) {
-                        triggerAutoReload('🎉 TwT 扩展已更新成功，即将在 1.5 秒后自动刷新界面...');
-                    }
-                }
-            }
-        });
-    } catch (e) {
-        console.warn('[TwT] Failed to bind ajaxComplete for auto-reload:', e);
-    }
-
-    // ② 监听 SillyTavern / TauriTavern 事件源
+    // ① 监听 SillyTavern / TauriTavern 事件源
     try {
         const ctx = getContext();
         if (ctx && ctx.eventSource && ctx.eventTypes) {
@@ -3150,7 +3135,7 @@ function initAutoReloadOnUpdate() {
         console.warn('[TwT] Failed to bind eventSource update listener:', e);
     }
 
-    // ③ 拦截 fetch API 备份防护
+    // ② 拦截扩展更新 API (fetch)
     try {
         const targetWindow = (window.parent && window.parent.fetch) ? window.parent : window;
         const originalFetch = targetWindow.fetch;
@@ -3159,7 +3144,7 @@ function initAutoReloadOnUpdate() {
                 const response = await originalFetch.apply(this, args);
                 try {
                     const url = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
-                    if (url.includes('/api/extensions/update') || url.includes('/api/extensions/git_pull')) {
+                    if (url.includes('/api/extensions/update') || url.includes('/api/extensions/update_extension')) {
                         if (response.ok) {
                             triggerAutoReload('🎉 TwT 扩展已成功更新！即将在 1.5 秒后自动刷新界面...');
                         }
@@ -3168,6 +3153,8 @@ function initAutoReloadOnUpdate() {
                 return response;
             };
         }
-    } catch (e) {}
+    } catch (e) {
+        console.warn('[TwT] Failed to intercept fetch for auto-reload:', e);
+    }
 }
 
