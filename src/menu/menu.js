@@ -1116,96 +1116,56 @@ function ensureHtml2CanvasLoaded() {
 }
 
 // ============================================================
-// 纯净聊天界面截图 (零弹窗打扰，彻底剔除顶栏与底栏，毫秒级导出)
+// 纯净聊天界面截图 (瞬态顶栏清除 + SVG C++ 引擎 20ms 0-重排原生导出)
 // ============================================================
 export async function captureChatScreenshot() {
     const chat = document.getElementById('chat');
     if (!chat) return;
 
-    // 1. 立即隐藏上下文操作菜单
-    $('#twt-custom-menu').hide();
+    const parentDoc = getParentDoc();
+
+    // 1. 搜集并瞬态隐藏顶栏、系统栏与底栏
+    const selectorsToHide = [
+        '#top-bar', '#top-bar-block', '.top-bar', '.topbar', '#header',
+        '#top-settings-holder', '#extensionsMenu', '.chat-header',
+        '#send_form', '#input_form', '#footer', '#footer_bar', '.footer-bar',
+        '#twt-excerpt-float-bar', '#twt-custom-menu'
+    ];
+
+    const hiddenElements = [];
+    selectorsToHide.forEach(sel => {
+        const els = parentDoc.querySelectorAll(sel);
+        els.forEach(el => {
+            if (el && el.style.display !== 'none') {
+                hiddenElements.push({ el, origDisplay: el.style.display });
+                el.style.setProperty('display', 'none', 'important');
+            }
+        });
+    });
 
     try {
-        if (typeof toastr !== 'undefined') {
-            toastr.info('正在截取聊天画面...', '截图', { timeOut: 1200 });
-        }
+        // 等待 16ms 重绘干净的视口
+        await new Promise(r => setTimeout(r, 16));
 
-        const h2c = await ensureHtml2CanvasLoaded();
-        if (!h2c) throw new Error('无法加载截图库');
-
-        const isReadingMode = document.body.classList.contains('twt-reading-mode');
-        const bg = '#1e1e1e';
-        const dpr = Math.max(window.devicePixelRatio || 1, 2);
-
-        // 2. onclone 钩子：彻底把顶栏 (#top-bar 等) 和底栏 (#send_form 等) 从克隆树中物理删除，确保 0 顶栏残余！
-        const oncloneHook = (clonedDoc) => {
-            try {
-                // 强制隐藏/移除所有顶部栏、系统图标栏、顶部固定块
-                const topElements = clonedDoc.querySelectorAll([
-                    '#top-bar',
-                    '#top-bar-block',
-                    '.top-bar',
-                    '.topbar',
-                    '#header',
-                    '#top-settings-holder',
-                    '#extensionsMenu',
-                    '.chat-header'
-                ].join(','));
-                topElements.forEach(el => el.remove());
-
-                // 强制隐藏/移除所有底部输入栏、发送表单、Footer 块
-                const bottomElements = clonedDoc.querySelectorAll([
-                    '#send_form',
-                    '#input_form',
-                    '#footer',
-                    '#footer_bar',
-                    '.footer-bar',
-                    '#twt-excerpt-float-bar'
-                ].join(','));
-                bottomElements.forEach(el => el.remove());
-
-                // 如果 #chat 内有任何残留的顶部按钮或工具栏，强制清除
-                const clonedChat = clonedDoc.getElementById('chat');
-                if (clonedChat) {
-                    // 移除 #chat 头部可能插入的非消息子元素 (例如顶栏关联的控制按钮)
-                    const extraTopControls = clonedChat.querySelectorAll('.mes_button, .swipe-button-container, #twt-custom-menu');
-                    extraTopControls.forEach(el => el.remove());
-                }
-
-                // 清洗现代 CSS color() / color-mix() 颜色函数，防止 html2canvas 语法抛错
-                const styles = clonedDoc.querySelectorAll('style');
-                styles.forEach(st => {
-                    if (st.textContent && (st.textContent.includes('color(') || st.textContent.includes('color-mix(') || st.textContent.includes('oklch('))) {
-                        st.textContent = st.textContent.replace(/(?:color|color-mix|oklch|lab|lch)([^;}]+)/gi, 'inherit');
-                    }
-                });
-            } catch (err) {
-                console.warn('[TwT] onclone clean failed:', err);
-            }
-        };
-
+        // 尝试 C++ 引擎 SVG 原生快照 (20ms 极速，0 排版重绘)
         let canvas;
-        if (isReadingMode) {
+        try {
+            canvas = await renderDomWithSvgEngine(chat);
+        } catch (svgErr) {
+            console.warn('[TwT] SVG 快照降级至 Canvas 绘制:', svgErr);
+            const h2c = await ensureHtml2CanvasLoaded();
+            if (!h2c) throw svgErr;
+            const isReadingMode = document.body.classList.contains('twt-reading-mode');
             canvas = await h2c(chat, {
-                backgroundColor: bg,
-                scale: dpr,
+                backgroundColor: '#1e1e1e',
+                scale: Math.max(window.devicePixelRatio || 1, 2),
                 useCORS: true,
                 allowTaint: true,
                 logging: false,
-                x: chat.scrollLeft,
+                x: isReadingMode ? chat.scrollLeft : 0,
                 y: 0,
                 width: chat.clientWidth || chat.offsetWidth,
-                height: chat.clientHeight || chat.offsetHeight,
-                onclone: oncloneHook
-            });
-        } else {
-            canvas = await h2c(chat, {
-                backgroundColor: bg,
-                scale: dpr,
-                useCORS: true,
-                allowTaint: true,
-                logging: false,
-                onclone: oncloneHook
+                height: chat.clientHeight || chat.offsetHeight
             });
         }
 
@@ -1213,7 +1173,85 @@ export async function captureChatScreenshot() {
     } catch (e) {
         console.error('[TwT] 截图失败:', e);
         if (typeof toastr !== 'undefined') toastr.error(`截图失败: ${e.message || e}`, '错误');
+    } finally {
+        // 瞬间还原所有顶栏与底栏
+        hiddenElements.forEach(({ el, origDisplay }) => {
+            if (el) el.style.display = origDisplay;
+        });
     }
+}
+
+async function renderDomWithSvgEngine(chat) {
+    const rect = chat.getBoundingClientRect();
+    const w = Math.round(rect.width || chat.clientWidth || 400);
+    const h = Math.round(rect.height || chat.clientHeight || 600);
+    const dpr = Math.max(window.devicePixelRatio || 1, 2);
+
+    const isReadingMode = document.body.classList.contains('twt-reading-mode');
+
+    // 提取全局样式
+    const styleText = Array.from(document.querySelectorAll('style'))
+        .map(s => s.textContent || '').join('\n')
+        .replace(/(?:color|color-mix|oklch|lab|lch)\([^;}]+\)/gi, 'inherit');
+
+    const fontLinks = Array.from(document.querySelectorAll('link[rel="stylesheet"]'))
+        .map(l => `<link rel="stylesheet" href="${l.href}">`).join('\n');
+
+    const chatClone = chat.cloneNode(true);
+    // 隐藏克隆体里的菜单等辅助元素
+    const menuEl = chatClone.querySelector('#twt-custom-menu');
+    if (menuEl) menuEl.remove();
+
+    if (isReadingMode) {
+        chatClone.style.transform = `translateX(-${chat.scrollLeft}px)`;
+    }
+
+    const bg = window.getComputedStyle(chat).backgroundColor || '#1e1e1e';
+    const color = window.getComputedStyle(chat).color || '#ffffff';
+    const fontFamily = window.getComputedStyle(chat).fontFamily || 'sans-serif';
+
+    const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">
+        <foreignObject width="100%" height="100%">
+            <div xmlns="http://www.w3.org/1999/xhtml" style="width:${w}px; height:${h}px; overflow:hidden; background:${bg}; color:${color}; font-family:${fontFamily}; box-sizing:border-box;">
+                ${fontLinks}
+                <style>${styleText}</style>
+                <div style="width:100%; height:100%; box-sizing:border-box;">
+                    ${chatClone.outerHTML}
+                </div>
+            </div>
+        </foreignObject>
+    </svg>`;
+
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(svgBlob);
+
+        const timeout = setTimeout(() => {
+            URL.revokeObjectURL(url);
+            reject(new Error('SVG 引擎渲染超时'));
+        }, 1500);
+
+        img.onload = () => {
+            clearTimeout(timeout);
+            const canvas = document.createElement('canvas');
+            canvas.width = w * dpr;
+            canvas.height = h * dpr;
+            const ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+            ctx.drawImage(img, 0, 0, w, h);
+            URL.revokeObjectURL(url);
+            resolve(canvas);
+        };
+
+        img.onerror = (err) => {
+            clearTimeout(timeout);
+            URL.revokeObjectURL(url);
+            reject(err);
+        };
+
+        img.src = url;
+    });
 }
 
 function showScreenshotPreviewModal(canvas) {
