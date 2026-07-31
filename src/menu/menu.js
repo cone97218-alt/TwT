@@ -1116,68 +1116,113 @@ function ensureHtml2CanvasLoaded() {
 }
 
 // ============================================================
-// 纯净聊天界面截图 (瞬态顶栏清除 + SVG C++ 引擎 20ms 0-重排原生导出)
+// 纯净聊天界面截图 (原生 GPU 流复用 0-二次弹窗 + 移动端 1:1 坐标裁切)
 // ============================================================
-export async function captureChatScreenshot() {
-    const chat = document.getElementById('chat');
-    if (!chat) return;
+let activeScreenStream = null;
+let activeScreenVideo = null;
 
-    const parentDoc = getParentDoc();
+async function getOrCreateScreenStream() {
+    if (activeScreenStream && activeScreenStream.active && activeScreenStream.getVideoTracks().some(t => t.readyState === 'live')) {
+        return activeScreenStream;
+    }
 
-    // 1. 搜集并瞬态隐藏顶栏、系统栏与底栏
-    const selectorsToHide = [
-        '#top-bar', '#top-bar-block', '.top-bar', '.topbar', '#header',
-        '#top-settings-holder', '#extensionsMenu', '.chat-header',
-        '#send_form', '#input_form', '#footer', '#footer_bar', '.footer-bar',
-        '#twt-excerpt-float-bar', '#twt-custom-menu'
-    ];
+    activeScreenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+            displaySurface: 'browser',
+            selfBrowserSurface: 'include',
+            surfaceSwitching: 'include'
+        },
+        audio: false
+    });
 
-    const hiddenElements = [];
-    selectorsToHide.forEach(sel => {
-        const els = parentDoc.querySelectorAll(sel);
-        els.forEach(el => {
-            if (el && el.style.display !== 'none') {
-                hiddenElements.push({ el, origDisplay: el.style.display });
-                el.style.setProperty('display', 'none', 'important');
+    activeScreenStream.getVideoTracks().forEach(track => {
+        track.addEventListener('ended', () => {
+            activeScreenStream = null;
+            if (activeScreenVideo) {
+                try { activeScreenVideo.pause(); } catch(e){}
+                activeScreenVideo = null;
             }
         });
     });
 
-    try {
-        // 等待 16ms 重绘干净的视口
-        await new Promise(r => setTimeout(r, 16));
+    return activeScreenStream;
+}
 
-        // 尝试 C++ 引擎 SVG 原生快照 (20ms 极速，0 排版重绘)
-        let canvas;
+export async function captureChatScreenshot() {
+    const chat = document.getElementById('chat');
+    if (!chat) return;
+
+    // 隐藏菜单
+    $('#twt-custom-menu').hide();
+
+    const rect = chat.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+
+    // 1. 优先使用原生屏幕 API (结合媒体流复用：首次选择授权，后续零弹窗闪电截取)
+    if (navigator.mediaDevices && typeof navigator.mediaDevices.getDisplayMedia === 'function') {
         try {
-            canvas = await renderDomWithSvgEngine(chat);
-        } catch (svgErr) {
-            console.warn('[TwT] SVG 快照降级至 Canvas 绘制:', svgErr);
-            const h2c = await ensureHtml2CanvasLoaded();
-            if (!h2c) throw svgErr;
-            const isReadingMode = document.body.classList.contains('twt-reading-mode');
-            canvas = await h2c(chat, {
-                backgroundColor: '#1e1e1e',
-                scale: Math.max(window.devicePixelRatio || 1, 2),
-                useCORS: true,
-                allowTaint: true,
-                logging: false,
-                x: isReadingMode ? chat.scrollLeft : 0,
-                y: 0,
-                width: chat.clientWidth || chat.offsetWidth,
-                height: chat.clientHeight || chat.offsetHeight
-            });
-        }
+            const stream = await getOrCreateScreenStream();
 
+            if (!activeScreenVideo) {
+                activeScreenVideo = document.createElement('video');
+                activeScreenVideo.srcObject = stream;
+                activeScreenVideo.playsInline = true;
+                activeScreenVideo.muted = true;
+                await activeScreenVideo.play();
+                await new Promise(r => setTimeout(r, 100));
+            } else {
+                await new Promise(r => setTimeout(r, 16));
+            }
+
+            const video = activeScreenVideo;
+            const vw = (window.visualViewport ? window.visualViewport.width : window.innerWidth) || window.innerWidth;
+            const vh = (window.visualViewport ? window.visualViewport.height : window.innerHeight) || window.innerHeight;
+
+            const scaleX = video.videoWidth / vw;
+            const scaleY = video.videoHeight / vh;
+
+            // 精准计算截取坐标：排除 rect.top 以上的顶栏与 rect.bottom 以下的底栏
+            const cropX = Math.max(0, rect.left * scaleX);
+            const cropY = Math.max(0, rect.top * scaleY);
+            const cropW = Math.min(video.videoWidth - cropX, rect.width * scaleX);
+            const cropH = Math.min(video.videoHeight - cropY, rect.height * scaleY);
+
+            const dpr = Math.max(window.devicePixelRatio || 1, 2);
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.round(rect.width * dpr);
+            canvas.height = Math.round(rect.height * dpr);
+
+            const ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+
+            ctx.drawImage(
+                video,
+                cropX,
+                cropY,
+                cropW,
+                cropH,
+                0,
+                0,
+                canvas.width,
+                canvas.height
+            );
+
+            showScreenshotPreviewModal(canvas);
+            return;
+        } catch (e) {
+            console.log('[TwT] 屏幕捕捉授权取消或环境不支持，回退至移动端/极速 SVG 模式:', e);
+        }
+    }
+
+    // 2. 移动端/手机端环境降级回退：极速 SVG 0-重排渲染
+    try {
+        if (typeof toastr !== 'undefined') toastr.info('正在抓取聊天画面...', '截图', { timeOut: 1200 });
+        const canvas = await renderDomWithSvgEngine(chat);
         showScreenshotPreviewModal(canvas);
     } catch (e) {
         console.error('[TwT] 截图失败:', e);
         if (typeof toastr !== 'undefined') toastr.error(`截图失败: ${e.message || e}`, '错误');
-    } finally {
-        // 瞬间还原所有顶栏与底栏
-        hiddenElements.forEach(({ el, origDisplay }) => {
-            if (el) el.style.display = origDisplay;
-        });
     }
 }
 
