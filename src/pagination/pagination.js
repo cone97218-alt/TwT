@@ -142,12 +142,181 @@ function stopPositionLock() {
 }
 
 // ============================================================
-// 越界页码安全校正
+// 超大元素收容与强制断页（高性能读写分离优化版）
+// 100% 保留原有逻辑与折中防 Bug 判定规则，彻底消除循环内部 DOM 强制重排 (Layout Thrashing)
 // ============================================================
+const elementPrevHeights = new WeakMap();
+const HEIGHT_SURGE_THRESHOLD = 80;
+
+const EXCLUDED_TAGS = new Set([
+    'P','SPAN','BLOCKQUOTE','PRE','OL','UL','LI',
+    'H1','H2','H3','H4','H5','H6','A','CODE','EM','STRONG','I','B'
+]);
+
+function getAdaptiveMaxHeight(el, chat, colH, pageBreakEnabled) {
+    if (pageBreakEnabled) return colH - 20;
+    const elTop = el.getBoundingClientRect().top - chat.getBoundingClientRect().top;
+    const remaining = (elTop > 0 && elTop < colH) ? colH - elTop : colH;
+    return remaining > 150 ? remaining - 20 : Math.max(150, Math.min(200, colH - 20));
+}
+
 function containOversizedElements() {
     const chat = document.getElementById('chat');
     if (!chat || !document.body.classList.contains('twt-reading-mode')) return;
+    const colH = chat.clientHeight;
+    if (colH <= 0) return;
 
+    const pageBreakEnabled = extension_settings?.twt?.htmlPageBreakEnabled !== false;
+    const chatRect = chat.getBoundingClientRect();
+
+    // 缓存数据计划队列，彻底分离“读相位”与“写相位”
+    const toScrollable = [];
+    const toBreakSet   = new Set();
+    const scrollableEls = new Set();
+    const containerClasses = [];
+
+    const children = chat.querySelectorAll('.mes_text > *');
+
+    // ------------------------------------------------------------
+    // 读相位 (Phase 1: Read All Layout Data) - 全程 0 次 DOM 写入
+    // ------------------------------------------------------------
+    for (let i = 0; i < children.length; i++) {
+        const el = children[i];
+
+        // 1. 跳过思维链
+        if (el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')) continue;
+
+        const isContainer = (
+            el.tagName === 'DIV' || el.tagName === 'TABLE' ||
+            el.tagName === 'SECTION' || el.tagName === 'FORM' ||
+            el.tagName === 'ARTICLE' || el.tagName === 'DETAILS' ||
+            el.tagName === 'IFRAME'
+        );
+        containerClasses.push({ el, isContainer });
+
+        // 2. 已经是 scrollable 的，直接沿用并重算高度
+        if (el.classList.contains('twt-pagination-scrollable')) {
+            const maxH = getAdaptiveMaxHeight(el, chat, colH, pageBreakEnabled);
+            toScrollable.push({ el, maxH });
+            scrollableEls.add(el);
+            if (pageBreakEnabled) toBreakSet.add(el);
+            continue;
+        }
+
+        // 3. 跳过已决定收容的元素的子孙
+        let isChildOfScrollable = false;
+        for (const scrollableParent of scrollableEls) {
+            if (scrollableParent.contains(el)) {
+                isChildOfScrollable = true;
+                break;
+            }
+        }
+        if (isChildOfScrollable) continue;
+
+        // 4. 跳过普通文字流标签
+        if (EXCLUDED_TAGS.has(el.tagName)) continue;
+
+        const elRect = el.getBoundingClientRect();
+        const elTop = elRect.top - chatRect.top;
+        const remaining = (elTop > 0 && elTop < colH) ? colH - elTop : colH;
+        const currentH = el.scrollHeight;
+
+        // 5. DETAILS：展开后估算高度
+        if (el.tagName === 'DETAILS') {
+            const wasOpen = el.open;
+            if (!wasOpen) el.open = true;
+            const expandedH = Array.from(el.children).reduce((s, c) => s + c.scrollHeight, 0);
+            if (!wasOpen) el.open = false;
+
+            if (expandedH > remaining) {
+                if (pageBreakEnabled) {
+                    toBreakSet.add(el);
+                    if (expandedH > colH) {
+                        toScrollable.push({ el, maxH: colH - 20 });
+                        scrollableEls.add(el);
+                    }
+                } else {
+                    const maxH = remaining > 150 ? remaining - 20 : Math.max(150, Math.min(200, colH - 20));
+                    toScrollable.push({ el, maxH });
+                    scrollableEls.add(el);
+                }
+            }
+            elementPrevHeights.set(el, el.scrollHeight);
+            continue;
+        }
+
+        // 6. 高度突变检测（未知折叠组件）
+        const prevH = elementPrevHeights.get(el);
+        const surged = prevH !== undefined && (currentH - prevH) > HEIGHT_SURGE_THRESHOLD;
+        elementPrevHeights.set(el, currentH);
+
+        if (currentH > remaining || surged) {
+            const cs = getComputedStyle(el);
+            const makesBFC = (
+                (cs.overflow !== 'visible' && cs.overflow !== '') ||
+                cs.display === 'flex' || cs.display === 'inline-flex' ||
+                cs.display === 'grid' || cs.display === 'inline-grid' ||
+                cs.position === 'absolute' || cs.position === 'fixed' ||
+                cs.display === 'flow-root'
+            );
+            if (makesBFC || isContainer) {
+                if (pageBreakEnabled) {
+                    toBreakSet.add(el);
+                    if (currentH > colH || surged) {
+                        toScrollable.push({ el, maxH: colH - 20 });
+                        scrollableEls.add(el);
+                    }
+                } else {
+                    const maxH = remaining > 150 ? remaining - 20 : Math.max(150, Math.min(200, colH - 20));
+                    toScrollable.push({ el, maxH });
+                    scrollableEls.add(el);
+                }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------
+    // 写相位 (Phase 2: Batch DOM Writes) - 一次性集中批量写入与脏检查
+    // ------------------------------------------------------------
+    // 标记/取消标记 twt-html-container
+    for (let i = 0; i < containerClasses.length; i++) {
+        const { el, isContainer } = containerClasses[i];
+        if (isContainer) {
+            if (!el.classList.contains('twt-html-container')) {
+                el.classList.add('twt-html-container');
+            }
+        } else {
+            if (el.classList.contains('twt-html-container')) el.classList.remove('twt-html-container');
+            if (el.classList.contains('twt-html-needs-break')) el.classList.remove('twt-html-needs-break');
+        }
+    }
+
+    // 断页标记更新 (使用 Set O(1) 匹配与脏检查)
+    const existingBreakEls = chat.querySelectorAll('.twt-html-needs-break');
+    for (let i = 0; i < existingBreakEls.length; i++) {
+        const el = existingBreakEls[i];
+        if (!toBreakSet.has(el)) el.classList.remove('twt-html-needs-break');
+    }
+    toBreakSet.forEach(el => {
+        if (!el.classList.contains('twt-html-needs-break')) el.classList.add('twt-html-needs-break');
+    });
+
+    // 收容样式批量写入 (带脏检查，避免频繁重复设 inline style)
+    for (let i = 0; i < toScrollable.length; i++) {
+        const { el, maxH } = toScrollable[i];
+        const targetMaxH = `${maxH}px`;
+        if (el.style.getPropertyValue('max-height') !== targetMaxH) {
+            el.style.setProperty('max-height', targetMaxH, 'important');
+        }
+        if (el.style.getPropertyValue('overflow-y') !== 'auto') {
+            el.style.setProperty('overflow-y', 'auto', 'important');
+        }
+        if (!el.classList.contains('twt-pagination-scrollable')) {
+            el.classList.add('twt-pagination-scrollable');
+        }
+    }
+
+    // 越界校正
     if (!isTouching) {
         const cw = getColWidth(chat);
         if (cw > 0) {
@@ -320,7 +489,7 @@ function initMutationObserver() {
             } finally {
                 mutationObserver.observe(chat, MUT_OPTS);
             }
-        }, 300);
+        }, 150);
     });
 
     mutationObserver.observe(chat, MUT_OPTS);
