@@ -1119,51 +1119,94 @@ export async function captureChatScreenshot() {
     const chat = document.getElementById('chat');
     if (!chat) return;
 
-    if (typeof toastr !== 'undefined') {
-        toastr.info('正在截取当前聊天界面...', '截图', { timeOut: 1500 });
-    }
-
-    const h2c = await ensureHtml2CanvasLoaded();
-    if (!h2c) {
-        if (typeof toastr !== 'undefined') toastr.error('无法加载截图引擎 (html2canvas)', '截图失败');
-        return;
-    }
-
+    // 立即隐藏弹出菜单
     $('#twt-custom-menu').hide();
 
-    try {
-        const isReadingMode = document.body.classList.contains('twt-reading-mode');
-        let bg = window.getComputedStyle(chat).backgroundColor || '#1e1e1e';
-        if (bg.includes('color(') || bg.includes('color-mix(') || bg.includes('rgba(0, 0, 0, 0)')) {
-            bg = '#1e1e1e';
+    // 等待 16ms 让菜单在屏幕帧上彻底消失
+    await new Promise(r => setTimeout(r, 16));
+
+    const rect = chat.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+
+    // 1. 优先尝试原生 API 屏幕捕捉 (getDisplayMedia) -> 真正100%原画屏幕截图，无任何二次渲染
+    if (navigator.mediaDevices && typeof navigator.mediaDevices.getDisplayMedia === 'function') {
+        try {
+            const stream = await navigator.mediaDevices.getDisplayMedia({
+                video: {
+                    displaySurface: 'browser',
+                    selfBrowserSurface: 'include',
+                    surfaceSwitching: 'include'
+                },
+                audio: false
+            });
+
+            const video = document.createElement('video');
+            video.srcObject = stream;
+            await video.play();
+
+            // 等待视频流首帧加载
+            await new Promise(r => setTimeout(r, 30));
+
+            const canvas = document.createElement('canvas');
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = Math.round(rect.width * dpr);
+            canvas.height = Math.round(rect.height * dpr);
+
+            const ctx = canvas.getContext('2d');
+
+            // 图像处理
+            const scaleX = video.videoWidth / window.innerWidth;
+            const scaleY = video.videoHeight / window.innerHeight;
+
+            ctx.drawImage(
+                video,
+                rect.left * scaleX,
+                rect.top * scaleY,
+                rect.width * scaleX,
+                rect.height * scaleY,
+                0,
+                0,
+                canvas.width,
+                canvas.height
+            );
+
+            // 停止媒体流
+            stream.getTracks().forEach(track => track.stop());
+            video.srcObject = null;
+
+            showScreenshotPreviewModal(canvas);
+            return;
+        } catch (e) {
+            console.log('[TwT] getDisplayMedia 授权取消或不可用，自动切换至极速 DOM 画布捕捉:', e);
         }
+    }
+
+    // 2. 回退方案：极速 DOM 图像捕捉 (不走慢速 html2canvas 重排)
+    try {
+        if (typeof toastr !== 'undefined') {
+            toastr.info('正在抓取聊天画面...', '截图', { timeOut: 1200 });
+        }
+
+        const h2c = await ensureHtml2CanvasLoaded();
+        if (!h2c) throw new Error('无法加载截图库');
+
+        const isReadingMode = document.body.classList.contains('twt-reading-mode');
+        const bg = '#1e1e1e';
         const dpr = Math.max(window.devicePixelRatio || 1, 2);
 
         const oncloneHook = (clonedDoc) => {
             try {
-                // 清洗包含 html2canvas 不支持的现代 CSS 颜色函数 (color, color-mix, oklch, lab, lch)
                 const styles = clonedDoc.querySelectorAll('style');
                 styles.forEach(st => {
-                    if (st.textContent && (st.textContent.includes('color(') || st.textContent.includes('color-mix(') || st.textContent.includes('oklch(') || st.textContent.includes('lab('))) {
+                    if (st.textContent && (st.textContent.includes('color(') || st.textContent.includes('color-mix(') || st.textContent.includes('oklch('))) {
                         st.textContent = st.textContent.replace(/(?:color|color-mix|oklch|lab|lch)\([^;}]+\)/gi, 'inherit');
                     }
                 });
-                const allEls = clonedDoc.querySelectorAll('*[style]');
-                allEls.forEach(el => {
-                    const cssText = el.getAttribute('style');
-                    if (cssText && (cssText.includes('color(') || cssText.includes('color-mix(') || cssText.includes('oklch('))) {
-                        el.setAttribute('style', cssText.replace(/(?:color|color-mix|oklch|lab|lch)\([^;}]+\)/gi, 'inherit'));
-                    }
-                });
-            } catch (err) {
-                console.warn('[TwT] onclone sanitize failed:', err);
-            }
+            } catch (err) {}
         };
 
         let canvas;
         if (isReadingMode) {
-            const cw = chat.clientWidth || chat.offsetWidth;
-            const ch = chat.clientHeight || chat.offsetHeight;
             canvas = await h2c(chat, {
                 backgroundColor: bg,
                 scale: dpr,
@@ -1172,8 +1215,8 @@ export async function captureChatScreenshot() {
                 logging: false,
                 x: chat.scrollLeft,
                 y: 0,
-                width: cw,
-                height: ch,
+                width: chat.clientWidth || chat.offsetWidth,
+                height: chat.clientHeight || chat.offsetHeight,
                 onclone: oncloneHook
             });
         } else {
@@ -1189,8 +1232,8 @@ export async function captureChatScreenshot() {
 
         showScreenshotPreviewModal(canvas);
     } catch (e) {
-        console.error('[TwT] 截图生成失败:', e);
-        if (typeof toastr !== 'undefined') toastr.error(`截图生成失败: ${e.message || e}`, '错误');
+        console.error('[TwT] 截图失败:', e);
+        if (typeof toastr !== 'undefined') toastr.error(`截图失败: ${e.message || e}`, '错误');
     }
 }
 
