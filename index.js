@@ -1050,11 +1050,6 @@ function bindUI() {
     $visualEnabled.prop('checked', extension_settings.twt.visualEnabled);
     $muluEnabled.prop('checked', extension_settings.twt.muluEnabled);
 
-    $autoReloadOnUpdate.on('change', function () {
-        extension_settings.twt.autoReloadOnUpdate = $(this).prop('checked');
-        getContext().saveSettingsDebounced();
-    });
-
 
     $paddingTop.val(extension_settings.twt.paddingTop);
     $paddingBottom.val(extension_settings.twt.paddingBottom);
