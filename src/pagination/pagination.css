@@ -213,3 +213,69 @@ body.twt-reading-mode #chat .mes {
     padding-top: 0 !important;
     padding-bottom: 0 !important;
 }
+
+/* ============================================================
+   彻底覆盖 SillyTavern 气泡聊天主题 (bubblechat) 及第三方 CSS 干扰：
+   在 bubblechat 模式下，SillyTavern 会给 .mes 强行注入 max-width: 85% / margin-left: auto 等居左/居右气泡边距，
+   导致在多列排版下，每一页的文字一侧留有 15% 的巨大空白边距（左右间距空白严重不一致）。
+   在阅读模式下，强制将 bubblechat 布局重置为 100% 满幅排版！
+   ============================================================ */
+body.twt-reading-mode.bubblechat #chat,
+body.twt-reading-mode #chat {
+    display: block !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
+
+body.twt-reading-mode.bubblechat #chat > *,
+body.twt-reading-mode.bubblechat #chat .mes,
+body.twt-reading-mode #chat > *,
+body.twt-reading-mode #chat .mes {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    float: none !important;
+    clear: both !important;
+    align-self: stretch !important;
+    box-sizing: border-box !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+}
+
+body.twt-reading-mode.bubblechat #chat .mes_block,
+body.twt-reading-mode #chat .mes_block {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    float: none !important;
+    align-self: stretch !important;
+    box-sizing: border-box !important;
+}
+
+body.twt-reading-mode.bubblechat #chat .mes_text,
+body.twt-reading-mode #chat .mes_text {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding-left: var(--twt-padding-left, 15px) !important;
+    padding-right: var(--twt-padding-right, 15px) !important;
+    box-sizing: border-box !important;
+    float: none !important;
+}
