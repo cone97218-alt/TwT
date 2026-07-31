@@ -1166,26 +1166,38 @@ async function getOrCreateScreenStream() {
     return activeScreenStream;
 }
 
-// 动态测量顶栏 (.topbar, #top-bar 等) 在视口中的底部物理像素坐标
+// 动态精准测量顶栏 (#top-settings-holder, #top-bar 等) 在视口中的底部物理像素坐标
 function getTopBarBottom() {
-    const parentDoc = getParentDoc();
-    const selectors = [
-        '#top-bar', '#top-bar-block', '.topbar', '.top-bar',
-        '#header', '#top-settings-holder', '.chat-header'
-    ];
     let maxBottom = 0;
-    selectors.forEach(sel => {
-        const els = parentDoc.querySelectorAll(sel);
-        els.forEach(el => {
-            if (el && el.offsetHeight > 0) {
-                const r = el.getBoundingClientRect();
-                // 顶栏通常在视口上半部分 (小于屏幕高度的一半)
-                if (r.bottom > maxBottom && r.bottom < (window.innerHeight / 2)) {
-                    maxBottom = r.bottom;
+    const docs = [document];
+    try { if (window.parent && window.parent.document && !docs.includes(window.parent.document)) docs.push(window.parent.document); } catch (e) {}
+    try { if (window.top && window.top.document && !docs.includes(window.top.document)) docs.push(window.top.document); } catch (e) {}
+
+    const selectors = [
+        '#top-settings-holder',
+        '#top-bar',
+        '#top-bar-block',
+        '.topbar',
+        '.top-bar',
+        '#header',
+        '.chat-header'
+    ];
+
+    docs.forEach(doc => {
+        selectors.forEach(sel => {
+            const els = doc.querySelectorAll(sel);
+            els.forEach(el => {
+                if (el && (el.offsetHeight > 0 || el.getBoundingClientRect().height > 0)) {
+                    const r = el.getBoundingClientRect();
+                    // 顶栏通常在视口上半部分
+                    if (r.bottom > maxBottom && r.bottom < (window.innerHeight * 0.45)) {
+                        maxBottom = r.bottom;
+                    }
                 }
-            }
+            });
         });
     });
+
     return maxBottom;
 }
 
