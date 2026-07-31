@@ -175,34 +175,14 @@ export function initMenu(getSettings, onToggleExcerpt) {
         handleEnd();
     });
 
-    // Close menu when clicking outside (multi-doc capture listener)
-    const closeHandler = (e) => {
+    // Close menu when clicking outside
+    $(document).on('click.twt-menu touchstart.twt-menu', function() {
         const $menu = $('#twt-custom-menu');
-        if (!$menu.length || !$menu.is(':visible')) return;
-
-        // If user tapped directly on a menu item, let the item click handler execute
-        if (e.target && e.target.closest && e.target.closest('.twt-menu-item, .twt-menu-grid-item, .twt-menu-circle-item')) {
-            return;
+        if ($menu.is(':visible')) {
+            setTimeout(() => {
+                $menu.hide();
+            }, 0);
         }
-
-        $menu.hide();
-    };
-
-    const targetDocs = [document];
-    try {
-        if (window.parent && window.parent.document && window.parent.document !== document) {
-            targetDocs.push(window.parent.document);
-        }
-    } catch(e) {}
-
-    targetDocs.forEach(doc => {
-        doc.removeEventListener('pointerdown', closeHandler, true);
-        doc.removeEventListener('touchstart', closeHandler, true);
-        doc.removeEventListener('click', closeHandler, true);
-
-        doc.addEventListener('pointerdown', closeHandler, true);
-        doc.addEventListener('touchstart', closeHandler, true);
-        doc.addEventListener('click', closeHandler, true);
     });
 }
 
@@ -220,34 +200,27 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
     }
     $menu.empty();
 
-    $menu.removeClass('twt-menu-grid-layout twt-menu-list-layout twt-menu-double-column-layout twt-menu-circle-layout twt-menu-square-layout');
+    $menu.removeClass('twt-menu-grid-layout twt-menu-list-layout twt-menu-double-column-layout');
 
     const menuStyle = settings.menuStyle || 'grid';
     if (menuStyle === 'grid') {
         $menu.addClass('twt-menu-grid-layout');
     } else if (menuStyle === 'double-column') {
         $menu.addClass('twt-menu-double-column-layout');
-    } else if (menuStyle === 'circle') {
-        $menu.addClass('twt-menu-circle-layout');
     } else {
         $menu.addClass('twt-menu-list-layout');
     }
 
     const useGridLayout = menuStyle === 'grid';
-    const isCircleLayout = menuStyle === 'circle';
-
     const $gridBar = useGridLayout ? $('<div class="twt-menu-grid-row"></div>') : null;
     const $listContainer = useGridLayout ? $('<div class="twt-menu-list-row"></div>') : null;
     let hasItems = false;
-    const circleItems = [];
 
     const appendMenuItem = ({ label, shortLabel, icon, onClick, isDanger = false, isGridItem = false }) => {
         hasItems = true;
         const displayLabel = shortLabel || label;
 
-        if (isCircleLayout) {
-            circleItems.push({ label, shortLabel, icon, onClick, isDanger });
-        } else if (useGridLayout) {
+        if (useGridLayout) {
             if (isGridItem) {
                 const $item = $(`<div class="twt-menu-grid-item ${isDanger ? 'twt-danger' : ''}" title="${label}"><i class="${icon}"></i><span>${displayLabel}</span></div>`);
                 $item.on('click', (evt) => {
@@ -514,35 +487,6 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
         }
     }
 
-    if (isCircleLayout && circleItems.length > 0) {
-        const N = circleItems.length;
-        const R = N <= 6 ? 38 : (N <= 9 ? 44 : 50);
-        const P = 16;
-        const D = (R + P) * 2;
-        const CX = D / 2;
-        const CY = D / 2;
-
-        $menu.css({
-            width: `${D}px`,
-            height: `${D}px`,
-            position: 'absolute'
-        });
-
-        circleItems.forEach((item, i) => {
-            const angle = (2 * Math.PI * i / N) - (Math.PI / 2);
-            const x = Math.round(CX + R * Math.cos(angle) - 14);
-            const y = Math.round(CY + R * Math.sin(angle) - 14);
-
-            const $item = $(`<div class="twt-menu-circle-item ${item.isDanger ? 'twt-danger' : ''}" title="${item.label}" style="left: ${x}px; top: ${y}px;"><i class="${item.icon}"></i></div>`);
-            $item.on('click pointerdown touchstart', (evt) => {
-                evt.stopPropagation();
-                $menu.hide();
-                item.onClick(evt);
-            });
-            $menu.append($item);
-        });
-    }
-
     if (useGridLayout) {
         if ($listContainer && $listContainer.children().length > 0) {
             $menu.append($listContainer);
@@ -557,44 +501,34 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
     // Show menu offscreen first to measure dimensions
     $menu.css({
         visibility: 'hidden',
-        display: 'block'
+        display: 'block',
+        left: '0px',
+        top: '0px',
+        width: 'max-content',
+        height: 'auto'
     });
-
-    if (!isCircleLayout) {
-        $menu.css({
-            left: '0px',
-            top: '0px',
-            width: 'max-content',
-            height: 'auto'
-        });
-    }
 
     const menuWidth = $menu.outerWidth() || 130;
     const menuHeight = $menu.outerHeight() || 100;
     const screenWidth = window.innerWidth;
     const screenHeight = window.innerHeight;
 
+    const direction = settings.menuDirection || 'bottom-right';
     let posX = clientX;
     let posY = clientY;
 
-    if (isCircleLayout) {
-        posX = clientX - (menuWidth / 2);
-        posY = clientY - (menuHeight / 2);
-    } else {
-        const direction = settings.menuDirection || 'bottom-right';
-        if (direction === 'top-left') {
-            posX = clientX - menuWidth;
-            posY = clientY - menuHeight;
-        } else if (direction === 'top-right') {
-            posX = clientX;
-            posY = clientY - menuHeight;
-        } else if (direction === 'bottom-left') {
-            posX = clientX - menuWidth;
-            posY = clientY;
-        } else { // 'bottom-right'
-            posX = clientX;
-            posY = clientY;
-        }
+    if (direction === 'top-left') {
+        posX = clientX - menuWidth;
+        posY = clientY - menuHeight;
+    } else if (direction === 'top-right') {
+        posX = clientX;
+        posY = clientY - menuHeight;
+    } else if (direction === 'bottom-left') {
+        posX = clientX - menuWidth;
+        posY = clientY;
+    } else { // 'bottom-right'
+        posX = clientX;
+        posY = clientY;
     }
 
     // Clamp to screen boundaries (with scroll offset)
@@ -605,6 +539,11 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
         left: posX + 'px',
         top: posY + 'px',
         visibility: 'visible'
+    });
+
+    // Stop propagation inside menu to prevent close trigger
+    $menu.off('mousedown mouseup click touchstart').on('mousedown mouseup click touchstart', (evt) => {
+        evt.stopPropagation();
     });
 }
 
