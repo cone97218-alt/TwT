@@ -4,6 +4,7 @@ import { applyPaginationMode, initPaginationEvent, resetPaginationBinding } from
 import { applyVisualMode } from './src/visual/visual.js';
 import { initMulu, applyMuluSettings } from './src/mulu/mulu.js';
 import { initMenu, applyMenuMode, applyFullscreenMode } from './src/menu/menu.js';
+import { initDebugConsole, logDebugMessage } from './src/debug/debug.js';
 
 let parentDoc = document;
 try {
@@ -3053,6 +3054,7 @@ jQuery(async () => {
     applyFullscreenMode(extension_settings.twt.isFullscreen);
     updateInjectedStyles();
     initMulu();
+    initDebugConsole();
     initThemeLinkListener();
     initPaginationEvent(() => extension_settings.twt);
     initMenu(() => extension_settings.twt, (active) => {
