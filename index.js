@@ -135,6 +135,7 @@ const defaultSettings = {
     menuLongpressDelay: 500,
     menuDirection: 'bottom-right',
     menuStyle: 'grid',
+    menuFontSize: 14,
     visualEnabled: false, 
     muluEnabled: false,
     muluBtnStart: true,
@@ -986,6 +987,7 @@ function bindUI() {
     const $menuOptPromptViewer = $('#twt_menu_opt_prompt_viewer');
     const $menuOptScreenshot = $('#twt_menu_opt_screenshot');
     const $menuStyle = $('#twt_menu_style');
+    const $menuFontSize = $('#twt_menu_font_size');
     const $visualEnabled = $('#twt_visual_enabled');
     const $muluEnabled = $('#twt_mulu_enabled');
     
@@ -1036,6 +1038,7 @@ function bindUI() {
     $menuOptPromptViewer.prop('checked', extension_settings.twt.menuOptPromptViewer);
     $menuOptScreenshot.prop('checked', extension_settings.twt.menuOptScreenshot !== false);
     $menuStyle.val(extension_settings.twt.menuStyle || 'grid');
+    $menuFontSize.val(extension_settings.twt.menuFontSize !== undefined ? extension_settings.twt.menuFontSize : 14);
     
     updateParagraphSubOptionsVisibility();
     updateExcerptSubOptionsVisibility();
@@ -1841,6 +1844,14 @@ function bindUI() {
     $menuStyle.on('change', function () {
         extension_settings.twt.menuStyle = $(this).val();
         getContext().saveSettingsDebounced();
+    });
+
+    $menuFontSize.on('input change', function () {
+        const val = parseInt($(this).val());
+        if (!isNaN(val)) {
+            extension_settings.twt.menuFontSize = val;
+            getContext().saveSettingsDebounced();
+        }
     });
 
     $visualEnabled.on('change', function () {

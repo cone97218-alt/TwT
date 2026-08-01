@@ -200,6 +200,9 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
     }
     $menu.empty();
 
+    const menuFontSize = settings.menuFontSize || 14;
+    $menu.css('font-size', `${menuFontSize}px`);
+
     $menu.removeClass('twt-menu-grid-layout twt-menu-list-layout twt-menu-double-column-layout');
 
     const menuStyle = settings.menuStyle || 'grid';
@@ -404,15 +407,15 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
                 icon: 'fa-solid fa-language',
                 isGridItem: false,
                 onClick: () => {
-                    const $btn = $('#bl-wand-btn');
+                    const $btn = $('#blai-wand-btn, #bl-wand-btn');
                     if ($btn.length) {
                         $btn.trigger('click');
                     } else {
-                        const $btnPanel = $('#bl-wand-btn-panel');
+                        const $btnPanel = $('#blai-wand-btn-panel, #bl-wand-btn-panel');
                         if ($btnPanel.length) {
                             $btnPanel.trigger('click');
                         } else {
-                            const $popup = $('#bl-purifier-popup');
+                            const $popup = $('#blai-purifier-popup, #bl-purifier-popup');
                             if ($popup.length) {
                                 $popup.css('display', 'flex').hide().fadeIn(200);
                             } else {
@@ -433,7 +436,7 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
                 icon: 'fa-solid fa-eye',
                 isGridItem: false,
                 onClick: () => {
-                    const $diffBtn = $(`.bl-diff-btn[data-index="${mesId}"]`);
+                    const $diffBtn = $(`.blai-diff-btn[data-index="${mesId}"], .bl-diff-btn[data-index="${mesId}"]`);
                     if ($diffBtn.length) {
                         $diffBtn.trigger('click');
                     } else {
