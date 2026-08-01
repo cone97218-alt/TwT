@@ -348,7 +348,15 @@ function getColStep(chat) {
     const scrollW = chat.scrollWidth;
     if (scrollW <= 0) return rawWidth;
     const n = Math.max(1, Math.round(scrollW / rawWidth));
-    return scrollW / n;
+    const calculatedS = scrollW / n;
+    
+    // 防范流式输出中间态：当 AI 逐字生成追加文本时，最后一列尚未填满，
+    // calculatedS 会因为未装满的 scrollW 产生偏差 (> 1.5px)。
+    // 此时强制锁定步长为物理视口宽 rawWidth，防止流式输出期间前面页面整体向左偏移！
+    if (Math.abs(calculatedS - rawWidth) > 1.5) {
+        return rawWidth;
+    }
+    return calculatedS;
 }
 
 function getColWidth(chat) {
