@@ -96,9 +96,9 @@ body.twt-reading-mode #chat .mes_text {
     page-break-inside: auto !important;
     -webkit-column-break-inside: auto !important;
     text-align-last: left !important;
-    text-justify: inter-character !important;
-    word-break: break-all !important;
-    overflow-wrap: anywhere !important;
+    text-justify: auto !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
 }
 
 /* 默认强制使用 block 排版以配合浮动，除非启用主题头像布局 */
