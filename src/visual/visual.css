@@ -37,11 +37,21 @@ body.twt-visual-mode #chat .mes_text * {
     line-height: var(--twt-line-height, 1.6) !important;
     text-align: var(--twt-text-align, left) !important;
     letter-spacing: var(--twt-letter-spacing, 0px) !important;
-    font-weight: var(--twt-font-weight, normal);
+    font-weight: var(--twt-font-weight, normal) !important;
     text-align-last: left !important;
-    text-justify: auto !important;
-    word-break: break-word !important;
+    text-justify: inter-character !important;
+    word-break: break-all !important;
     overflow-wrap: break-word !important;
+    line-break: strict !important;
+}
+
+/* 两端对齐模式下，防止 <br> 换行前仅有短句（如双引号对话）被强制拉伸字间距填满整行 */
+body.twt-visual-mode #chat .mes_text br {
+    display: block !important;
+    content: "" !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
 }
 
 /* 确保粗体（包括粗体+斜体组合）依然保持粗体 */
