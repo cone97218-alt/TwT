@@ -110,6 +110,7 @@ const defaultSettings = {
     excerptTopOffset: 0,
     excerptFontSize: 12,
     menuOptFullscreen: true,
+    menuOptFullscreenHideSendForm: false,
     menuOptApi: false,
     menuOptPurifier: false,
     menuOptPurifierDiff: false,
@@ -355,6 +356,15 @@ function updateParagraphSubOptionsVisibility() {
 function updateExcerptSubOptionsVisibility() {
     const $subOptions = $('#twt_excerpt_sub_options');
     if (extension_settings.twt.menuOptExcerpt) {
+        $subOptions.show();
+    } else {
+        $subOptions.hide();
+    }
+}
+
+function updateFullscreenSubOptionsVisibility() {
+    const $subOptions = $('#twt_fullscreen_sub_options');
+    if (extension_settings.twt.menuOptFullscreen) {
         $subOptions.show();
     } else {
         $subOptions.hide();
@@ -979,6 +989,7 @@ function bindUI() {
     const $excerptTopOffset = $('#twt_excerpt_top_offset');
     const $excerptFontSize = $('#twt_excerpt_font_size');
     const $menuOptFullscreen = $('#twt_menu_opt_fullscreen');
+    const $menuOptFullscreenHideSendForm = $('#twt_menu_opt_fullscreen_hide_send_form');
     const $menuOptApi = $('#twt_menu_opt_api');
     const $menuOptPurifier = $('#twt_menu_opt_purifier');
     const $menuOptPurifierDiff = $('#twt_menu_opt_purifier_diff');
@@ -1030,6 +1041,7 @@ function bindUI() {
     $excerptTopOffset.val(extension_settings.twt.excerptTopOffset !== undefined ? extension_settings.twt.excerptTopOffset : 0);
     $excerptFontSize.val(extension_settings.twt.excerptFontSize !== undefined ? extension_settings.twt.excerptFontSize : 12);
     $menuOptFullscreen.prop('checked', extension_settings.twt.menuOptFullscreen);
+    $menuOptFullscreenHideSendForm.prop('checked', extension_settings.twt.menuOptFullscreenHideSendForm ?? false);
     $menuOptApi.prop('checked', extension_settings.twt.menuOptApi);
     $menuOptPurifier.prop('checked', extension_settings.twt.menuOptPurifier);
     $menuOptPurifierDiff.prop('checked', extension_settings.twt.menuOptPurifierDiff);
@@ -1042,6 +1054,7 @@ function bindUI() {
     
     updateParagraphSubOptionsVisibility();
     updateExcerptSubOptionsVisibility();
+    updateFullscreenSubOptionsVisibility();
     
     const updateLongpressDelayRow = () => {
         if ($menuInvokeMethod.val() === 'longpress') {
@@ -1809,6 +1822,15 @@ function bindUI() {
     $menuOptFullscreen.on('change', function () {
         extension_settings.twt.menuOptFullscreen = $(this).prop('checked');
         getContext().saveSettingsDebounced();
+        updateFullscreenSubOptionsVisibility();
+    });
+
+    $menuOptFullscreenHideSendForm.on('change', function () {
+        extension_settings.twt.menuOptFullscreenHideSendForm = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+        if (extension_settings.twt.isFullscreen) {
+            applyFullscreenMode(true);
+        }
     });
 
     $menuOptApi.on('change', function () {

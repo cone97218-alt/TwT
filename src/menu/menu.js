@@ -550,7 +550,7 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
     });
 }
 
-export function applyFullscreenMode(enabled) {
+export function applyFullscreenMode(enabled, hideSendForm) {
     let docs = [document];
     try {
         if (window.parent && window.parent.document) {
@@ -560,11 +560,33 @@ export function applyFullscreenMode(enabled) {
         console.warn("TwT: Cannot access window.parent.document for applyFullscreenMode.", e);
     }
     
+    if (hideSendForm === undefined) {
+        let settings = null;
+        if (typeof getSettingsCallback === 'function') {
+            settings = getSettingsCallback();
+        }
+        if (!settings) {
+            try {
+                settings = getContext()?.extensionSettings?.twt;
+            } catch (e) {}
+        }
+        if (!settings && typeof window !== 'undefined') {
+            settings = window.extension_settings?.twt;
+        }
+        hideSendForm = settings ? !!settings.menuOptFullscreenHideSendForm : false;
+    }
+
     docs.forEach(doc => {
         if (enabled) {
             $(doc.body).addClass('twt-fullscreen-mode');
+            if (hideSendForm) {
+                $(doc.body).addClass('twt-fullscreen-hide-send-form');
+            } else {
+                $(doc.body).removeClass('twt-fullscreen-hide-send-form');
+            }
         } else {
             $(doc.body).removeClass('twt-fullscreen-mode');
+            $(doc.body).removeClass('twt-fullscreen-hide-send-form');
         }
     });
 }

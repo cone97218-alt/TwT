@@ -62,6 +62,14 @@ body.twt-fullscreen-mode #topbar {
     display: none !important;
 }
 
+body.twt-fullscreen-mode.twt-fullscreen-hide-send-form #send_form,
+body.twt-fullscreen-mode.twt-fullscreen-hide-send-form #form_shell,
+body.twt-fullscreen-mode.twt-fullscreen-hide-send-form #sheating,
+body.twt-fullscreen-mode.twt-fullscreen-hide-send-form .input_bar,
+body.twt-fullscreen-mode.twt-fullscreen-hide-send-form #chat-input-container {
+    display: none !important;
+}
+
 /* 消息管理模态框样式 */
 .twt-range-modal-overlay {
     position: fixed;
