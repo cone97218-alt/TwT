@@ -91,9 +91,6 @@ let focusGuardTimer = null;
 let keyboardRestoreTimer = null;
 let positionLockRaf = null;
 let colWidthRetryTimer = null;
-let stableColWidth = 0;         // Precise step cache after layout stabilizes; 0 = not established
-let lastKnownScrollWidth = 0;   // Last scrollWidth seen by MutationObserver, for streaming detection
-let stableColWidthTimer = null; // Timer to rebuild stableColWidth after streaming ends
 
 // ============================================================
 // 键盘保护：冻结 #chat 高度
@@ -319,11 +316,11 @@ function containOversizedElements() {
         }
     }
 
-    // 越界校正（优先使用稳定步长缓存）
+    // 越界校正
     if (!isTouching) {
-        const cw = stableColWidth > 0 ? stableColWidth : getColWidth(chat);
+        const cw = getColWidth(chat);
         if (cw > 0) {
-            const total = Math.round(chat.scrollWidth / cw);
+            const total = Math.max(1, Math.ceil(chat.scrollWidth / cw));
             if (lastUserPage >= total) {
                 lastUserPage = Math.max(0, total - 1);
                 chat.scrollLeft = lastUserPage * cw;
@@ -332,40 +329,9 @@ function containOversizedElements() {
     }
 }
 
-// ============================================================
-// 核心翻页：scrollToPage
-// ============================================================
-function getChat() { return document.getElementById('chat'); }
-
-/**
- * 获取多列布局下 Chromium / WebKit 渲染引擎排版每一列的绝对精确物理步长 (Column Step S)
- * 在 CSS Multi-column 布局下，总可滚动宽度为 chat.scrollWidth，总列数为 N。
- * 每列精准步长 S = chat.scrollWidth / N。
- * 任何一页 page 的精确 scrollLeft 均为 page * S。
- * 彻底抹平因 Math.round() 整数化与亚像素 (subpixel) 渲染不匹配导致的“逐页累积偏移/左移”Bug！
- */
 function getColStep(chat) {
     if (!chat) return 0;
-    const rawWidth = chat.getBoundingClientRect().width || chat.clientWidth;
-    if (rawWidth <= 0) return 0;
-    const scrollW = chat.scrollWidth;
-    if (scrollW <= 0) return rawWidth;
-    const n = Math.max(1, Math.round(scrollW / rawWidth));
-    const calculatedS = scrollW / n;
-
-    // Streaming intermediate-state detection (replaces the old 1.5px fixed threshold).
-    // Compute what fraction of the last column is filled. In a stable layout the last
-    // column is either ~0% (content ends exactly on a page boundary) or ~100% (about to
-    // overflow into a new column); in both cases calculatedS is the correct exact step.
-    // If the fill ratio falls in the 5%-95% "true middle" range the column is being
-    // streamed into: scrollWidth is a transient value, calculatedS undershoots rawWidth,
-    // so lock onto rawWidth to prevent pages from drifting while AI generates text.
-    const exactColCount = scrollW / rawWidth;
-    const lastColFillRatio = exactColCount - Math.floor(exactColCount);
-    if (lastColFillRatio > 0.05 && lastColFillRatio < 0.95) {
-        return rawWidth;
-    }
-    return calculatedS;
+    return chat.getBoundingClientRect().width || chat.clientWidth || 0;
 }
 
 function getColWidth(chat) {
@@ -376,16 +342,19 @@ let scrollUnlockTimer = null;
 
 function scrollToPage(chat, page, cw) {
     if (!chat) return;
-    // Prefer the verified stable step cache to avoid streamed-layout drift
-    const step = stableColWidth > 0 ? stableColWidth : cw;
-    const total = Math.round(chat.scrollWidth / step);
+    const step = cw > 0 ? cw : getColWidth(chat);
+    if (step <= 0) return;
+
+    // 总页数计算：向上取整计算总列数，防止虚高 scrollWidth 丢页
+    const total = Math.max(1, Math.ceil(chat.scrollWidth / step));
+
     page = Math.max(0, Math.min(page, total - 1));
     lastUserPage = page;
     debouncedSavePaginationPosition();
     isScrolling = true;
 
     clearTimeout(scrollUnlockTimer);
-    // 350ms timeout force-unlock, prevents isScrolling deadlock if scrollend never fires
+    // 350ms 超时强制解锁，防止 WebView 未抛出 scrollend 导致 isScrolling 永久死锁
     scrollUnlockTimer = setTimeout(() => {
         isScrolling = false;
     }, 350);
@@ -401,24 +370,16 @@ function doSnap(chat) {
     if (!document.body.classList.contains('twt-reading-mode')) return;
     if (document.body.classList.contains('twt-paragraph-editing')) return;
 
-    // Prefer the stable step cache. When the cache is absent (stableColWidth === 0,
-    // i.e. during streaming) only update lastUserPage; do NOT force-write scrollLeft,
-    // because an unstable cw would jump the page to a wrong position — the root cause
-    // of the "drifts right during streaming, corrects after generation" symptom.
-    const cw = stableColWidth > 0 ? stableColWidth : getColWidth(chat);
+    const cw = getColWidth(chat);
     if (cw <= 0) return;
 
     const nearest = Math.round(chat.scrollLeft / cw);
     const expected = nearest * cw;
 
     if (Math.abs(chat.scrollLeft - expected) > 2) {
-        if (stableColWidth > 0) {
-            // Stable layout: safe to correct scrollLeft
-            chat.scrollLeft = expected;
-        }
-        // Unstable layout (streaming): skip scrollLeft correction, only update lastUserPage below
+        chat.scrollLeft = expected;
     }
-    lastUserPage = Math.round(chat.scrollLeft / cw);
+    lastUserPage = nearest;
     isScrolling = false;
     clearTimeout(scrollUnlockTimer);
 }
@@ -427,21 +388,13 @@ function doSnap(chat) {
 // 列宽初始化：等待 scrollWidth 稳定
 // ============================================================
 function updateColWidth() {
-    stableColWidth = 0; // Invalidate cache; layout is changing
     const chat = getChat();
     if (!chat || !document.body.classList.contains('twt-reading-mode')) return;
     const rawW = chat.getBoundingClientRect().width || chat.clientWidth;
     if (rawW > 0) {
-        // Use precise floating-point viewport width so column-width matches the real viewport
+        // 使用精确视口浮点宽度，保证 CSS column-width 匹配视口真实宽度
         chat.style.setProperty('--twt-col-width', `${rawW}px`, 'important');
         containOversizedElements();
-        // Attempt to immediately rebuild stable step cache
-        const sw = chat.scrollWidth;
-        if (sw > 0) {
-            const n = Math.max(1, Math.round(sw / rawW));
-            stableColWidth = sw / n;
-            lastKnownScrollWidth = sw;
-        }
     }
 }
 
@@ -456,7 +409,7 @@ function updateColWidthWhenReady(retries = 20, interval = 150) {
         return;
     }
 
-    // Wait for scrollWidth to stabilise over two frames (tolerance 2px for HiDPI/subpixel)
+    // 等待 scrollWidth 两帧稳定（容差放宽到 2，兼容高 DPI / 子像素渲染）
     const sw1 = chat.scrollWidth;
     requestAnimationFrame(() => {
         if (!document.body.classList.contains('twt-reading-mode')) return;
@@ -467,24 +420,15 @@ function updateColWidthWhenReady(retries = 20, interval = 150) {
         }
         chat.style.setProperty('--twt-col-width', `${rawW}px`, 'important');
         containOversizedElements();
-        // Layout verified stable over two frames: establish precise step cache
-        {
-            const sw = chat.scrollWidth;
-            if (sw > 0) {
-                const n = Math.max(1, Math.round(sw / rawW));
-                stableColWidth = sw / n;
-                lastKnownScrollWidth = sw;
-            }
-        }
-        // ③ layout stable: restore reading position (P1 core)
-        // Read metadata async, then jump to saved page in next frame
+        // ③ layout 稳定后恢复阅读位置（P1 核心）
+        // 先异步读取 metadata，再在下一帧安全跳页
         restorePaginationPosition().then(savedPage => {
             requestAnimationFrame(() => {
                 if (!document.body.classList.contains('twt-reading-mode')) return;
                 const restoredPage = savedPage > 0 ? savedPage : lastUserPage;
                 if (restoredPage > 0) {
-                    const cw = stableColWidth > 0 ? stableColWidth : getColWidth(chat);
-                    const total = Math.round(chat.scrollWidth / cw);
+                    const cw = getColWidth(chat);
+                    const total = Math.max(1, Math.ceil(chat.scrollWidth / cw));
                     const page = Math.min(restoredPage, total - 1);
                     lastUserPage = page;
                     chat.scrollLeft = page * cw;
@@ -525,31 +469,10 @@ function initMutationObserver() {
                 }, 200);
                 return;
             }
-            // Pause observer, process, resume. try/finally ensures observe() always runs.
+            // 暂停观察 → 处理 → 恢复：用 try/finally 确保 observe 必然执行，避免异常导致 observer 永久失效
             mutationObserver.disconnect();
             try {
                 containOversizedElements();
-                // Streaming detection: a scrollWidth change means AI is appending to a new column.
-                const currentSW = chat.scrollWidth;
-                if (currentSW !== lastKnownScrollWidth) {
-                    stableColWidth = 0; // Content still growing — invalidate cache
-                    lastKnownScrollWidth = currentSW;
-                    // Schedule a rebuild check: if scrollWidth has not changed again after
-                    // 600 ms (streaming ended), re-establish the stable step cache.
-                    clearTimeout(stableColWidthTimer);
-                    stableColWidthTimer = setTimeout(() => {
-                        const c = getChat();
-                        if (!c || !document.body.classList.contains('twt-reading-mode')) return;
-                        if (c.scrollWidth === lastKnownScrollWidth) {
-                            const rw = c.getBoundingClientRect().width || c.clientWidth;
-                            if (rw > 0) {
-                                const sw2 = c.scrollWidth;
-                                const n2 = Math.max(1, Math.round(sw2 / rw));
-                                stableColWidth = sw2 / n2;
-                            }
-                        }
-                    }, 600);
-                }
             } finally {
                 mutationObserver.observe(chat, MUT_OPTS);
             }
