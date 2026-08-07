@@ -716,11 +716,7 @@ export function resetPaginationBinding(getSettings) {
         scrollEventsAbortController = null;
     }
 
-    lastUserPage = 0;
-    stableColWidth = 0;
-    lastKnownScrollWidth = 0;
-    clearTimeout(stableColWidthTimer);
-    isScrolling  = false;
+    lastUserPage = 0;\r\n    isScrolling  = false;
 
     if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null; }
     disconnectMutationObserver();
@@ -821,7 +817,7 @@ function bindScrollEvents(getSettings) {
 
         // Update lastUserPage whenever scrollLeft changes (prevents page-number deadlock).
         // Prefer the stable step cache to avoid wrong rounding during streaming.
-        const cw = stableColWidth > 0 ? stableColWidth : getColWidth(chat);
+        const cw = getColWidth(chat);
         if (cw > 0) {
             lastUserPage = Math.round(chat.scrollLeft / cw);
         }
@@ -883,7 +879,7 @@ function bindScrollEvents(getSettings) {
 
         const dx  = e.touches[0].clientX - touchStartX;
         // Use the stable step (or fallback) to compute the max scroll boundary
-        const max = chat.scrollWidth - (stableColWidth > 0 ? stableColWidth : getColWidth(chat));
+        const max = chat.scrollWidth - getColWidth(chat);
         chat.scrollLeft = Math.max(0, Math.min(max, touchStartLeft - dx));
     }, { passive: true, signal });
 
