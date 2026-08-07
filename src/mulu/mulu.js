@@ -990,21 +990,28 @@ async function showMuluModal() {
     `;
 
     let searchTimeout = null;
+    let lastQuery = null;
     searchInput.addEventListener('input', () => {
         clearTimeout(searchTimeout);
         searchTimeout = setTimeout(() => {
             const query = searchInput.value.toLowerCase().trim();
+            if (query === lastQuery) return; // 内容未变，跳过
+            lastQuery = query;
+
             const rows = listContainer.querySelectorAll('.twt-mulu-row');
-            rows.forEach(row => {
-                const rowText = (row.getAttribute('data-text') || '').toLowerCase();
-                const fullText = (row.getAttribute('data-full-text') || '').toLowerCase();
-                if (rowText.includes(query) || fullText.includes(query)) {
-                    row.style.display = 'flex';
-                } else {
-                    row.style.display = 'none';
-                }
-            });
-        }, 800); // 延后 800 毫秒（约1秒左右）等待打字结束
+            // 读相位：一次性收集所有匹配结果（不触发布局重排）
+            const show = new Uint8Array(rows.length);
+            for (let i = 0; i < rows.length; i++) {
+                const rowText = (rows[i].getAttribute('data-text') || '').toLowerCase();
+                const fullText = (rows[i].getAttribute('data-full-text') || '').toLowerCase();
+                show[i] = (query === '' || rowText.includes(query) || fullText.includes(query)) ? 1 : 0;
+            }
+            // 写相位：批量修改 display，带脏检查避免不必要的重排
+            for (let i = 0; i < rows.length; i++) {
+                const next = show[i] ? 'flex' : 'none';
+                if (rows[i].style.display !== next) rows[i].style.display = next;
+            }
+        }, 150); // 150ms 防抖；原值 800ms 是卡顿感的直接来源
     });
 
     let isBatchMode = false;

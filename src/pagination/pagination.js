@@ -91,6 +91,9 @@ let focusGuardTimer = null;
 let keyboardRestoreTimer = null;
 let positionLockRaf = null;
 let colWidthRetryTimer = null;
+let stableColWidth = 0;         // Precise step cache after layout stabilizes; 0 = not established
+let lastKnownScrollWidth = 0;   // Last scrollWidth seen by MutationObserver, for streaming detection
+let stableColWidthTimer = null; // Timer to rebuild stableColWidth after streaming ends
 
 // ============================================================
 // 键盘保护：冻结 #chat 高度
@@ -316,9 +319,9 @@ function containOversizedElements() {
         }
     }
 
-    // 越界校正
+    // 越界校正（优先使用稳定步长缓存）
     if (!isTouching) {
-        const cw = getColWidth(chat);
+        const cw = stableColWidth > 0 ? stableColWidth : getColWidth(chat);
         if (cw > 0) {
             const total = Math.round(chat.scrollWidth / cw);
             if (lastUserPage >= total) {
@@ -349,11 +352,17 @@ function getColStep(chat) {
     if (scrollW <= 0) return rawWidth;
     const n = Math.max(1, Math.round(scrollW / rawWidth));
     const calculatedS = scrollW / n;
-    
-    // 防范流式输出中间态：当 AI 逐字生成追加文本时，最后一列尚未填满，
-    // calculatedS 会因为未装满的 scrollW 产生偏差 (> 1.5px)。
-    // 此时强制锁定步长为物理视口宽 rawWidth，防止流式输出期间前面页面整体向左偏移！
-    if (Math.abs(calculatedS - rawWidth) > 1.5) {
+
+    // Streaming intermediate-state detection (replaces the old 1.5px fixed threshold).
+    // Compute what fraction of the last column is filled. In a stable layout the last
+    // column is either ~0% (content ends exactly on a page boundary) or ~100% (about to
+    // overflow into a new column); in both cases calculatedS is the correct exact step.
+    // If the fill ratio falls in the 5%-95% "true middle" range the column is being
+    // streamed into: scrollWidth is a transient value, calculatedS undershoots rawWidth,
+    // so lock onto rawWidth to prevent pages from drifting while AI generates text.
+    const exactColCount = scrollW / rawWidth;
+    const lastColFillRatio = exactColCount - Math.floor(exactColCount);
+    if (lastColFillRatio > 0.05 && lastColFillRatio < 0.95) {
         return rawWidth;
     }
     return calculatedS;
@@ -367,20 +376,21 @@ let scrollUnlockTimer = null;
 
 function scrollToPage(chat, page, cw) {
     if (!chat) return;
-    // 用精确步长计算总页数，避免浮点误差
-    const total = Math.round(chat.scrollWidth / cw);
+    // Prefer the verified stable step cache to avoid streamed-layout drift
+    const step = stableColWidth > 0 ? stableColWidth : cw;
+    const total = Math.round(chat.scrollWidth / step);
     page = Math.max(0, Math.min(page, total - 1));
     lastUserPage = page;
     debouncedSavePaginationPosition();
     isScrolling = true;
 
     clearTimeout(scrollUnlockTimer);
-    // 350ms 超时强制解锁，防止 WebView 未抛出 scrollend 导致 isScrolling 永久死锁
+    // 350ms timeout force-unlock, prevents isScrolling deadlock if scrollend never fires
     scrollUnlockTimer = setTimeout(() => {
         isScrolling = false;
     }, 350);
 
-    chat.scrollTo({ left: page * cw, behavior: 'smooth' });
+    chat.scrollTo({ left: page * step, behavior: 'smooth' });
 }
 
 // ============================================================
@@ -391,14 +401,22 @@ function doSnap(chat) {
     if (!document.body.classList.contains('twt-reading-mode')) return;
     if (document.body.classList.contains('twt-paragraph-editing')) return;
 
-    const cw = getColWidth(chat);
+    // Prefer the stable step cache. When the cache is absent (stableColWidth === 0,
+    // i.e. during streaming) only update lastUserPage; do NOT force-write scrollLeft,
+    // because an unstable cw would jump the page to a wrong position — the root cause
+    // of the "drifts right during streaming, corrects after generation" symptom.
+    const cw = stableColWidth > 0 ? stableColWidth : getColWidth(chat);
     if (cw <= 0) return;
 
     const nearest = Math.round(chat.scrollLeft / cw);
     const expected = nearest * cw;
 
     if (Math.abs(chat.scrollLeft - expected) > 2) {
-        chat.scrollLeft = expected;
+        if (stableColWidth > 0) {
+            // Stable layout: safe to correct scrollLeft
+            chat.scrollLeft = expected;
+        }
+        // Unstable layout (streaming): skip scrollLeft correction, only update lastUserPage below
     }
     lastUserPage = Math.round(chat.scrollLeft / cw);
     isScrolling = false;
@@ -409,13 +427,21 @@ function doSnap(chat) {
 // 列宽初始化：等待 scrollWidth 稳定
 // ============================================================
 function updateColWidth() {
+    stableColWidth = 0; // Invalidate cache; layout is changing
     const chat = getChat();
     if (!chat || !document.body.classList.contains('twt-reading-mode')) return;
     const rawW = chat.getBoundingClientRect().width || chat.clientWidth;
     if (rawW > 0) {
-        // 使用精确视口浮点宽度，保证 CSS column-width 匹配视口真实宽度
+        // Use precise floating-point viewport width so column-width matches the real viewport
         chat.style.setProperty('--twt-col-width', `${rawW}px`, 'important');
         containOversizedElements();
+        // Attempt to immediately rebuild stable step cache
+        const sw = chat.scrollWidth;
+        if (sw > 0) {
+            const n = Math.max(1, Math.round(sw / rawW));
+            stableColWidth = sw / n;
+            lastKnownScrollWidth = sw;
+        }
     }
 }
 
@@ -430,7 +456,7 @@ function updateColWidthWhenReady(retries = 20, interval = 150) {
         return;
     }
 
-    // 等待 scrollWidth 两帧稳定（容差放宽到 2，兼容高 DPI / 子像素渲染）
+    // Wait for scrollWidth to stabilise over two frames (tolerance 2px for HiDPI/subpixel)
     const sw1 = chat.scrollWidth;
     requestAnimationFrame(() => {
         if (!document.body.classList.contains('twt-reading-mode')) return;
@@ -441,14 +467,23 @@ function updateColWidthWhenReady(retries = 20, interval = 150) {
         }
         chat.style.setProperty('--twt-col-width', `${rawW}px`, 'important');
         containOversizedElements();
-        // ③ layout 稳定后恢复阅读位置（P1 核心）
-        // 先异步读取 metadata，再在下一帧安全跳页
+        // Layout verified stable over two frames: establish precise step cache
+        {
+            const sw = chat.scrollWidth;
+            if (sw > 0) {
+                const n = Math.max(1, Math.round(sw / rawW));
+                stableColWidth = sw / n;
+                lastKnownScrollWidth = sw;
+            }
+        }
+        // ③ layout stable: restore reading position (P1 core)
+        // Read metadata async, then jump to saved page in next frame
         restorePaginationPosition().then(savedPage => {
             requestAnimationFrame(() => {
                 if (!document.body.classList.contains('twt-reading-mode')) return;
                 const restoredPage = savedPage > 0 ? savedPage : lastUserPage;
                 if (restoredPage > 0) {
-                    const cw = getColWidth(chat);
+                    const cw = stableColWidth > 0 ? stableColWidth : getColWidth(chat);
                     const total = Math.round(chat.scrollWidth / cw);
                     const page = Math.min(restoredPage, total - 1);
                     lastUserPage = page;
@@ -490,10 +525,31 @@ function initMutationObserver() {
                 }, 200);
                 return;
             }
-            // 暂停观察 → 处理 → 恢复：用 try/finally 确保 observe 必然执行，避免异常导致 observer 永久失效
+            // Pause observer, process, resume. try/finally ensures observe() always runs.
             mutationObserver.disconnect();
             try {
                 containOversizedElements();
+                // Streaming detection: a scrollWidth change means AI is appending to a new column.
+                const currentSW = chat.scrollWidth;
+                if (currentSW !== lastKnownScrollWidth) {
+                    stableColWidth = 0; // Content still growing — invalidate cache
+                    lastKnownScrollWidth = currentSW;
+                    // Schedule a rebuild check: if scrollWidth has not changed again after
+                    // 600 ms (streaming ended), re-establish the stable step cache.
+                    clearTimeout(stableColWidthTimer);
+                    stableColWidthTimer = setTimeout(() => {
+                        const c = getChat();
+                        if (!c || !document.body.classList.contains('twt-reading-mode')) return;
+                        if (c.scrollWidth === lastKnownScrollWidth) {
+                            const rw = c.getBoundingClientRect().width || c.clientWidth;
+                            if (rw > 0) {
+                                const sw2 = c.scrollWidth;
+                                const n2 = Math.max(1, Math.round(sw2 / rw));
+                                stableColWidth = sw2 / n2;
+                            }
+                        }
+                    }, 600);
+                }
             } finally {
                 mutationObserver.observe(chat, MUT_OPTS);
             }
@@ -738,6 +794,9 @@ export function resetPaginationBinding(getSettings) {
     }
 
     lastUserPage = 0;
+    stableColWidth = 0;
+    lastKnownScrollWidth = 0;
+    clearTimeout(stableColWidthTimer);
     isScrolling  = false;
 
     if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null; }
@@ -837,8 +896,9 @@ function bindScrollEvents(getSettings) {
         if (document.body.classList.contains('twt-paragraph-editing')) return;
         if (isFocusGuarding || isKeyboardOpen) return;
 
-        // 无论是否程序滚动，只要滚动位置变化就随时更新 lastUserPage，防止页码死锁
-        const cw = getColWidth(chat);
+        // Update lastUserPage whenever scrollLeft changes (prevents page-number deadlock).
+        // Prefer the stable step cache to avoid wrong rounding during streaming.
+        const cw = stableColWidth > 0 ? stableColWidth : getColWidth(chat);
         if (cw > 0) {
             lastUserPage = Math.round(chat.scrollLeft / cw);
         }
@@ -899,8 +959,8 @@ function bindScrollEvents(getSettings) {
         if (!touchIsHorizontal) return;
 
         const dx  = e.touches[0].clientX - touchStartX;
-        // 使用整数列宽计算最大滚动值，与其他地方保持一致，避免小数累积误差
-        const max = chat.scrollWidth - getColWidth(chat);
+        // Use the stable step (or fallback) to compute the max scroll boundary
+        const max = chat.scrollWidth - (stableColWidth > 0 ? stableColWidth : getColWidth(chat));
         chat.scrollLeft = Math.max(0, Math.min(max, touchStartLeft - dx));
     }, { passive: true, signal });
 
