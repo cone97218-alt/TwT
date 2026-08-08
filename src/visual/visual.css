@@ -1,10 +1,23 @@
+/* =====================================================================
+   visual.css — 视觉模式样式
+   逻辑分层：
+     1. 上下滚动模式  → 边距作用于 .mes
+     2. 翻页模式      → #chat 左右 padding 归零；边距作用于 .mes_text
+     3. 文本排版      → 字号、行高、字间距、字重、缩进、段间距
+     4. 字体覆盖      → 全局自定义字体
+   ===================================================================== */
+
+/* ── 1. 上下滚动模式：左右边距作用于 .mes
+        正数 → padding 向内缩进；负数 → margin 向外扩展文字总宽度 ─── */
 body.twt-visual-mode #chat {
-    padding-top: var(--twt-padding-top, 0px) !important; 
-    padding-bottom: var(--twt-padding-bottom, 60px) !important; 
+    padding-top: var(--twt-padding-top, 0px) !important;
+    padding-bottom: var(--twt-padding-bottom, 60px) !important;
 }
 
-/* 上下滚动模式下边距作用于 .mes（正数内缩 padding，负数外扩拓展文字宽度） */
-body.twt-visual-mode:not(.twt-reading-mode) #chat .mes {
+/* 上下滚动模式：非主题头图排版时，左右边距作用于 .mes
+   正数 → padding 向内缩进；负数 → margin 向外扩展文字总宽度
+   主题头图排版（.twt-avatar-theme-layout）时跳过，避免破坏头图/立绘定位用的 padding！ */
+body.twt-visual-mode:not(.twt-reading-mode):not(.twt-avatar-theme-layout) #chat .mes {
     width: auto !important;
     padding-left: max(0px, var(--twt-padding-left, 15px)) !important;
     padding-right: max(0px, var(--twt-padding-right, 15px)) !important;
@@ -13,14 +26,13 @@ body.twt-visual-mode:not(.twt-reading-mode) #chat .mes {
     box-sizing: border-box !important;
 }
 
-/* 翻页阅读模式下：#chat 容器决不能加左右 padding（否则会缩减多列内容宽导致一屏出现两个半页！） */
+/* ── 2. 翻页模式：#chat 左右 padding 必须为 0（否则缩减多列列宽导致半页偏移！） ── */
 body.twt-reading-mode #chat {
     padding-left: 0 !important;
     padding-right: 0 !important;
 }
 
-/* 翻页+视觉模式：仅在非主题头像排版时重置 .mes 内边距/外边距；
-   若为主题头像排版 (.twt-avatar-theme-layout)，必须保留主题定义的头图 padding-top/bottom 与 margin！ */
+/* 翻页+视觉：非主题头图排版时，归零 .mes 的 padding/margin（主题排版必须保留头图高度！） */
 body.twt-reading-mode.twt-visual-mode:not(.twt-avatar-theme-layout) #chat .mes {
     padding-left: 0 !important;
     padding-right: 0 !important;
@@ -30,8 +42,9 @@ body.twt-reading-mode.twt-visual-mode:not(.twt-avatar-theme-layout) #chat .mes {
     margin-bottom: 0 !important;
 }
 
-/* 翻页+视觉模式：在 .mes_text 上应用视觉模块设置的左右边距（width: auto 允许 negative margin 双向拓宽文字换行宽度） */
-body.twt-reading-mode.twt-visual-mode #chat .mes_text {
+/* 翻页+视觉：非主题头图排版时，左右边距作用于 .mes_text
+   （width: auto 解锁右侧换行边界，使负值能向右真实拓宽文字区域） */
+body.twt-reading-mode.twt-visual-mode:not(.twt-avatar-theme-layout) #chat .mes_text {
     width: auto !important;
     padding-left: max(0px, var(--twt-padding-left, 15px)) !important;
     padding-right: max(0px, var(--twt-padding-right, 15px)) !important;
@@ -40,12 +53,15 @@ body.twt-reading-mode.twt-visual-mode #chat .mes_text {
     box-sizing: border-box !important;
 }
 
-/* 视觉模式文本基础属性设置 (字号、行高、字间距) */
+/* ── 3. 文本排版属性 ────────────────────────────────────────────────── */
+
+/* .mes_text 容器本身：字号、行高、对齐、字间距、字重、换行策略 */
 body.twt-visual-mode #chat .mes_text {
     font-size: var(--twt-font-size, 16px) !important;
     line-height: var(--twt-line-height, 1.6) !important;
     text-align: var(--twt-text-align, left) !important;
     letter-spacing: var(--twt-letter-spacing, 0px) !important;
+    font-weight: var(--twt-font-weight, normal) !important;
     text-align-last: left !important;
     text-justify: inter-character !important;
     word-break: break-all !important;
@@ -53,22 +69,31 @@ body.twt-visual-mode #chat .mes_text {
     line-break: strict !important;
 }
 
-/* 仅对常规段落与文本节点应用继承字号行高，避免覆盖 code / pre 等块 */
-body.twt-visual-mode #chat .mes_text :where(p, div, span, li, td, th, q):not(code):not(code *):not(pre *):not(blockquote *):not(.name_text):not(.mesIDDisplay):not(.timestamp):not(.tokenCounterDisplay) {
+/* .mes_text 内所有子节点：继承字号、行高、字间距并覆盖字重变量；
+   排除：代码块 / 引用 / 主题定位标签（这些需保留其自身样式） */
+body.twt-visual-mode #chat .mes_text *:not(code):not(pre):not(blockquote):not(.name_text):not(.mesIDDisplay):not(.timestamp):not(.tokenCounterDisplay) {
     font-size: inherit;
     line-height: inherit;
     letter-spacing: inherit;
-}
-
-/* 🌟 恢复提交 0e737da 之前完全有效的全节点字重覆盖规则：
-   直接对 .mes_text 及内部所有文本节点覆盖 font-weight 变量，
-   并精准排除加粗 (strong/b)、代码块 (code/pre)、引用 (blockquote) 与主题定位标签 */
-body.twt-visual-mode #chat .mes_text,
-body.twt-visual-mode #chat .mes_text *:not(strong):not(strong *):not(b):not(b *):not(code):not(code *):not(pre *):not(blockquote *):not(.name_text):not(.mesIDDisplay):not(.timestamp):not(.tokenCounterDisplay) {
     font-weight: var(--twt-font-weight, normal) !important;
 }
 
-/* 两端对齐模式下，防止 <br> 换行前仅有短句（如双引号对话）被强制拉伸字间距填满整行 */
+/* 代码块 / 引用内部子元素：不覆盖字重，让浏览器默认或主题样式生效 */
+body.twt-visual-mode #chat .mes_text code *,
+body.twt-visual-mode #chat .mes_text pre *,
+body.twt-visual-mode #chat .mes_text blockquote * {
+    font-weight: initial;
+}
+
+/* Markdown 粗体（**文本**）：始终保持 bold，后置规则优先级高于上方 */
+body.twt-visual-mode #chat .mes_text strong,
+body.twt-visual-mode #chat .mes_text strong *,
+body.twt-visual-mode #chat .mes_text b,
+body.twt-visual-mode #chat .mes_text b * {
+    font-weight: bold !important;
+}
+
+/* 两端对齐时：防止 <br> 前的短句被强制拉伸字间距填满整行 */
 body.twt-visual-mode #chat .mes_text br {
     display: block !important;
     content: "" !important;
@@ -77,29 +102,22 @@ body.twt-visual-mode #chat .mes_text br {
     padding: 0 !important;
 }
 
-/* 确保粗体（包括粗体+斜体组合）依然保持加粗 */
-body.twt-visual-mode #chat .mes_text strong,
-body.twt-visual-mode #chat .mes_text strong *,
-body.twt-visual-mode #chat .mes_text b,
-body.twt-visual-mode #chat .mes_text b * {
-    font-weight: bold !important;
-}
-
-/* 首行缩进：仅作用于 <p> 标签段落 */
+/* 首行缩进（仅 <p> 段落） */
 body.twt-visual-mode #chat .mes_text p {
     text-indent: var(--twt-text-indent, 0em);
 }
 
-/* 段落间距：仅当显式设置了段落间距变量（>0）时才覆盖，避免将主题默认段间距强行清零 */
+/* 段落间距（仅在用户显式设置 > 0 时生效，避免将主题默认间距强行清零） */
 body.twt-visual-mode #chat[style*="--twt-paragraph-spacing"] .mes_text p {
     margin-bottom: var(--twt-paragraph-spacing) !important;
 }
 
+/* ── 4. 杂项 ────────────────────────────────────────────────────────── */
 .twt-collapsible-icon.rotated {
     transform: rotate(180deg);
 }
 
-/* 视觉模式下全局最高优先级字体覆盖（避让图标元素） */
+/* 全局自定义字体覆盖（避让 FontAwesome / Material Icons 图标元素） */
 body.twt-visual-mode.twt-custom-font-active *:not(i):not([class*="fa-"]):not([class*="material-"]):not(.fa):not(.fas):not(.far):not(.fal):not(.fab):not(.fad):not(.fa-solid):not(.fa-regular):not(.fa-brands):not(.material-icons):not([class*="material-symbols"]):not([style*="FontAwesome"]):not([style*="Font Awesome"]):not([style*="Material"]) {
     font-family: var(--twt-global-font-family) !important;
 }

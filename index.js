@@ -877,8 +877,16 @@ function getGlobalThemes() {
 }
 
 function initThemeLinkListener() {
-    const handleThemeChange = (themeVal) => {
+    const handleThemeChange = (themeVal, isStartup = false) => {
         if (!themeVal) return;
+
+        // 如果是页面刷新启动阶段，且当前主题与上次活跃主题一致，避开 DOM 节点默认 Option 值的临时误触发，直接保护已保存的 currentPreset
+        if (isStartup) {
+            const savedLastTheme = extension_settings.twt.lastActiveTheme;
+            if (savedLastTheme && themeVal === savedLastTheme) {
+                return;
+            }
+        }
         
         // 优先检查直接主题关联
         const themeLinks = extension_settings.twt.presetThemeLinks || {};
@@ -902,9 +910,13 @@ function initThemeLinkListener() {
                 console.error('[TwT] 获取主题关联标签失败:', err);
             }
         }
+
+        // 记录最新生效的主题名称
+        extension_settings.twt.lastActiveTheme = themeVal;
+        getContext().saveSettingsDebounced();
         
         if (targetPreset && extension_settings.twt.visualPresets[targetPreset]) {
-            logWork(`载入关联预设 [${targetPreset}]`);
+            logWork(`检测到主题 [${themeVal}] 关联预设，载入预设 [${targetPreset}]`);
             extension_settings.twt.currentPreset = targetPreset;
             $('#twt_visual_preset').val(targetPreset);
             applyPreset(targetPreset);
@@ -914,7 +926,7 @@ function initThemeLinkListener() {
     const themeSelect = parentDoc.getElementById('themes');
     if (themeSelect) {
         $(themeSelect).off('change.twt').on('change.twt', function() {
-            handleThemeChange($(this).val());
+            handleThemeChange($(this).val(), false);
             // 切换主题时，实时重新计算不透明背景色并多次延迟重试以确保 CSS 变量已写入
             updateCommentsBgSolid();
             setTimeout(updateCommentsBgSolid, 100);
@@ -922,10 +934,13 @@ function initThemeLinkListener() {
         });
     }
 
-    // Check initial active theme on startup
-    if (themeSelect && $(themeSelect).val()) {
-        handleThemeChange($(themeSelect).val());
-    }
+    // 页面刷新启动时，延迟等待 SillyTavern 完整写入真正的已选主题值
+    setTimeout(() => {
+        const themeSelect = parentDoc.getElementById('themes');
+        if (themeSelect && $(themeSelect).val()) {
+            handleThemeChange($(themeSelect).val(), true);
+        }
+    }, 600);
 
     // 监听 themeManager 标签变化事件，以重新计算关联预设
     const registerTagListener = () => {
