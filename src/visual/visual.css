@@ -56,11 +56,12 @@ body.twt-visual-mode #chat .mes_text {
     line-break: strict !important;
 }
 
-/* 仅对常规段落与文本节点生效，避开代码块、引用、美化定位标签等 */
-body.twt-visual-mode #chat .mes_text :where(p, div, span, li, td, th):not(code):not(code *):not(pre *):not(blockquote *):not(q *):not(.name_text):not(.mesIDDisplay):not(.timestamp):not(.tokenCounterDisplay) {
+/* 仅对常规段落与文本节点生效，避开粗体、代码块、引用、美化定位标签等 */
+body.twt-visual-mode #chat .mes_text :where(p, div, span, li, td, th):not(strong):not(strong *):not(b):not(b *):not(code):not(code *):not(pre *):not(blockquote *):not(q *):not(.name_text):not(.mesIDDisplay):not(.timestamp):not(.tokenCounterDisplay) {
     font-size: inherit;
     line-height: inherit;
     letter-spacing: inherit;
+    font-weight: inherit !important;
 }
 
 /* 两端对齐模式下，防止 <br> 换行前仅有短句（如双引号对话）被强制拉伸字间距填满整行 */
