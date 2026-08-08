@@ -27,9 +27,8 @@ body.twt-reading-mode.twt-visual-mode:not(.twt-avatar-theme-layout) #chat .mes {
     margin-bottom: 0 !important;
 }
 
-/* 翻页+视觉模式：非主题排版下在 .mes_text 上应用左右边距；
-   主题排版下避免强行覆盖 .mes_block / .mes_text 的美化边距 padding */
-body.twt-reading-mode.twt-visual-mode:not(.twt-avatar-theme-layout) #chat .mes_text {
+/* 翻页+视觉模式：在 .mes_text 上应用视觉模块设置的左右边距，使左右边距滑块在翻页阅读模式下（包含主题排版模式）依然能够正常控制文字边距 */
+body.twt-reading-mode.twt-visual-mode #chat .mes_text {
     padding-left: var(--twt-padding-left, 15px) !important;
     padding-right: var(--twt-padding-right, 15px) !important;
     box-sizing: border-box !important;
