@@ -260,6 +260,7 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
         'menuOptSwipe',
         'menuOptManage',
         'menuOptEdit',
+        'menuOptRealign',
         'menuOptNewChat',
         'menuOptCloseChat',
         'menuOptExcerpt',
@@ -455,6 +456,19 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
                 icon: 'fa-solid fa-comments',
                 isGridItem: false,
                 onClick: () => $('#option_start_new_chat').trigger('click')
+            });
+        }
+
+        if (key === 'menuOptRealign' && settings.menuOptRealign) {
+            appendMenuItem({
+                label: '翻页归正',
+                shortLabel: '归正',
+                icon: 'fa-solid fa-arrows-to-dot',
+                isGridItem: true,
+                onClick: async () => {
+                    const { realignPagination } = await import('../pagination/pagination.js');
+                    realignPagination(true);
+                }
             });
         }
 

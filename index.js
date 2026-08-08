@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
-import { applyPaginationMode, initPaginationEvent, resetPaginationBinding } from './src/pagination/pagination.js';
+import { applyPaginationMode, initPaginationEvent, resetPaginationBinding, realignPagination } from './src/pagination/pagination.js';
 import { applyVisualMode } from './src/visual/visual.js';
 import { initMulu, applyMuluSettings } from './src/mulu/mulu.js';
 import { initMenu, applyMenuMode, applyFullscreenMode } from './src/menu/menu.js';
@@ -102,6 +102,7 @@ const defaultSettings = {
     menuOptSwipe: true,
     menuOptManage: true,
     menuOptEdit: true,
+    menuOptRealign: true,
     paragraphToolbarBottom: 15,
     paragraphIconSize: 20,
     paragraphXmlWhitelist: 'thought, TavernThought, reasoning, details',
@@ -122,6 +123,7 @@ const defaultSettings = {
         'menuOptSwipe',
         'menuOptManage',
         'menuOptEdit',
+        'menuOptRealign',
         'menuOptNewChat',
         'menuOptCloseChat',
         'menuOptExcerpt',
@@ -1037,6 +1039,7 @@ function bindUI() {
     const $menuOptPurifierDiff = $('#twt_menu_opt_purifier_diff');
     const $menuOptNewChat = $('#twt_menu_opt_new_chat');
     const $menuOptCloseChat = $('#twt_menu_opt_close_chat');
+    const $menuOptRealign = $('#twt_menu_opt_realign');
     const $menuOptPromptViewer = $('#twt_menu_opt_prompt_viewer');
     const $menuOptScreenshot = $('#twt_menu_opt_screenshot');
     const $menuStyle = $('#twt_menu_style');
@@ -1089,6 +1092,7 @@ function bindUI() {
     $menuOptPurifierDiff.prop('checked', extension_settings.twt.menuOptPurifierDiff);
     $menuOptNewChat.prop('checked', extension_settings.twt.menuOptNewChat);
     $menuOptCloseChat.prop('checked', extension_settings.twt.menuOptCloseChat);
+    $menuOptRealign.prop('checked', extension_settings.twt.menuOptRealign !== false);
     $menuOptPromptViewer.prop('checked', extension_settings.twt.menuOptPromptViewer);
     $menuOptScreenshot.prop('checked', extension_settings.twt.menuOptScreenshot !== false);
     $menuStyle.val(extension_settings.twt.menuStyle || 'grid');
@@ -1900,6 +1904,16 @@ function bindUI() {
         getContext().saveSettingsDebounced();
     });
 
+    $menuOptRealign.on('change', function () {
+        extension_settings.twt.menuOptRealign = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+    });
+
+    $('#twt_realign_now_btn').on('click', function (e) {
+        e.preventDefault();
+        realignPagination(true);
+    });
+
     $menuOptPromptViewer.on('change', function () {
         extension_settings.twt.menuOptPromptViewer = $(this).prop('checked');
         getContext().saveSettingsDebounced();
@@ -2214,6 +2228,7 @@ function renderMenuOrderList() {
         'menuOptSwipe',
         'menuOptManage',
         'menuOptEdit',
+        'menuOptRealign',
         'menuOptNewChat',
         'menuOptCloseChat',
         'menuOptExcerpt',
@@ -2229,6 +2244,7 @@ function renderMenuOrderList() {
         menuOptSwipe: '滑动',
         menuOptManage: '管理消息',
         menuOptEdit: '分段编辑',
+        menuOptRealign: '翻页归正',
         menuOptNewChat: '新对话',
         menuOptCloseChat: '关闭',
         menuOptExcerpt: '摘抄',

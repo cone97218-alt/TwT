@@ -218,6 +218,18 @@
                             <label for="twt_menu_opt_close_chat">关闭</label>
                             <input type="checkbox" id="twt_menu_opt_close_chat" />
                         </div>
+                        <div class="twt-setting-row"
+                            style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                            <label for="twt_menu_opt_realign" title="在长按菜单中显示翻页归正功能，修正多列网格向左累积偏移">翻页归正 (修正多列排版向左偏移)</label>
+                            <input type="checkbox" id="twt_menu_opt_realign" />
+                        </div>
+                        <div class="twt-setting-row"
+                            style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding-top: 4px; border-top: 1px dashed var(--SmartThemeBorderColor);">
+                            <span style="font-size: 0.9em; opacity: 0.85;">手动触发翻页多列网格诊断与归正</span>
+                            <button id="twt_realign_now_btn" class="menu_button" style="padding: 3px 10px; font-size: 0.85em; display: inline-flex !important; align-items: center !important; gap: 4px !important;">
+                                <i class="fa-solid fa-arrows-to-dot"></i> 立即归正
+                            </button>
+                        </div>
                     </div>
                 </div>
 

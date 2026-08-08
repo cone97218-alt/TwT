@@ -774,6 +774,87 @@ export function setLastUserPage(page) {
     lastUserPage = page;
 }
 
+/**
+ * 核心归正功能：诊断向左偏移偏差，重新校准多列布局网格，并重置 scrollLeft
+ * @param {boolean} verbose 是否弹出 Toast 提示与打印控制台诊断日志
+ * @returns {object|null} 返回归正前后的物理偏差诊断报告
+ */
+export function realignPagination(verbose = true) {
+    const chat = getChat();
+    if (!chat || !document.body.classList.contains('twt-reading-mode')) {
+        if (verbose && typeof toastr !== 'undefined') {
+            toastr.info('当前未处于翻页阅读模式，无需归正。', '翻页归正');
+        }
+        return null;
+    }
+
+    // 1. 采集归正前的精准物理数据
+    const rawW = chat.getBoundingClientRect().width || chat.clientWidth || 0;
+    const scrollW = chat.scrollWidth || 0;
+    const currentScrollLeft = chat.scrollLeft;
+    const currentPage = lastUserPage;
+
+    const calcStep = getColStep(chat);
+    const expectedScrollLeft = currentPage * (stableColWidth > 0 ? stableColWidth : calcStep);
+    const offsetDelta = currentScrollLeft - expectedScrollLeft;
+    const subpixelDrift = (currentScrollLeft % (calcStep || 1)).toFixed(3);
+    const totalPages = calcStep > 0 ? Math.round(scrollW / calcStep) : 1;
+
+    const report = {
+        currentPage,
+        totalPages,
+        currentScrollLeft: Number(currentScrollLeft.toFixed(2)),
+        expectedScrollLeft: Number(expectedScrollLeft.toFixed(2)),
+        offsetDelta: Number(offsetDelta.toFixed(2)),
+        subpixelDrift: Number(subpixelDrift),
+        colWidth: Number(calcStep.toFixed(2)),
+        scrollWidth: scrollW,
+        viewportWidth: rawW
+    };
+
+    // 2. 诊断日志输出
+    const logMsg = `🔍 翻页偏移诊断：当前页 [${currentPage + 1}/${totalPages}]，` +
+                   `实际 ScrollLeft: ${currentScrollLeft.toFixed(2)}px，` +
+                   `理论 ScrollLeft: ${expectedScrollLeft.toFixed(2)}px，` +
+                   `偏移偏差: ${offsetDelta > 0 ? '+' : ''}${offsetDelta.toFixed(2)}px ` +
+                   `(亚像素漂移: ${subpixelDrift}px, 单列宽: ${calcStep.toFixed(2)}px)`;
+    console.log('[TwT] ' + logMsg);
+
+    // 3. 执行物理归正重置
+    stableColWidth = 0;
+    lastKnownScrollWidth = 0;
+    clearTimeout(stableColWidthTimer);
+
+    if (rawW > 0) {
+        chat.style.setProperty('--twt-col-width', `${rawW}px`, 'important');
+    }
+
+    containOversizedElements();
+
+    const newSw = chat.scrollWidth;
+    if (newSw > 0 && rawW > 0) {
+        const n = Math.max(1, Math.round(newSw / rawW));
+        stableColWidth = newSw / n;
+        lastKnownScrollWidth = newSw;
+    }
+
+    const finalStep = stableColWidth > 0 ? stableColWidth : calcStep;
+    const finalMaxPage = finalStep > 0 ? Math.max(0, Math.round(newSw / finalStep) - 1) : 0;
+    const targetPage = Math.min(currentPage, finalMaxPage);
+    lastUserPage = targetPage;
+
+    // 物理强行归正对齐
+    chat.scrollLeft = targetPage * finalStep;
+
+    // 4. 用户 Toast 反馈
+    if (verbose && typeof toastr !== 'undefined') {
+        const absDelta = Math.abs(offsetDelta).toFixed(1);
+        toastr.success(`翻页网格已完成归正！(偏移偏差: ${offsetDelta > 0 ? '+' : ''}${absDelta}px → 归正为 0.00px)`, '翻页归正');
+    }
+
+    return report;
+}
+
 // ============================================================
 // resetPaginationBinding：切换聊天时重置并重绑定
 // ============================================================
