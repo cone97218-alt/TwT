@@ -5,7 +5,7 @@ body.twt-visual-mode #chat {
 
 /* 上下滚动模式下边距作用于 .mes（正数内缩 padding，负数外扩拓展文字宽度） */
 body.twt-visual-mode:not(.twt-reading-mode) #chat .mes {
-    width: calc(100% - min(0px, var(--twt-padding-left, 0px)) - min(0px, var(--twt-padding-right, 0px))) !important;
+    width: auto !important;
     padding-left: max(0px, var(--twt-padding-left, 15px)) !important;
     padding-right: max(0px, var(--twt-padding-right, 15px)) !important;
     margin-left: min(0px, var(--twt-padding-left, 0px)) !important;
@@ -30,9 +30,9 @@ body.twt-reading-mode.twt-visual-mode:not(.twt-avatar-theme-layout) #chat .mes {
     margin-bottom: 0 !important;
 }
 
-/* 翻页+视觉模式：在 .mes_text 上应用视觉模块设置的左右边距（正数内缩 padding，负数外扩拓展文字宽度） */
+/* 翻页+视觉模式：在 .mes_text 上应用视觉模块设置的左右边距（width: auto 允许 negative margin 双向拓宽文字换行宽度） */
 body.twt-reading-mode.twt-visual-mode #chat .mes_text {
-    width: calc(100% - min(0px, var(--twt-padding-left, 0px)) - min(0px, var(--twt-padding-right, 0px))) !important;
+    width: auto !important;
     padding-left: max(0px, var(--twt-padding-left, 15px)) !important;
     padding-right: max(0px, var(--twt-padding-right, 15px)) !important;
     margin-left: min(0px, var(--twt-padding-left, 0px)) !important;
