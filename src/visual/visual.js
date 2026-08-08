@@ -13,7 +13,7 @@ export function applyVisualMode(enabled, settings) {
             chatContainer.style.setProperty('--twt-text-align', `${settings.textAlign ?? 'left'}`, 'important');
 
             const pSpacing = Number(settings.paragraphSpacing);
-            if (!isNaN(pSpacing) && pSpacing > 0) {
+            if (!isNaN(pSpacing) && settings.paragraphSpacing !== '' && settings.paragraphSpacing !== null && settings.paragraphSpacing !== undefined) {
                 chatContainer.style.setProperty('--twt-paragraph-spacing', `${pSpacing}px`, 'important');
             } else {
                 chatContainer.style.removeProperty('--twt-paragraph-spacing');

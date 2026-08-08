@@ -2001,7 +2001,12 @@ function bindUI() {
 
     $paragraphSpacing.on('input', function () {
         const val = parseFloat($paragraphSpacing.val());
-        if (!isNaN(val)) { extension_settings.twt.paragraphSpacing = val; handleVisualChange(); }
+        if (!isNaN(val)) {
+            extension_settings.twt.paragraphSpacing = val;
+        } else {
+            delete extension_settings.twt.paragraphSpacing;
+        }
+        handleVisualChange();
     });
 
     $letterSpacing.on('input', function () {
