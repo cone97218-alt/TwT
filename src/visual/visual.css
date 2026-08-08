@@ -3,14 +3,17 @@ body.twt-visual-mode #chat {
     padding-bottom: var(--twt-padding-bottom, 60px) !important; 
 }
 
-/* 上下滚动模式下边距作用于 .mes */
+/* 上下滚动模式下边距作用于 .mes（正数内缩 padding，负数外扩拓展文字宽度） */
 body.twt-visual-mode:not(.twt-reading-mode) #chat .mes {
-    padding-left: var(--twt-padding-left, 15px) !important;
-    padding-right: var(--twt-padding-right, 15px) !important;
+    width: calc(100% - min(0px, var(--twt-padding-left, 0px)) - min(0px, var(--twt-padding-right, 0px))) !important;
+    padding-left: max(0px, var(--twt-padding-left, 15px)) !important;
+    padding-right: max(0px, var(--twt-padding-right, 15px)) !important;
+    margin-left: min(0px, var(--twt-padding-left, 0px)) !important;
+    margin-right: min(0px, var(--twt-padding-right, 0px)) !important;
+    box-sizing: border-box !important;
 }
 
-/* 翻页阅读模式下：#chat 容器决不能加左右 padding（否则会缩减多列内容宽导致一屏出现两个半页！），
-   左右边距加在 .mes_text 上，使每页文字两侧拥有一致对称的 15px 边距 */
+/* 翻页阅读模式下：#chat 容器决不能加左右 padding（否则会缩减多列内容宽导致一屏出现两个半页！） */
 body.twt-reading-mode #chat {
     padding-left: 0 !important;
     padding-right: 0 !important;
@@ -27,10 +30,13 @@ body.twt-reading-mode.twt-visual-mode:not(.twt-avatar-theme-layout) #chat .mes {
     margin-bottom: 0 !important;
 }
 
-/* 翻页+视觉模式：在 .mes_text 上应用视觉模块设置的左右边距，使左右边距滑块在翻页阅读模式下（包含主题排版模式）依然能够正常控制文字边距 */
+/* 翻页+视觉模式：在 .mes_text 上应用视觉模块设置的左右边距（正数内缩 padding，负数外扩拓展文字宽度） */
 body.twt-reading-mode.twt-visual-mode #chat .mes_text {
-    padding-left: var(--twt-padding-left, 15px) !important;
-    padding-right: var(--twt-padding-right, 15px) !important;
+    width: calc(100% - min(0px, var(--twt-padding-left, 0px)) - min(0px, var(--twt-padding-right, 0px))) !important;
+    padding-left: max(0px, var(--twt-padding-left, 15px)) !important;
+    padding-right: max(0px, var(--twt-padding-right, 15px)) !important;
+    margin-left: min(0px, var(--twt-padding-left, 0px)) !important;
+    margin-right: min(0px, var(--twt-padding-right, 0px)) !important;
     box-sizing: border-box !important;
 }
 
