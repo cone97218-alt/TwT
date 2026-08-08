@@ -865,6 +865,15 @@ function cleanOldLogs() {
 // 每过半小时自动清理日志
 setInterval(cleanOldLogs, 30 * 60 * 1000);
 
+// 统一归一化主题名称（擦除二级文件夹路径、Windows/Linux斜杠差异与 .json 后缀）
+function normalizeThemeName(name) {
+    if (!name) return '';
+    return String(name)
+        .replace(/^.*[\\/]/, '')
+        .replace(/\.json$/i, '')
+        .trim();
+}
+
 function getGlobalThemes() {
     const themes = [];
     const themeSelect = parentDoc.getElementById('themes');
@@ -876,47 +885,65 @@ function getGlobalThemes() {
     return themes;
 }
 
+function findLinkedPreset(themeVal) {
+    if (!themeVal) return null;
+    const themeLinks = extension_settings.twt.presetThemeLinks || {};
+    
+    // 1. 尝试原始路径直接匹配
+    if (themeLinks[themeVal]) return themeLinks[themeVal];
+
+    // 2. 尝试归一化纯文件名匹配（兼容二级文件夹路径如 "Subfolder/ThemeA.json" 与 "ThemeA"）
+    const norm = normalizeThemeName(themeVal);
+    for (const [linkThemeKey, presetName] of Object.entries(themeLinks)) {
+        if (normalizeThemeName(linkThemeKey) === norm) {
+            return presetName;
+        }
+    }
+
+    // 3. 尝试 themeManager 标签关联
+    if (window.themeManager) {
+        try {
+            const tagIds = window.themeManager.getThemeTags(themeVal) || window.themeManager.getThemeTags(norm);
+            if (tagIds && tagIds.length > 0) {
+                const tagLinks = extension_settings.twt.presetTagLinks || {};
+                for (const tagId of tagIds) {
+                    if (tagLinks[tagId] && extension_settings.twt.visualPresets[tagLinks[tagId]]) {
+                        return tagLinks[tagId];
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('[TwT] 获取主题关联标签失败:', err);
+        }
+    }
+
+    return null;
+}
+
 function initThemeLinkListener() {
     const handleThemeChange = (themeVal, isStartup = false) => {
         if (!themeVal) return;
 
-        // 如果是页面刷新启动阶段，且当前主题与上次活跃主题一致，避开 DOM 节点默认 Option 值的临时误触发，直接保护已保存的 currentPreset
-        if (isStartup) {
-            const savedLastTheme = extension_settings.twt.lastActiveTheme;
-            if (savedLastTheme && themeVal === savedLastTheme) {
-                return;
-            }
+        const normTheme = normalizeThemeName(themeVal);
+        const normSavedLastTheme = normalizeThemeName(extension_settings.twt.lastActiveTheme);
+
+        // 如果是页面刷新启动阶段，且归一化主题名称与上次一致，说明主题未真正切换
+        // 直接保护用户当前已加载的 currentPreset，不被 DOM 初始 Option 干扰
+        if (isStartup && normSavedLastTheme && normTheme === normSavedLastTheme) {
+            return;
         }
         
-        // 优先检查直接主题关联
-        const themeLinks = extension_settings.twt.presetThemeLinks || {};
-        let targetPreset = themeLinks[themeVal];
-        
-        // 如果没有直接关联且 themeManager 可用，检查该主题绑定的标签关联
-        if (!targetPreset && window.themeManager) {
-            try {
-                const tagIds = window.themeManager.getThemeTags(themeVal);
-                if (tagIds && tagIds.length > 0) {
-                    const tagLinks = extension_settings.twt.presetTagLinks || {};
-                    for (const tagId of tagIds) {
-                        if (tagLinks[tagId] && extension_settings.twt.visualPresets[tagLinks[tagId]]) {
-                            targetPreset = tagLinks[tagId];
-                            logWork(`检测到主题 [${themeVal}] 绑定了标签 [${tagId}]，触发关联预设 [${targetPreset}]`);
-                            break;
-                        }
-                    }
-                }
-            } catch (err) {
-                console.error('[TwT] 获取主题关联标签失败:', err);
-            }
-        }
+        const targetPreset = findLinkedPreset(themeVal);
 
         // 记录最新生效的主题名称
         extension_settings.twt.lastActiveTheme = themeVal;
         getContext().saveSettingsDebounced();
         
         if (targetPreset && extension_settings.twt.visualPresets[targetPreset]) {
-            logWork(`检测到主题 [${themeVal}] 关联预设，载入预设 [${targetPreset}]`);
+            if (isStartup && extension_settings.twt.currentPreset === targetPreset) {
+                return;
+            }
+            logWork(`检测到主题 [${normTheme}] 关联预设，载入预设 [${targetPreset}]`);
             extension_settings.twt.currentPreset = targetPreset;
             $('#twt_visual_preset').val(targetPreset);
             applyPreset(targetPreset);
