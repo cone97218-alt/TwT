@@ -47,7 +47,6 @@ body.twt-reading-mode #chat::-webkit-scrollbar {
     display: none;
 }
 
-/* 对 #chat 的所有直接子元素进行宽度和边距归一化，防止系统消息、输入指示器等其他元素破坏列对齐，同时消除 margin 在 WebKit 多列布局下的断页偏移 Bug */
 /* 对 #chat 的所有直接子元素进行宽度和排版归一化，消除 margin 在 WebKit 多列布局下的断页偏移 Bug */
 body.twt-reading-mode #chat > * {
     width: 100% !important;
