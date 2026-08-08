@@ -69,12 +69,13 @@ body.twt-visual-mode #chat .mes_text {
     line-break: strict !important;
 }
 
-/* .mes_text 内所有子节点：继承字号、行高、字间距并覆盖字重变量；
-   排除：代码块 / 引用 / 主题定位标签（这些需保留其自身样式） */
+/* .mes_text 内所有子节点：强行继承并覆盖字号、行高 (!important)、字间距与字重，
+   彻底突破美化主题在 p 标签上设置的 line-height !important 锁定；
+   排除：代码块 / 引用 / 主题定位标签 */
 body.twt-visual-mode #chat .mes_text *:not(code):not(pre):not(blockquote):not(.name_text):not(.mesIDDisplay):not(.timestamp):not(.tokenCounterDisplay) {
-    font-size: inherit;
-    line-height: inherit;
-    letter-spacing: inherit;
+    font-size: inherit !important;
+    line-height: inherit !important;
+    letter-spacing: inherit !important;
     font-weight: var(--twt-font-weight, normal) !important;
 }
 
