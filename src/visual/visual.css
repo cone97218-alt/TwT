@@ -41,8 +41,7 @@ body.twt-reading-mode.twt-visual-mode #chat .mes_text {
 }
 
 /* 视觉模式文本格式设置：
-   避免使用 * 全局通配符 + !important，防止破坏代码块 (code/pre)、引用 (blockquote/q)、
-   斜体 (em)、标题 (h1-h6) 以及主题定位标签 (.name_text, .mesIDDisplay 等) 的特殊字号与排版 */
+   避免使用 * 全局通配符 + !important，防止破坏代码块 (code/pre)、引用 (blockquote) 以及主题定位标签 (.name_text, .mesIDDisplay 等) */
 body.twt-visual-mode #chat .mes_text {
     font-size: var(--twt-font-size, 16px) !important;
     line-height: var(--twt-line-height, 1.6) !important;
@@ -58,13 +57,14 @@ body.twt-visual-mode #chat .mes_text {
     line-break: strict !important;
 }
 
-/* 对常规段落与文本节点直接覆盖 font-weight 变量，并开启 font-synthesis 字体合成（兼容单字重自定义网络字体） */
+/* 对常规段落与对话文本节点直接覆盖 font-weight 变量 */
 body.twt-visual-mode #chat .mes_text p,
 body.twt-visual-mode #chat .mes_text div,
 body.twt-visual-mode #chat .mes_text span,
 body.twt-visual-mode #chat .mes_text li,
 body.twt-visual-mode #chat .mes_text td,
-body.twt-visual-mode #chat .mes_text th {
+body.twt-visual-mode #chat .mes_text th,
+body.twt-visual-mode #chat .mes_text q {
     font-size: inherit;
     line-height: inherit;
     letter-spacing: inherit;
@@ -73,20 +73,40 @@ body.twt-visual-mode #chat .mes_text th {
     -webkit-font-synthesis: weight !important;
 }
 
-/* 避开代码块、引用与主题自定定位标签的粗细覆盖 */
+/* 兼容单字重自定义网络字体：当选择 500/600/bold/700/800/900 时，给文本额外注入极细微的描边，确保所有单字重 WebFont 都能产生强烈的粗体变化 */
+body.twt-visual-mode #chat[style*="--twt-font-weight: 500"] .mes_text,
+body.twt-visual-mode #chat[style*="--twt-font-weight: 600"] .mes_text,
+body.twt-visual-mode #chat[style*="--twt-font-weight: bold"] .mes_text,
+body.twt-visual-mode #chat[style*="--twt-font-weight: 700"] .mes_text {
+    -webkit-text-stroke: 0.35px currentColor;
+}
+
+body.twt-visual-mode #chat[style*="--twt-font-weight: 800"] .mes_text,
+body.twt-visual-mode #chat[style*="--twt-font-weight: 900"] .mes_text {
+    -webkit-text-stroke: 0.65px currentColor;
+}
+
+body.twt-visual-mode #chat[style*="--twt-font-weight: normal"] .mes_text,
+body.twt-visual-mode #chat[style*="--twt-font-weight: 400"] .mes_text,
+body.twt-visual-mode #chat[style*="--twt-font-weight: 300"] .mes_text,
+body.twt-visual-mode #chat[style*="--twt-font-weight: 200"] .mes_text,
+body.twt-visual-mode #chat[style*="--twt-font-weight: 100"] .mes_text {
+    -webkit-text-stroke: 0px transparent !important;
+}
+
+/* 避开代码块、引用与主题自定定位标签 */
 body.twt-visual-mode #chat .mes_text code,
 body.twt-visual-mode #chat .mes_text code *,
 body.twt-visual-mode #chat .mes_text pre,
 body.twt-visual-mode #chat .mes_text pre *,
 body.twt-visual-mode #chat .mes_text blockquote,
 body.twt-visual-mode #chat .mes_text blockquote *,
-body.twt-visual-mode #chat .mes_text q,
-body.twt-visual-mode #chat .mes_text q *,
 body.twt-visual-mode #chat .mes .name_text,
 body.twt-visual-mode #chat .mes .mesIDDisplay,
 body.twt-visual-mode #chat .mes .timestamp,
 body.twt-visual-mode #chat .mes .tokenCounterDisplay {
     font-weight: initial;
+    -webkit-text-stroke: 0px transparent !important;
 }
 
 /* 两端对齐模式下，防止 <br> 换行前仅有短句（如双引号对话）被强制拉伸字间距填满整行 */
@@ -98,7 +118,7 @@ body.twt-visual-mode #chat .mes_text br {
     padding: 0 !important;
 }
 
-/* 确保粗体（包括粗体+斜体组合）依然保持粗体 */
+/* 确保粗体（包括粗体+斜体组合）依然保持加粗 */
 body.twt-visual-mode #chat .mes_text strong,
 body.twt-visual-mode #chat .mes_text strong *,
 body.twt-visual-mode #chat .mes_text b,
@@ -106,6 +126,7 @@ body.twt-visual-mode #chat .mes_text b * {
     font-weight: bold !important;
     font-synthesis: weight !important;
     -webkit-font-synthesis: weight !important;
+    -webkit-text-stroke: 0.4px currentColor;
 }
 
 /* 首行缩进：仅作用于 <p> 标签段落 */
