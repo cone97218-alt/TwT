@@ -11,7 +11,14 @@ export function applyVisualMode(enabled, settings) {
             chatContainer.style.setProperty('--twt-line-height', `${settings.lineHeight}`, 'important');
             chatContainer.style.setProperty('--twt-text-indent', `${settings.textIndent ?? 0}em`, 'important');
             chatContainer.style.setProperty('--twt-text-align', `${settings.textAlign ?? 'left'}`, 'important');
-            chatContainer.style.setProperty('--twt-paragraph-spacing', `${settings.paragraphSpacing ?? 0}px`, 'important');
+
+            const pSpacing = Number(settings.paragraphSpacing);
+            if (!isNaN(pSpacing) && pSpacing > 0) {
+                chatContainer.style.setProperty('--twt-paragraph-spacing', `${pSpacing}px`, 'important');
+            } else {
+                chatContainer.style.removeProperty('--twt-paragraph-spacing');
+            }
+
             chatContainer.style.setProperty('--twt-letter-spacing', `${settings.letterSpacing ?? 0}px`, 'important');
             chatContainer.style.setProperty('--twt-font-weight', `${settings.fontWeight ?? 'normal'}`, 'important');
         }
