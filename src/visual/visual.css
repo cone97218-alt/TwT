@@ -49,6 +49,8 @@ body.twt-visual-mode #chat .mes_text {
     text-align: var(--twt-text-align, left) !important;
     letter-spacing: var(--twt-letter-spacing, 0px) !important;
     font-weight: var(--twt-font-weight, normal) !important;
+    font-synthesis: weight !important;
+    -webkit-font-synthesis: weight !important;
     text-align-last: left !important;
     text-justify: inter-character !important;
     word-break: break-all !important;
@@ -56,12 +58,35 @@ body.twt-visual-mode #chat .mes_text {
     line-break: strict !important;
 }
 
-/* 仅对常规段落与文本节点生效，避开粗体、代码块、引用、美化定位标签等 */
-body.twt-visual-mode #chat .mes_text :where(p, div, span, li, td, th):not(strong):not(strong *):not(b):not(b *):not(code):not(code *):not(pre *):not(blockquote *):not(q *):not(.name_text):not(.mesIDDisplay):not(.timestamp):not(.tokenCounterDisplay) {
+/* 对常规段落与文本节点直接覆盖 font-weight 变量，并开启 font-synthesis 字体合成（兼容单字重自定义网络字体） */
+body.twt-visual-mode #chat .mes_text p,
+body.twt-visual-mode #chat .mes_text div,
+body.twt-visual-mode #chat .mes_text span,
+body.twt-visual-mode #chat .mes_text li,
+body.twt-visual-mode #chat .mes_text td,
+body.twt-visual-mode #chat .mes_text th {
     font-size: inherit;
     line-height: inherit;
     letter-spacing: inherit;
-    font-weight: inherit !important;
+    font-weight: var(--twt-font-weight, normal) !important;
+    font-synthesis: weight !important;
+    -webkit-font-synthesis: weight !important;
+}
+
+/* 避开代码块、引用与主题自定定位标签的粗细覆盖 */
+body.twt-visual-mode #chat .mes_text code,
+body.twt-visual-mode #chat .mes_text code *,
+body.twt-visual-mode #chat .mes_text pre,
+body.twt-visual-mode #chat .mes_text pre *,
+body.twt-visual-mode #chat .mes_text blockquote,
+body.twt-visual-mode #chat .mes_text blockquote *,
+body.twt-visual-mode #chat .mes_text q,
+body.twt-visual-mode #chat .mes_text q *,
+body.twt-visual-mode #chat .mes .name_text,
+body.twt-visual-mode #chat .mes .mesIDDisplay,
+body.twt-visual-mode #chat .mes .timestamp,
+body.twt-visual-mode #chat .mes .tokenCounterDisplay {
+    font-weight: initial;
 }
 
 /* 两端对齐模式下，防止 <br> 换行前仅有短句（如双引号对话）被强制拉伸字间距填满整行 */
@@ -79,6 +104,8 @@ body.twt-visual-mode #chat .mes_text strong *,
 body.twt-visual-mode #chat .mes_text b,
 body.twt-visual-mode #chat .mes_text b * {
     font-weight: bold !important;
+    font-synthesis: weight !important;
+    -webkit-font-synthesis: weight !important;
 }
 
 /* 首行缩进：仅作用于 <p> 标签段落 */
