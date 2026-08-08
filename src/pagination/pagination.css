@@ -90,6 +90,8 @@ body.twt-reading-mode:not(.twt-avatar-theme-layout) #chat .mes {
 body.twt-reading-mode #chat .mes_block,
 body.twt-reading-mode #chat .mes_text {
     width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
     box-sizing: border-box;
     overflow: visible !important; 
     break-inside: auto !important; 
