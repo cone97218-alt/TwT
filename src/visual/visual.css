@@ -40,8 +40,7 @@ body.twt-reading-mode.twt-visual-mode #chat .mes_text {
     box-sizing: border-box !important;
 }
 
-/* 视觉模式文本格式设置：
-   避免使用 * 全局通配符 + !important，防止破坏代码块 (code/pre)、引用 (blockquote) 以及主题定位标签 (.name_text, .mesIDDisplay 等) */
+/* 视觉模式文本基础属性设置 (字号、行高、字间距) */
 body.twt-visual-mode #chat .mes_text {
     font-size: var(--twt-font-size, 16px) !important;
     line-height: var(--twt-line-height, 1.6) !important;
@@ -55,32 +54,19 @@ body.twt-visual-mode #chat .mes_text {
     line-break: strict !important;
 }
 
-/* 对常规段落与对话文本节点直接覆盖 font-weight 变量 */
-body.twt-visual-mode #chat .mes_text p,
-body.twt-visual-mode #chat .mes_text div,
-body.twt-visual-mode #chat .mes_text span,
-body.twt-visual-mode #chat .mes_text li,
-body.twt-visual-mode #chat .mes_text td,
-body.twt-visual-mode #chat .mes_text th,
-body.twt-visual-mode #chat .mes_text q {
+/* 仅对常规段落与文本节点应用继承字号行高，避免覆盖 code / pre 等块 */
+body.twt-visual-mode #chat .mes_text :where(p, div, span, li, td, th, q):not(code):not(code *):not(pre *):not(blockquote *):not(.name_text):not(.mesIDDisplay):not(.timestamp):not(.tokenCounterDisplay) {
     font-size: inherit;
     line-height: inherit;
     letter-spacing: inherit;
-    font-weight: var(--twt-font-weight, normal) !important;
 }
 
-/* 避开代码块、引用与主题自定定位标签 */
-body.twt-visual-mode #chat .mes_text code,
-body.twt-visual-mode #chat .mes_text code *,
-body.twt-visual-mode #chat .mes_text pre,
-body.twt-visual-mode #chat .mes_text pre *,
-body.twt-visual-mode #chat .mes_text blockquote,
-body.twt-visual-mode #chat .mes_text blockquote *,
-body.twt-visual-mode #chat .mes .name_text,
-body.twt-visual-mode #chat .mes .mesIDDisplay,
-body.twt-visual-mode #chat .mes .timestamp,
-body.twt-visual-mode #chat .mes .tokenCounterDisplay {
-    font-weight: initial;
+/* 🌟 恢复提交 0e737da 之前完全有效的全节点字重覆盖规则：
+   直接对 .mes_text 及内部所有文本节点覆盖 font-weight 变量，
+   并精准排除加粗 (strong/b)、代码块 (code/pre)、引用 (blockquote) 与主题定位标签 */
+body.twt-visual-mode #chat .mes_text,
+body.twt-visual-mode #chat .mes_text *:not(strong):not(strong *):not(b):not(b *):not(code):not(code *):not(pre *):not(blockquote *):not(.name_text):not(.mesIDDisplay):not(.timestamp):not(.tokenCounterDisplay) {
+    font-weight: var(--twt-font-weight, normal) !important;
 }
 
 /* 两端对齐模式下，防止 <br> 换行前仅有短句（如双引号对话）被强制拉伸字间距填满整行 */
