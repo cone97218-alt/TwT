@@ -169,6 +169,12 @@ function containOversizedElements() {
     const colH = chat.clientHeight;
     if (colH <= 0) return;
 
+    // 如果启用了 HTML 弹窗召出功能，则跳过在翻页文本流中的断页与强制收容逻辑
+    if (extension_settings?.twt?.htmlPopupEnabled !== false) {
+        console.log('[TwT Pagination] 已启用 HTML 弹窗召出，文本流跳过长 HTML 断页适配');
+        return;
+    }
+
     const pageBreakEnabled = extension_settings?.twt?.htmlPageBreakEnabled !== false;
     const chatRect = chat.getBoundingClientRect();
 

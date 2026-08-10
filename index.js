@@ -4,6 +4,7 @@ import { applyPaginationMode, initPaginationEvent, resetPaginationBinding, reali
 import { applyVisualMode } from './src/visual/visual.js';
 import { initMulu, applyMuluSettings } from './src/mulu/mulu.js';
 import { initMenu, applyMenuMode, applyFullscreenMode } from './src/menu/menu.js';
+import { initHtmlPopup, applyHtmlPopupSettings } from './src/html_popup/html_popup.js';
 
 let parentDoc = document;
 try {
@@ -95,6 +96,8 @@ const defaultSettings = {
     swipeEnabled: true,
     messagePageEnabled: false,
     htmlPageBreakEnabled: true,
+    htmlPopupEnabled: true,
+    htmlPopupSelector: 'iframe, .twt-custom-app, [data-app-container], .rendered-html-app',
     avatarLayoutMode: 'float',
     customWhitelist: '.mes_reasoning_details, .thought-block',
     menuEnabled: false,
@@ -1015,6 +1018,8 @@ function bindUI() {
     const $swipeEnabled = $('#twt_swipe_enabled');
     const $messagePageEnabled = $('#twt_message_page_enabled');
     const $htmlPageBreakEnabled = $('#twt_html_page_break_enabled');
+    const $htmlPopupEnabled = $('#twt_html_popup_enabled');
+    const $htmlPopupSelector = $('#twt_html_popup_selector');
     const $avatarLayoutMode = $('#twt_avatar_layout_mode');
     const $customWhitelist = $('#twt_custom_whitelist');
     const $menuEnabled = $('#twt_menu_enabled');
@@ -1068,6 +1073,8 @@ function bindUI() {
     $swipeEnabled.prop('checked', extension_settings.twt.swipeEnabled);
     $messagePageEnabled.prop('checked', extension_settings.twt.messagePageEnabled);
     $htmlPageBreakEnabled.prop('checked', extension_settings.twt.htmlPageBreakEnabled);
+    $htmlPopupEnabled.prop('checked', extension_settings.twt.htmlPopupEnabled !== false);
+    $htmlPopupSelector.val(extension_settings.twt.htmlPopupSelector || 'iframe, .twt-custom-app, [data-app-container], .rendered-html-app');
     $avatarLayoutMode.val(extension_settings.twt.avatarLayoutMode || 'float');
     $customWhitelist.val(extension_settings.twt.customWhitelist || '');
     $menuEnabled.prop('checked', extension_settings.twt.menuEnabled);
@@ -1745,6 +1752,18 @@ function bindUI() {
         extension_settings.twt.htmlPageBreakEnabled = $(this).prop('checked');
         getContext().saveSettingsDebounced();
         applyPaginationMode(extension_settings.twt.enabled, extension_settings.twt);
+    });
+
+    $htmlPopupEnabled.on('change', function () {
+        extension_settings.twt.htmlPopupEnabled = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+        applyHtmlPopupSettings();
+    });
+
+    $htmlPopupSelector.on('input', function () {
+        extension_settings.twt.htmlPopupSelector = $(this).val();
+        getContext().saveSettingsDebounced();
+        applyHtmlPopupSettings();
     });
 
     $avatarLayoutMode.on('change', function () {
@@ -3155,6 +3174,7 @@ jQuery(async () => {
     applyFullscreenMode(extension_settings.twt.isFullscreen);
     updateInjectedStyles();
     initMulu();
+    initHtmlPopup();
     initThemeLinkListener();
     initPaginationEvent(() => extension_settings.twt);
     initMenu(() => extension_settings.twt, (active) => {

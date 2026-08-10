@@ -85,6 +85,23 @@
                     开启后，高度超过一页的HTML容器或折叠面板展开时将强制另起一列（另起一页），防止排版跳变；关闭则不断页。
                 </div>
 
+                <div class="twt-setting-row"
+                    style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
+                    <label for="twt_html_popup_enabled">HTML/Iframe 应用抽离并通过 QR 栏召出</label>
+                    <input type="checkbox" id="twt_html_popup_enabled" />
+                </div>
+                <div style="font-size: 0.85em; opacity: 0.6; margin-bottom: 10px; margin-top: -2px; padding-left: 2px;">
+                    开启后，消息正文中的 HTML / Iframe 将不在翻页文本流中直接展示，而是通过点击 QR 栏【应用】按钮在弹窗中原样召出。
+                </div>
+
+                <div class="twt-setting-row" style="display: flex; flex-direction: column; margin-bottom: 5px;">
+                    <label for="twt_html_popup_selector" style="margin-bottom: 5px; font-size: 0.95em;">目标 HTML 应用 CSS 选择器</label>
+                    <input type="text" id="twt_html_popup_selector" placeholder="默认：iframe, .twt-custom-app, [data-app-container]" style="width: 100%; box-sizing: border-box; padding: 6px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px;" />
+                </div>
+                <div style="font-size: 0.85em; opacity: 0.6; margin-bottom: 15px; padding-left: 2px;">
+                    * 提示：匹配到的 HTML 节点将在正文中隐藏，并转由 QR 栏按钮弹窗召出。
+                </div>
+
                 
                 <div style="border-top: 1px dashed var(--SmartThemeBorderColor); padding-top: 10px; margin-top: 10px;">
                     <div class="twt-setting-row" style="display: flex; flex-direction: column; margin-bottom: 5px;">
