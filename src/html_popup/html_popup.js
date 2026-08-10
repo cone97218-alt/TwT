@@ -445,12 +445,18 @@ export function applyHtmlPopupSettings() {
     let btn = doc.getElementById(QR_BTN_ID);
     if (enabled) {
         if (!btn) {
-            btn = doc.createElement('button');
+            btn = doc.createElement('div');
             btn.id = QR_BTN_ID;
             btn.className = 'qr--button menu_button interactable';
+            btn.tabIndex = 0;
+            btn.role = 'button';
             btn.title = '召出当前消息 HTML 应用';
-            btn.innerHTML = `<i class="fa-solid fa-window-maximize"></i> 应用`;
-            btn.onclick = handleQrBtnClick;
+            btn.innerHTML = `<i class="fa-solid fa-window-maximize"></i>`;
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleQrBtnClick();
+            });
 
             const btnContainer = doc.querySelector('#qr--bar .qr--buttons') || doc.getElementById('qr--bar');
             if (btnContainer) {
