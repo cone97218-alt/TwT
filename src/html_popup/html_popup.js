@@ -53,7 +53,7 @@ export function getHtmlPopupDefaultSettings() {
 }
 
 /**
- * 样式注入（透明底、无白框、可拖拽 header、不穿透屏蔽）
+ * 样式注入（完全无框线、纯透明背景、紧凑适应 iframe 宽高、支持拖拽）
  */
 function injectStyles() {
     const doc = getDoc();
@@ -85,17 +85,18 @@ function injectStyles() {
         .twt-modal-dialog {
             pointer-events: auto;
             position: absolute;
-            width: 85vw;
-            height: 85vh;
-            max-width: 1400px;
-            max-height: 900px;
-            background: transparent; /* 纯透明无白底 */
-            border: none;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+            width: fit-content;
+            height: fit-content;
+            max-width: 98vw;
+            max-height: 98vh;
+            background: transparent !important; /* 纯透明无框 */
+            border: none !important;
+            outline: none !important;
+            box-shadow: none !important;
             display: flex;
             flex-direction: column;
             overflow: visible;
-            border-radius: 10px;
+            border-radius: 8px;
             transition: opacity 0.15s ease-out;
         }
 
@@ -103,24 +104,26 @@ function injectStyles() {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 8px 14px;
-            background: rgba(30, 30, 46, 0.85); /* 半透明暗色控制顶栏 */
+            padding: 4px 10px;
+            background: rgba(20, 20, 32, 0.85); /* 简约半透明顶栏 */
             backdrop-filter: blur(8px);
             -webkit-backdrop-filter: blur(8px);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            border-bottom: none;
-            border-radius: 10px 10px 0 0;
+            border: none !important;
+            outline: none !important;
+            border-radius: 8px 8px 0 0;
             color: #cdd6f4;
-            font-size: 13px;
-            font-weight: 600;
+            font-size: 12px;
+            font-weight: 500;
             user-select: none;
             cursor: move; /* 拖拽手势 */
+            width: 100%;
+            box-sizing: border-box;
         }
 
         .twt-modal-title {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -129,18 +132,19 @@ function injectStyles() {
         .twt-modal-controls {
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 4px;
         }
 
         .twt-modal-btn {
             background: transparent;
-            border: none;
+            border: none !important;
+            outline: none !important;
             color: currentColor;
             opacity: 0.75;
             cursor: pointer;
-            padding: 4px 8px;
+            padding: 2px 6px;
             border-radius: 4px;
-            font-size: 13px;
+            font-size: 12px;
             transition: all 0.15s ease;
         }
 
@@ -155,33 +159,35 @@ function injectStyles() {
         }
 
         .twt-modal-body {
-            flex: 1;
-            width: 100%;
-            height: 100%;
+            width: fit-content;
+            height: fit-content;
+            max-width: 98vw;
+            max-height: 95vh;
             overflow: auto;
             position: relative;
-            background: transparent; /* 移除原来的 #ffffff 白底 */
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            border-top: none;
-            border-radius: 0 0 10px 10px;
+            background: transparent !important; /* 无框无白底 */
+            border: none !important;
+            outline: none !important;
+            border-radius: 0 0 8px 8px;
         }
 
         .twt-modal-body > iframe {
-            width: 100%;
-            height: 100%;
-            border: none;
+            border: none !important;
+            outline: none !important;
             display: block;
-            background: transparent;
+            background: transparent !important;
         }
 
         .twt-modal-body > .twt-app-content-wrapper {
-            width: 100%;
-            height: 100%;
+            width: fit-content;
+            height: fit-content;
             box-sizing: border-box;
-            background: transparent;
+            background: transparent !important;
+            border: none !important;
+            outline: none !important;
         }
     `;
-    console.log('[TwT HtmlPopup] 样式依赖已更新（透明背景 & 可拖拽面板）');
+    console.log('[TwT HtmlPopup] 样式依赖已更新（完全无框线 & 大小紧贴 iframe）');
 }
 
 /**
@@ -269,7 +275,7 @@ export function getCurrentFocusedMessage() {
 }
 
 /**
- * 展开无白底、支持拖拽与位置持久化记忆的 HTML 应用 Modal 弹窗
+ * 展开完全无框线、尺寸贴合 iframe 自身大小的 HTML 应用 Modal 弹窗
  */
 export function openHtmlAppModal(appEl, mesIndexInfo) {
     const doc = getDoc();
@@ -361,8 +367,8 @@ export function openHtmlAppModal(appEl, mesIndexInfo) {
         const dx = clientX - startX;
         const dy = clientY - startY;
         const win = getWin();
-        const maxLeft = win.innerWidth - 100;
-        const maxTop = win.innerHeight - 40;
+        const maxLeft = win.innerWidth - 60;
+        const maxTop = win.innerHeight - 30;
 
         const newLeft = Math.max(0, Math.min(maxLeft, initialLeft + dx));
         const newTop = Math.max(0, Math.min(maxTop, initialTop + dy));
@@ -429,6 +435,25 @@ export function openHtmlAppModal(appEl, mesIndexInfo) {
             clone.style.backgroundColor = 'transparent';
         }
 
+        // 精准抓取/复制原始 HTML / Iframe 节点的宽高样式
+        let w = appEl.style.width || appEl.getAttribute('width');
+        let h = appEl.style.height || appEl.getAttribute('height');
+
+        if (!w || !h || w === 'auto' || h === 'auto') {
+            const wasHidden = appEl.classList.contains('twt-app-hidden');
+            if (wasHidden) appEl.classList.remove('twt-app-hidden');
+            const rect = appEl.getBoundingClientRect();
+            const cs = getComputedStyle(appEl);
+            if ((!w || w === 'auto') && rect.width > 20) w = `${rect.width}px`;
+            if ((!h || h === 'auto') && rect.height > 20) h = `${rect.height}px`;
+            if (!w && cs.width !== '0px' && cs.width !== 'auto') w = cs.width;
+            if (!h && cs.height !== '0px' && cs.height !== 'auto') h = cs.height;
+            if (wasHidden) appEl.classList.add('twt-app-hidden');
+        }
+
+        if (w) clone.style.width = w;
+        if (h) clone.style.height = h;
+
         if (clone.tagName === 'IFRAME') {
             clone.setAttribute('allowtransparency', 'true');
             if (appEl.srcdoc) clone.srcdoc = appEl.srcdoc;
@@ -457,7 +482,7 @@ export function openHtmlAppModal(appEl, mesIndexInfo) {
     doc.addEventListener('keydown', escHandler);
 
     doc.body.appendChild(modal);
-    console.log('[TwT HtmlPopup] Modal 弹窗已展开（透明背景 & 位置持久化）');
+    console.log('[TwT HtmlPopup] Modal 弹窗已展开（完全无框线 & 形状对齐）');
 }
 
 /**
