@@ -214,10 +214,20 @@ function injectStyles() {
         .twt-modal-drag-handle {
             display: flex;
             align-items: center;
-            opacity: 0.65;
+            opacity: 0.8;
             font-size: 11px;
             padding: 0 2px;
             flex-shrink: 0;
+            gap: 4px;
+        }
+
+        .twt-modal-floor-badge {
+            font-size: 10px;
+            opacity: 0.8;
+            background: rgba(255, 255, 255, 0.12);
+            padding: 1px 5px;
+            border-radius: 4px;
+            white-space: nowrap;
         }
 
         .twt-modal-controls {
@@ -317,7 +327,7 @@ function injectStyles() {
             outline: none !important;
         }
     `;
-    console.log('[TwT HtmlPopup] 样式依赖已更新');
+    console.log('[TwT HtmlPopup] 样式依赖已更新（顶栏楼层标注 & 无弹窗打扰）');
 }
 
 /**
@@ -405,12 +415,13 @@ export function getCurrentFocusedMessage() {
 }
 
 /**
- * 展开支持超紧凑顶栏（无冗余 HTML 应用字样）、自定义标题映射、尺寸完全贴合小部件的 Modal 弹窗
+ * 展开支持超紧凑顶栏、跨楼层标注、自定义标题映射、尺寸完全贴合小部件的 Modal 弹窗
  * @param {Element|Element[]} appEls 目标 HTML 节点或节点数组
  * @param {string} mesIndexInfo 消息序号
  * @param {number|null} initialIndex 初始选中的应用索引
+ * @param {number} diffFloors 相对于当前聚焦消息相差的楼层数（0 为当前消息）
  */
-export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null) {
+export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diffFloors = 0) {
     const doc = getDoc();
     closeHtmlAppModal();
 
@@ -420,7 +431,7 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null) {
     let targetIndex = initialIndex !== null ? initialIndex : getSavedAppIndex(mesIndexInfo);
     let currentIndex = Math.max(0, Math.min(targetIndex, appElsList.length - 1));
 
-    console.log(`[TwT HtmlPopup] 准备展开弹窗，共有 ${appElsList.length} 个应用，恢复历史索引: ${currentIndex}`);
+    console.log(`[TwT HtmlPopup] 准备展开弹窗，共有 ${appElsList.length} 个应用，恢复历史索引: ${currentIndex}，相差楼层: ${diffFloors}`);
 
     const modal = doc.createElement('div');
     modal.id = MODAL_ID;
@@ -447,7 +458,12 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null) {
     const dragHandle = doc.createElement('div');
     dragHandle.className = 'twt-modal-drag-handle';
     dragHandle.title = '按住拖拽移动弹窗';
-    dragHandle.innerHTML = `<i class="fa-solid fa-grip-lines"></i>`;
+
+    if (diffFloors > 0) {
+        dragHandle.innerHTML = `<i class="fa-solid fa-grip-lines"></i> <span class="twt-modal-floor-badge" title="当前消息无应用，已自动展示前 ${diffFloors} 层的应用">#${mesIndexInfo} (-${diffFloors}层)</span>`;
+    } else {
+        dragHandle.innerHTML = `<i class="fa-solid fa-grip-lines"></i>`;
+    }
     header.appendChild(dragHandle);
 
     const controls = doc.createElement('div');
@@ -713,7 +729,7 @@ export function closeHtmlAppModal() {
 }
 
 /**
- * 处理 QR 栏按钮点击召出逻辑（若当前聚焦消息无 iframe，自动寻找最后一条有 iframe 的消息）
+ * 处理 QR 栏按钮点击召出逻辑（无 Toast 打扰，在顶栏标注前 n 层）
  */
 function handleQrBtnClick() {
     console.log('[TwT HtmlPopup] 点击了 QR 栏 HTML 应用召出按钮');
@@ -723,9 +739,12 @@ function handleQrBtnClick() {
     const focusedMes = getCurrentFocusedMessage();
     if (!focusedMes) {
         console.warn('[TwT HtmlPopup] 当前未捕获到任何消息节点');
-        if (typeof toastr !== 'undefined') toastr.info('未找到任何消息节点');
         return;
     }
+
+    const doc = getDoc();
+    const allMessages = Array.from(doc.querySelectorAll('#chat .mes'));
+    const focusedMesIndex = allMessages.indexOf(focusedMes);
 
     const mesId = focusedMes.getAttribute('mesid') || focusedMes.id || '';
     const mesIndex = focusedMes.getAttribute('data-index') || (parseInt(mesId) + 1) || '';
@@ -736,16 +755,15 @@ function handleQrBtnClick() {
     );
 
     if (appEls.length === 0) {
-        console.warn(`[TwT HtmlPopup] 当前聚焦消息 (Index: ${mesIndex}) 内未包含匹配应用节点，开始从最新消息往回寻找最后一条有应用的消息...`);
-
-        const doc = getDoc();
-        const allMessages = Array.from(doc.querySelectorAll('#chat .mes'));
+        console.warn(`[TwT HtmlPopup] 当前聚焦消息 (Index: #${mesIndex}) 内无应用节点，开始隐式寻找前面有应用的消息...`);
 
         let targetMes = null;
         let targetAppEls = [];
+        let targetMesIndex = -1;
 
-        // 倒序寻找最后一条包含应用节点的消息
-        for (let i = allMessages.length - 1; i >= 0; i--) {
+        // 倒序寻找（从聚焦消息位置往回或从最新消息往回找）
+        const startIdx = focusedMesIndex >= 0 ? focusedMesIndex - 1 : allMessages.length - 1;
+        for (let i = startIdx; i >= 0; i--) {
             const mes = allMessages[i];
             const matchingInMes = Array.from(mes.querySelectorAll(selector)).filter(
                 el => !el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')
@@ -753,30 +771,43 @@ function handleQrBtnClick() {
             if (matchingInMes.length > 0) {
                 targetMes = mes;
                 targetAppEls = matchingInMes;
+                targetMesIndex = i;
                 break;
+            }
+        }
+
+        // 如果在聚焦消息之前没找到，尝试全局往后/最新消息寻找
+        if (targetAppEls.length === 0) {
+            for (let i = allMessages.length - 1; i >= 0; i--) {
+                const mes = allMessages[i];
+                const matchingInMes = Array.from(mes.querySelectorAll(selector)).filter(
+                    el => !el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')
+                );
+                if (matchingInMes.length > 0) {
+                    targetMes = mes;
+                    targetAppEls = matchingInMes;
+                    targetMesIndex = i;
+                    break;
+                }
             }
         }
 
         if (targetAppEls.length > 0 && targetMes) {
             const fallbackMesId = targetMes.getAttribute('mesid') || targetMes.id || '';
             const fallbackMesIndex = targetMes.getAttribute('data-index') || (parseInt(fallbackMesId) + 1) || '';
-            console.log(`[TwT HtmlPopup] 成功定位最后一条包含应用的消息 (#${fallbackMesIndex})，共 ${targetAppEls.length} 个应用节点`);
+            const diffFloors = (focusedMesIndex >= 0 && targetMesIndex >= 0) ? Math.abs(focusedMesIndex - targetMesIndex) : 1;
 
-            if (typeof toastr !== 'undefined') {
-                toastr.info(`当前消息无应用，已自动召出最后一条消息 (#${fallbackMesIndex}) 中的 HTML 应用`, 'TwT 应用召出', { timeOut: 2500 });
-            }
-            openHtmlAppModal(targetAppEls, fallbackMesIndex);
+            console.log(`[TwT HtmlPopup] 成功无干扰定位跨楼层应用消息 (#${fallbackMesIndex})，相差 ${diffFloors} 层`);
+            openHtmlAppModal(targetAppEls, fallbackMesIndex, null, diffFloors);
             return;
         }
 
-        if (typeof toastr !== 'undefined') {
-            toastr.warning(`聊天记录中未找到任何匹配的 HTML 应用 (选择器: ${selector})`, 'TwT 应用召出');
-        }
+        console.warn(`[TwT HtmlPopup] 聊天记录中未找到任何匹配的 HTML 应用 (选择器: ${selector})`);
         return;
     }
 
     console.log(`[TwT HtmlPopup] 成功在聚焦消息 (#${mesIndex}) 中提取到 ${appEls.length} 个应用节点`);
-    openHtmlAppModal(appEls, mesIndex);
+    openHtmlAppModal(appEls, mesIndex, null, 0);
 }
 
 /**
