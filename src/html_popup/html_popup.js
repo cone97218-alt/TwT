@@ -92,6 +92,72 @@ function saveSavedAppIndex(mesIndexInfo, index) {
 }
 
 /**
+ * 监听并持久化保存 Iframe 内部展开/折叠 DOM 状态
+ */
+function attachIframeStateTracker(iframeEl, mesIndexInfo, appIndex) {
+    const saveIframeState = () => {
+        try {
+            const doc = iframeEl.contentDocument || iframeEl.contentWindow?.document;
+            if (doc && doc.documentElement) {
+                const fullHtml = doc.documentElement.outerHTML;
+                if (fullHtml && fullHtml.length > 20) {
+                    iframeEl.srcdoc = fullHtml;
+                    localStorage.setItem(`twt_app_saved_html_${mesIndexInfo}_${appIndex}`, fullHtml);
+                    console.log(`[TwT HtmlPopup] 已成功捕获并保存 Iframe 内部展开/折叠状态 (Message #${mesIndexInfo}, App #${appIndex})`);
+                }
+            }
+        } catch (e) {
+            console.warn('[TwT HtmlPopup] 无法跨域或读取 Iframe 内部 Document:', e);
+        }
+    };
+
+    const tryBind = () => {
+        try {
+            const doc = iframeEl.contentDocument || iframeEl.contentWindow?.document;
+            if (doc) {
+                doc.addEventListener('click', () => setTimeout(saveIframeState, 80), true);
+                doc.addEventListener('toggle', () => saveIframeState(), true);
+                doc.addEventListener('change', () => saveIframeState(), true);
+                doc.addEventListener('input', () => saveIframeState(), true);
+            }
+        } catch (e) {}
+    };
+
+    iframeEl.addEventListener('load', tryBind);
+    tryBind();
+}
+
+/**
+ * 监听并持久化保存 普通 DOM 节点展开/折叠状态
+ */
+function attachDomStateTracker(domEl, mesIndexInfo, appIndex) {
+    const saveDomState = () => {
+        try {
+            // 显式同步 <details> 元素的 open 属性
+            domEl.querySelectorAll('details').forEach((d) => {
+                if (d.open) d.setAttribute('open', '');
+                else d.removeAttribute('open');
+            });
+            // 显式同步 checkbox/radio 状态
+            domEl.querySelectorAll('input[type="checkbox"], input[type="radio"]').forEach((inp) => {
+                if (inp.checked) inp.setAttribute('checked', '');
+                else inp.removeAttribute('checked');
+            });
+
+            const currentHtml = domEl.innerHTML;
+            localStorage.setItem(`twt_app_saved_html_${mesIndexInfo}_${appIndex}`, currentHtml);
+            console.log(`[TwT HtmlPopup] 已成功捕获并保存 DOM 节点展开/折叠状态 (Message #${mesIndexInfo}, App #${appIndex})`);
+        } catch (e) {
+            console.warn('[TwT HtmlPopup] 保存 DOM 节点状态失败:', e);
+        }
+    };
+
+    domEl.addEventListener('click', () => setTimeout(saveDomState, 80), true);
+    domEl.addEventListener('toggle', () => saveDomState(), true);
+    domEl.addEventListener('change', () => saveDomState(), true);
+}
+
+/**
  * 解析用户自定义标题映射规则
  */
 function resolveAppTitle(el, index) {
@@ -370,7 +436,7 @@ export function hideMessageHtmlApps() {
         matchingElements.forEach((el) => {
             if (el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')) return;
 
-            if (currentlyMovedEl === el) return; // 如果当前正在 Modal 中挂载，不重复处理
+            if (currentlyMovedEl === el) return;
 
             if (!el.classList.contains('twt-app-hidden')) {
                 el.classList.add('twt-app-hidden');
@@ -438,7 +504,7 @@ export function getCurrentFocusedMessage() {
 }
 
 /**
- * 展开支持 DOM 节点物理移动 (DOM Reparenting)、完整保留事件监听与实时展开/折叠状态的 Modal 弹窗
+ * 展开支持 DOM 节点物理移动 (DOM Reparenting)、双重 Iframe/DOM 展开状态自动捕获与恢复的 Modal 弹窗
  * @param {Element|Element[]} appEls 目标 HTML 节点或节点数组
  * @param {string} mesIndexInfo 消息序号
  * @param {number|null} initialIndex 初始选中的应用索引
@@ -662,12 +728,23 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diff
     body.className = 'twt-modal-body';
 
     function renderBodyContent() {
-        // 先归还之前可能已移入 Modal 的物理 DOM 节点
         returnMovedElementBack();
 
         body.innerHTML = '';
         const currentAppEl = appElsList[currentIndex];
         if (!currentAppEl) return;
+
+        // 优先从 localStorage 恢复已保存的 HTML 展开/折叠状态
+        const savedHtml = localStorage.getItem(`twt_app_saved_html_${mesIndexInfo}_${currentIndex}`);
+        if (savedHtml) {
+            if (currentAppEl.tagName === 'IFRAME') {
+                currentAppEl.srcdoc = savedHtml;
+                console.log(`[TwT HtmlPopup] 成功从 localStorage 还原 Iframe 展开状态 (Message #${mesIndexInfo}, App #${currentIndex})`);
+            } else {
+                currentAppEl.innerHTML = savedHtml;
+                console.log(`[TwT HtmlPopup] 成功从 localStorage 还原 DOM 节点展开状态 (Message #${mesIndexInfo}, App #${currentIndex})`);
+            }
+        }
 
         // 测算组件物理尺寸
         let measuredW = 0;
@@ -720,6 +797,9 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diff
 
         if (currentAppEl.tagName === 'IFRAME') {
             currentAppEl.setAttribute('allowtransparency', 'true');
+            attachIframeStateTracker(currentAppEl, mesIndexInfo, currentIndex);
+        } else {
+            attachDomStateTracker(currentAppEl, mesIndexInfo, currentIndex);
         }
 
         const wrapper = doc.createElement('div');
