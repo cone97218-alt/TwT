@@ -20,6 +20,20 @@ const MODAL_ID = 'twt-html-app-modal';
 const POS_KEY = 'twt_html_popup_saved_pos';
 
 /**
+ * 新 Iframe 被捕捉未读状态标志与更新器
+ */
+let hasUnreadApp = false;
+
+function updateQrBadge(show) {
+    hasUnreadApp = show;
+    const doc = getDoc();
+    const btn = doc.getElementById(QR_BTN_ID);
+    if (btn) {
+        btn.classList.toggle('has-unread', show);
+    }
+}
+
+/**
  * 动态 ResizeObserver 句柄与 Iframe 内部 MutationObserver
  */
 let activeResizeObserver = null;
@@ -414,7 +428,7 @@ export function getHtmlPopupDefaultSettings() {
 }
 
 /**
- * 样式注入 (彻底消除黑底、无框线、纯透明顶栏)
+ * 样式注入 (彻底消除黑底、无框线、纯透明顶栏，包含 QR 栏左上角高亮红点提示)
  */
 function injectStyles() {
     const doc = getDoc();
@@ -429,6 +443,45 @@ function injectStyles() {
         /* 正文中隐藏应用 DOM 节点 */
         .twt-app-hidden {
             display: none !important;
+        }
+
+        /* QR 栏按钮与左上角捕捉高亮红点 */
+        #twt-qr-html-app-btn {
+            position: relative;
+        }
+
+        #twt-qr-html-app-btn .twt-qr-badge {
+            display: none;
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 7px;
+            height: 7px;
+            background-color: #00e676; /* 亮绿/荧光绿高亮圆点 */
+            border-radius: 50%;
+            box-shadow: 0 0 6px rgba(0, 230, 118, 0.9);
+            pointer-events: none;
+            z-index: 2;
+            animation: twtBadgePulse 1.8s infinite ease-in-out;
+        }
+
+        #twt-qr-html-app-btn.has-unread .twt-qr-badge {
+            display: block;
+        }
+
+        @keyframes twtBadgePulse {
+            0% {
+                transform: scale(0.9);
+                box-shadow: 0 0 4px rgba(0, 230, 118, 0.7);
+            }
+            50% {
+                transform: scale(1.3);
+                box-shadow: 0 0 9px rgba(0, 230, 118, 1);
+            }
+            100% {
+                transform: scale(0.9);
+                box-shadow: 0 0 4px rgba(0, 230, 118, 0.7);
+            }
         }
 
         /* 弹窗顶层遮罩（允许穿透到底图，仅弹窗主体响应鼠标） */
@@ -637,6 +690,10 @@ export function hideMessageHtmlApps() {
 
             if (count > 0) {
                 console.log(`[TwT HtmlPopup] [性能优化] 增量隐藏了 ${count} 个匹配选择器 [${selector}] 的 HTML 应用节点`);
+                const modal = doc.getElementById(MODAL_ID);
+                if (!modal) {
+                    updateQrBadge(true);
+                }
             }
         } catch (err) {
             console.error(`[TwT HtmlPopup] 隐藏匹配元素失败:`, err);
@@ -761,6 +818,7 @@ function fallbackToPreviousFloors(focusedMes, selector) {
 export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diffFloors = 0) {
     const doc = getDoc();
     closeHtmlAppModal();
+    updateQrBadge(false);
 
     const appElsList = Array.isArray(appEls) ? appEls : [appEls];
     if (appElsList.length === 0) return;
@@ -1065,6 +1123,8 @@ export function closeHtmlAppModal() {
  */
 function handleQrBtnClick() {
     console.log('[TwT HtmlPopup] 点击了 QR 栏 HTML 应用召出按钮');
+    updateQrBadge(false);
+
     const settings = extension_settings?.twt;
     const selector = settings?.htmlPopupSelector || 'iframe, .twt-custom-app, [data-app-container], .rendered-html-app';
 
@@ -1090,7 +1150,7 @@ function handleQrBtnClick() {
     if (hasUnrenderedCode) {
         console.log(`[TwT HtmlPopup] [防竞态开启] 检测到未完成渲染的标签，智能等待前置插件渲染...`);
         let retries = 0;
-        const maxRetries = 10; // 最多等待 1 秒 (10 * 100ms)
+        const maxRetries = 10;
 
         const pollCheck = () => {
             appEls = getMessageAppElements(focusedMes, selector);
@@ -1127,6 +1187,7 @@ export function registerHtmlPopupEvents(context) {
     const onChatResetOrSwitched = (reason) => {
         console.log(`[TwT HtmlPopup] [对话状态重置] 原因: ${reason}`);
         closeHtmlAppModal();
+        updateQrBadge(false);
 
         hideMessageHtmlApps();
         setTimeout(hideMessageHtmlApps, 100);
@@ -1190,7 +1251,7 @@ export function applyHtmlPopupSettings() {
             btn.tabIndex = 0;
             btn.role = 'button';
             btn.title = '召出当前消息 HTML 应用';
-            btn.innerHTML = `<i class="fa-solid fa-window-maximize"></i>`;
+            btn.innerHTML = `<i class="fa-solid fa-window-maximize"></i><span class="twt-qr-badge"></span>`;
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -1200,10 +1261,13 @@ export function applyHtmlPopupSettings() {
             const btnContainer = doc.querySelector('#qr--bar .qr--buttons') || doc.getElementById('qr--bar');
             if (btnContainer) {
                 btnContainer.prepend(btn);
-                console.log('[TwT HtmlPopup] 成功注入 QR 栏召出按钮');
+                console.log('[TwT HtmlPopup] 成功注入 QR 栏召出按钮（含未读高亮红点提示）');
             } else {
                 console.warn('[TwT HtmlPopup] 未能找到 #qr--bar 容器，稍后重试注入');
             }
+        }
+        if (hasUnreadApp) {
+            btn.classList.add('has-unread');
         }
         hideMessageHtmlApps();
     } else {
