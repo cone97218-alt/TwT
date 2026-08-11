@@ -20,7 +20,7 @@ const MODAL_ID = 'twt-html-app-modal';
 const POS_KEY = 'twt_html_popup_saved_pos';
 
 /**
- * 动态 ResizeObserver 句柄 (随 Iframe / DOM 内容变化联动改变弹窗尺寸)
+ * 动态 ResizeObserver 句柄 (随 Iframe / DOM 内部内容变化动态跟随自适应)
  */
 let activeResizeObserver = null;
 
@@ -64,7 +64,7 @@ function cleanOldAppHtmlStates() {
             for (let i = 0; i < toRemoveCount; i++) {
                 localStorage.removeItem(keys[i]);
             }
-            console.log(`[TwT HtmlPopup] [性能优化] 自动执行 LRU 清理，已清除 ${toRemoveCount} 条较旧的 HTML 展开状态缓存`);
+            console.log(`[TwT HtmlPopup] 自动执行 LRU 清理，已清除 ${toRemoveCount} 条较旧的 HTML 展开状态缓存`);
         }
     } catch (e) {
         console.warn('[TwT HtmlPopup] LRU 清理失败:', e);
@@ -145,7 +145,7 @@ function saveSavedAppIndex(mesIndexInfo, index) {
 }
 
 /**
- * 实时监测并响应 Iframe / DOM 内部尺寸变化，自动同步调整扩展 Modal 弹窗尺寸
+ * 实时监测并响应 Iframe / DOM 内部尺寸变化，自适应动态调整
  */
 function observeAppDynamicResizing(appEl, dialogEl) {
     stopAppResizeObserver();
@@ -154,32 +154,18 @@ function observeAppDynamicResizing(appEl, dialogEl) {
     const updateDialogBounds = () => {
         if (!appEl || !dialogEl) return;
         try {
-            let curW = 0;
-            let curH = 0;
-
             if (appEl.tagName === 'IFRAME') {
                 const iDoc = appEl.contentDocument || appEl.contentWindow?.document;
                 if (iDoc && iDoc.documentElement) {
                     const scrollW = Math.max(iDoc.documentElement.scrollWidth, iDoc.body?.scrollWidth || 0);
                     const scrollH = Math.max(iDoc.documentElement.scrollHeight, iDoc.body?.scrollHeight || 0);
-                    if (scrollW > 50 && scrollW < win.innerWidth * 0.98) curW = scrollW;
-                    if (scrollH > 50) curH = scrollH;
+                    if (scrollW > 50 && scrollW < win.innerWidth * 0.98) {
+                        appEl.style.width = `${scrollW}px`;
+                    }
+                    if (scrollH > 50) {
+                        appEl.style.height = `${scrollH}px`;
+                    }
                 }
-                if (!curW) curW = appEl.offsetWidth || parseInt(appEl.width) || parseInt(appEl.style.width) || 0;
-                if (!curH) curH = appEl.offsetHeight || parseInt(appEl.height) || parseInt(appEl.style.height) || 0;
-            } else {
-                const innerNode = appEl.firstElementChild || appEl;
-                const rect = innerNode.getBoundingClientRect();
-                curW = rect.width || appEl.offsetWidth;
-                curH = rect.height || appEl.offsetHeight;
-            }
-
-            if (curW > 50 && curW < win.innerWidth * 0.98) {
-                dialogEl.style.width = `${curW}px`;
-                appEl.style.width = '100%';
-            }
-            if (curH > 50 && appEl.tagName === 'IFRAME') {
-                appEl.style.height = `${curH}px`;
             }
         } catch (e) {}
     };
@@ -347,7 +333,7 @@ export function getHtmlPopupDefaultSettings() {
 }
 
 /**
- * 样式注入
+ * 样式注入 (彻底消除黑底、无框线、纯透明顶栏)
  */
 function injectStyles() {
     const doc = getDoc();
@@ -379,11 +365,11 @@ function injectStyles() {
         .twt-modal-dialog {
             pointer-events: auto;
             position: absolute;
-            width: fit-content;
-            height: fit-content;
+            width: fit-content !important;
+            height: fit-content !important;
             max-width: 98vw;
             max-height: 98vh;
-            background: transparent !important; /* 纯透明无框 */
+            background: transparent !important; /* 彻底移除黑底背景 */
             border: none !important;
             outline: none !important;
             box-shadow: none !important;
@@ -399,27 +385,25 @@ function injectStyles() {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 3px 8px;
-            background: rgba(18, 18, 28, 0.88); /* 超紧凑半透明顶栏 */
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
+            padding: 2px 6px;
+            background: transparent !important; /* 顶栏彻底透明，无黑底 */
             border: none !important;
             outline: none !important;
-            border-radius: 8px 8px 0 0;
             color: #cdd6f4;
             font-size: 12px;
             font-weight: 500;
             user-select: none;
-            cursor: move; /* 拖拽手势 */
+            cursor: move;
             width: 100%;
             box-sizing: border-box;
             gap: 6px;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
         }
 
         .twt-modal-drag-handle {
             display: flex;
             align-items: center;
-            opacity: 0.8;
+            opacity: 0.85;
             font-size: 11px;
             padding: 0 2px;
             flex-shrink: 0;
@@ -428,11 +412,12 @@ function injectStyles() {
 
         .twt-modal-floor-badge {
             font-size: 10px;
-            opacity: 0.8;
-            background: rgba(255, 255, 255, 0.12);
+            opacity: 0.85;
+            background: rgba(0, 0, 0, 0.4);
             padding: 1px 5px;
             border-radius: 4px;
             white-space: nowrap;
+            backdrop-filter: blur(4px);
         }
 
         .twt-modal-controls {
@@ -449,15 +434,15 @@ function injectStyles() {
             gap: 3px;
             margin-right: 4px;
             padding-right: 4px;
-            border-right: 1px solid rgba(255, 255, 255, 0.15);
+            border-right: 1px solid rgba(255, 255, 255, 0.2);
             font-size: 11px;
             opacity: 0.95;
         }
 
         .twt-modal-select {
-            background: rgba(30, 30, 46, 0.9);
+            background: rgba(0, 0, 0, 0.45);
             color: #cdd6f4;
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.25);
             border-radius: 4px;
             padding: 1px 4px;
             font-size: 11px;
@@ -466,11 +451,12 @@ function injectStyles() {
             max-width: 130px;
             text-overflow: ellipsis;
             white-space: nowrap;
+            backdrop-filter: blur(4px);
         }
 
         .twt-modal-select:hover {
-            border-color: rgba(255, 255, 255, 0.4);
-            background: rgba(45, 45, 65, 0.95);
+            border-color: rgba(255, 255, 255, 0.5);
+            background: rgba(0, 0, 0, 0.65);
         }
 
         .twt-modal-select option {
@@ -484,35 +470,36 @@ function injectStyles() {
             border: none !important;
             outline: none !important;
             color: currentColor;
-            opacity: 0.75;
+            opacity: 0.85;
             cursor: pointer;
             padding: 2px 5px;
             border-radius: 4px;
             font-size: 12px;
             transition: all 0.15s ease;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
         }
 
         .twt-modal-btn:hover {
             opacity: 1;
-            background: rgba(255, 255, 255, 0.15);
+            background: rgba(255, 255, 255, 0.2);
         }
 
         .twt-modal-btn.close-btn:hover {
             background: #f38ba8;
             color: #11111b;
+            text-shadow: none;
         }
 
         .twt-modal-body {
-            width: 100%;
-            height: fit-content;
+            width: fit-content !important;
+            height: fit-content !important;
             max-width: 98vw;
             max-height: 95vh;
             overflow: auto;
             position: relative;
-            background: transparent !important; /* 无框无白底 */
+            background: transparent !important; /* 完全无框无黑底 */
             border: none !important;
             outline: none !important;
-            border-radius: 0 0 8px 8px;
             box-sizing: border-box;
         }
 
@@ -524,8 +511,8 @@ function injectStyles() {
         }
 
         .twt-modal-body > .twt-app-content-wrapper {
-            width: fit-content;
-            height: fit-content;
+            width: fit-content !important;
+            height: fit-content !important;
             box-sizing: border-box;
             background: transparent !important;
             border: none !important;
@@ -628,7 +615,7 @@ export function getCurrentFocusedMessage() {
 }
 
 /**
- * 展开 Modal 弹窗（支持智能 ResizeObserver 自动联动 Iframe 内部尺寸缩放）
+ * 展开 Modal 弹窗（彻底移除黑底与框线，完美顺应 Iframe 尺寸自适应）
  */
 export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diffFloors = 0) {
     const doc = getDoc();
@@ -893,10 +880,10 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diff
 
         currentlyMovedEl = currentAppEl;
 
-        // 开启尺寸动态监听器，随 Iframe / DOM 内部真实缩放联动改变 Modal 顶栏与容器宽度
+        // 开启尺寸自适应监听
         observeAppDynamicResizing(currentAppEl, dialog);
 
-        console.log('[TwT HtmlPopup] 真实 DOM 节点及其尺寸自适应监听已直接挂载至 Modal');
+        console.log('[TwT HtmlPopup] 真实 DOM 节点自适应挂载至 Modal（已彻底清除黑底）');
     }
 
     renderBodyContent();
