@@ -20,6 +20,18 @@ const MODAL_ID = 'twt-html-app-modal';
 const POS_KEY = 'twt_html_popup_saved_pos';
 
 /**
+ * 动态 ResizeObserver 句柄 (随 Iframe / DOM 内容变化联动改变弹窗尺寸)
+ */
+let activeResizeObserver = null;
+
+function stopAppResizeObserver() {
+    if (activeResizeObserver) {
+        activeResizeObserver.disconnect();
+        activeResizeObserver = null;
+    }
+}
+
+/**
  * 节流/防抖函数 (Debounce)
  */
 function debounce(fn, delay = 200) {
@@ -65,6 +77,7 @@ function cleanOldAppHtmlStates() {
 let currentlyMovedEl = null;
 
 function returnMovedElementBack() {
+    stopAppResizeObserver();
     if (currentlyMovedEl && currentlyMovedEl.__twt_placeholder__) {
         const ph = currentlyMovedEl.__twt_placeholder__;
         if (ph && ph.parentNode) {
@@ -132,6 +145,70 @@ function saveSavedAppIndex(mesIndexInfo, index) {
 }
 
 /**
+ * 实时监测并响应 Iframe / DOM 内部尺寸变化，自动同步调整扩展 Modal 弹窗尺寸
+ */
+function observeAppDynamicResizing(appEl, dialogEl) {
+    stopAppResizeObserver();
+    const win = getWin();
+
+    const updateDialogBounds = () => {
+        if (!appEl || !dialogEl) return;
+        try {
+            let curW = 0;
+            let curH = 0;
+
+            if (appEl.tagName === 'IFRAME') {
+                const iDoc = appEl.contentDocument || appEl.contentWindow?.document;
+                if (iDoc && iDoc.documentElement) {
+                    const scrollW = Math.max(iDoc.documentElement.scrollWidth, iDoc.body?.scrollWidth || 0);
+                    const scrollH = Math.max(iDoc.documentElement.scrollHeight, iDoc.body?.scrollHeight || 0);
+                    if (scrollW > 50 && scrollW < win.innerWidth * 0.98) curW = scrollW;
+                    if (scrollH > 50) curH = scrollH;
+                }
+                if (!curW) curW = appEl.offsetWidth || parseInt(appEl.width) || parseInt(appEl.style.width) || 0;
+                if (!curH) curH = appEl.offsetHeight || parseInt(appEl.height) || parseInt(appEl.style.height) || 0;
+            } else {
+                const innerNode = appEl.firstElementChild || appEl;
+                const rect = innerNode.getBoundingClientRect();
+                curW = rect.width || appEl.offsetWidth;
+                curH = rect.height || appEl.offsetHeight;
+            }
+
+            if (curW > 50 && curW < win.innerWidth * 0.98) {
+                dialogEl.style.width = `${curW}px`;
+                appEl.style.width = '100%';
+            }
+            if (curH > 50 && appEl.tagName === 'IFRAME') {
+                appEl.style.height = `${curH}px`;
+            }
+        } catch (e) {}
+    };
+
+    updateDialogBounds();
+
+    if (window.ResizeObserver) {
+        activeResizeObserver = new ResizeObserver(() => {
+            requestAnimationFrame(updateDialogBounds);
+        });
+        activeResizeObserver.observe(appEl);
+        if (appEl.firstElementChild) activeResizeObserver.observe(appEl.firstElementChild);
+    }
+
+    if (appEl.tagName === 'IFRAME') {
+        appEl.addEventListener('load', () => {
+            updateDialogBounds();
+            try {
+                const iWin = appEl.contentWindow;
+                if (iWin) {
+                    iWin.addEventListener('resize', updateDialogBounds);
+                    iWin.addEventListener('click', () => setTimeout(updateDialogBounds, 120));
+                }
+            } catch (e) {}
+        });
+    }
+}
+
+/**
  * 监听并防抖保存 Iframe 内部展开/折叠 DOM 状态
  */
 function attachIframeStateTracker(iframeEl, mesIndexInfo, appIndex) {
@@ -144,7 +221,7 @@ function attachIframeStateTracker(iframeEl, mesIndexInfo, appIndex) {
                     iframeEl.srcdoc = fullHtml;
                     cleanOldAppHtmlStates();
                     localStorage.setItem(`twt_app_saved_html_${mesIndexInfo}_${appIndex}`, fullHtml);
-                    console.log(`[TwT HtmlPopup] [性能优化] 200ms 防抖成功保存 Iframe 展开状态 (Msg #${mesIndexInfo}, App #${appIndex})`);
+                    console.log(`[TwT HtmlPopup] 防抖保存 Iframe 展开状态 (Msg #${mesIndexInfo}, App #${appIndex})`);
                 }
             }
         } catch (e) {
@@ -188,7 +265,7 @@ function attachDomStateTracker(domEl, mesIndexInfo, appIndex) {
             const currentHtml = domEl.innerHTML;
             cleanOldAppHtmlStates();
             localStorage.setItem(`twt_app_saved_html_${mesIndexInfo}_${appIndex}`, currentHtml);
-            console.log(`[TwT HtmlPopup] [性能优化] 200ms 防抖成功保存 DOM 节点展开状态 (Msg #${mesIndexInfo}, App #${appIndex})`);
+            console.log(`[TwT HtmlPopup] 防抖保存 DOM 节点展开状态 (Msg #${mesIndexInfo}, App #${appIndex})`);
         } catch (e) {
             console.warn('[TwT HtmlPopup] 保存 DOM 节点状态失败:', e);
         }
@@ -270,7 +347,7 @@ export function getHtmlPopupDefaultSettings() {
 }
 
 /**
- * 样式注入（超紧凑无溢出顶栏、无框线、纯透明背景、自定义标题映射、支持拖拽）
+ * 样式注入
  */
 function injectStyles() {
     const doc = getDoc();
@@ -302,7 +379,7 @@ function injectStyles() {
         .twt-modal-dialog {
             pointer-events: auto;
             position: absolute;
-            width: max-content;
+            width: fit-content;
             height: fit-content;
             max-width: 98vw;
             max-height: 98vh;
@@ -458,7 +535,7 @@ function injectStyles() {
 }
 
 /**
- * 提取并隐藏正文中的匹配元素（防刷节流版）
+ * 提取并隐藏正文中的匹配元素
  */
 let hideScheduled = false;
 
@@ -551,7 +628,7 @@ export function getCurrentFocusedMessage() {
 }
 
 /**
- * 展开 Modal 弹窗（高性能重排缓存与 DOM Reparenting）
+ * 展开 Modal 弹窗（支持智能 ResizeObserver 自动联动 Iframe 内部尺寸缩放）
  */
 export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diffFloors = 0) {
     const doc = getDoc();
@@ -786,36 +863,6 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diff
             }
         }
 
-        // 测算组件物理尺寸（使用缓存避免重复 Reflow）
-        let measuredW = 0;
-        let measuredH = 0;
-
-        if (currentAppEl.__twt_measured_size__) {
-            measuredW = currentAppEl.__twt_measured_size__.w;
-            measuredH = currentAppEl.__twt_measured_size__.h;
-        } else {
-            const wasHidden = currentAppEl.classList.contains('twt-app-hidden');
-            if (wasHidden) {
-                currentAppEl.style.visibility = 'hidden';
-                currentAppEl.style.position = 'absolute';
-                currentAppEl.classList.remove('twt-app-hidden');
-            }
-
-            const innerNode = currentAppEl.firstElementChild || currentAppEl;
-            const rect = innerNode.getBoundingClientRect();
-            if (rect.width > 30 && rect.width < getWin().innerWidth) measuredW = rect.width;
-            if (rect.height > 20) measuredH = rect.height;
-
-            if (wasHidden) {
-                currentAppEl.style.visibility = '';
-                currentAppEl.style.position = '';
-            }
-
-            if (measuredW > 0 || measuredH > 0) {
-                currentAppEl.__twt_measured_size__ = { w: measuredW, h: measuredH };
-            }
-        }
-
         // 创建占位符并实施 DOM 物理移入 (DOM Reparenting)
         const doc = getDoc();
         const placeholder = doc.createElement('div');
@@ -832,18 +879,6 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diff
         currentAppEl.style.visibility = '';
         currentAppEl.style.backgroundColor = 'transparent';
 
-        // 锁定弹窗框架宽度与小部件完全一致
-        if (measuredW > 0) {
-            dialog.style.width = `${measuredW}px`;
-            currentAppEl.style.width = '100%';
-        } else {
-            dialog.style.width = 'fit-content';
-        }
-
-        if (measuredH > 0) {
-            currentAppEl.style.height = `${measuredH}px`;
-        }
-
         if (currentAppEl.tagName === 'IFRAME') {
             currentAppEl.setAttribute('allowtransparency', 'true');
             attachIframeStateTracker(currentAppEl, mesIndexInfo, currentIndex);
@@ -857,7 +892,11 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diff
         body.appendChild(wrapper);
 
         currentlyMovedEl = currentAppEl;
-        console.log('[TwT HtmlPopup] 真实 DOM 节点及其全部 JS 事件/展开折叠状态已直接挂载至 Modal');
+
+        // 开启尺寸动态监听器，随 Iframe / DOM 内部真实缩放联动改变 Modal 顶栏与容器宽度
+        observeAppDynamicResizing(currentAppEl, dialog);
+
+        console.log('[TwT HtmlPopup] 真实 DOM 节点及其尺寸自适应监听已直接挂载至 Modal');
     }
 
     renderBodyContent();
