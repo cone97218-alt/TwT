@@ -53,7 +53,7 @@ export function getHtmlPopupDefaultSettings() {
 }
 
 /**
- * 样式注入（完全无框线、纯透明背景、紧凑适应 iframe 宽高、支持拖拽）
+ * 样式注入（完全无框线、纯透明背景、顶栏宽度精准对齐组件、支持拖拽）
  */
 function injectStyles() {
     const doc = getDoc();
@@ -85,7 +85,7 @@ function injectStyles() {
         .twt-modal-dialog {
             pointer-events: auto;
             position: absolute;
-            width: fit-content;
+            width: max-content;
             height: fit-content;
             max-width: 98vw;
             max-height: 98vh;
@@ -98,6 +98,7 @@ function injectStyles() {
             overflow: visible;
             border-radius: 8px;
             transition: opacity 0.15s ease-out;
+            box-sizing: border-box;
         }
 
         .twt-modal-header {
@@ -127,12 +128,14 @@ function injectStyles() {
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+            max-width: 80%;
         }
 
         .twt-modal-controls {
             display: flex;
             align-items: center;
             gap: 4px;
+            flex-shrink: 0;
         }
 
         .twt-modal-btn {
@@ -159,7 +162,7 @@ function injectStyles() {
         }
 
         .twt-modal-body {
-            width: fit-content;
+            width: 100%;
             height: fit-content;
             max-width: 98vw;
             max-height: 95vh;
@@ -169,6 +172,7 @@ function injectStyles() {
             border: none !important;
             outline: none !important;
             border-radius: 0 0 8px 8px;
+            box-sizing: border-box;
         }
 
         .twt-modal-body > iframe {
@@ -187,7 +191,7 @@ function injectStyles() {
             outline: none !important;
         }
     `;
-    console.log('[TwT HtmlPopup] 样式依赖已更新（完全无框线 & 大小紧贴 iframe）');
+    console.log('[TwT HtmlPopup] 样式依赖已更新（顶栏宽度完全等宽对齐组件）');
 }
 
 /**
@@ -275,7 +279,7 @@ export function getCurrentFocusedMessage() {
 }
 
 /**
- * 展开完全无框线、尺寸贴合 iframe 自身大小的 HTML 应用 Modal 弹窗
+ * 展开完全无框线、顶栏宽度精准对齐小部件本身尺寸的 Modal 弹窗
  */
 export function openHtmlAppModal(appEl, mesIndexInfo) {
     const doc = getDoc();
@@ -435,24 +439,40 @@ export function openHtmlAppModal(appEl, mesIndexInfo) {
             clone.style.backgroundColor = 'transparent';
         }
 
-        // 精准抓取/复制原始 HTML / Iframe 节点的宽高样式
-        let w = appEl.style.width || appEl.getAttribute('width');
-        let h = appEl.style.height || appEl.getAttribute('height');
+        // 精准测算小部件真实的物理宽度/高度
+        let measuredW = 0;
+        let measuredH = 0;
 
-        if (!w || !h || w === 'auto' || h === 'auto') {
-            const wasHidden = appEl.classList.contains('twt-app-hidden');
-            if (wasHidden) appEl.classList.remove('twt-app-hidden');
-            const rect = appEl.getBoundingClientRect();
-            const cs = getComputedStyle(appEl);
-            if ((!w || w === 'auto') && rect.width > 20) w = `${rect.width}px`;
-            if ((!h || h === 'auto') && rect.height > 20) h = `${rect.height}px`;
-            if (!w && cs.width !== '0px' && cs.width !== 'auto') w = cs.width;
-            if (!h && cs.height !== '0px' && cs.height !== 'auto') h = cs.height;
-            if (wasHidden) appEl.classList.add('twt-app-hidden');
+        const wasHidden = appEl.classList.contains('twt-app-hidden');
+        if (wasHidden) {
+            appEl.style.visibility = 'hidden';
+            appEl.style.position = 'absolute';
+            appEl.classList.remove('twt-app-hidden');
         }
 
-        if (w) clone.style.width = w;
-        if (h) clone.style.height = h;
+        // 优先测量组件最内层真实显示内容的节点
+        const innerNode = appEl.firstElementChild || appEl;
+        const rect = innerNode.getBoundingClientRect();
+        if (rect.width > 30 && rect.width < getWin().innerWidth) measuredW = rect.width;
+        if (rect.height > 20) measuredH = rect.height;
+
+        if (wasHidden) {
+            appEl.classList.add('twt-app-hidden');
+            appEl.style.visibility = '';
+            appEl.style.position = '';
+        }
+
+        // 强制把弹窗整体宽度锁定为小部件本身的真实宽度，顶栏将严格与小部件等宽
+        if (measuredW > 0) {
+            dialog.style.width = `${measuredW}px`;
+            clone.style.width = '100%';
+        } else {
+            dialog.style.width = 'fit-content';
+        }
+
+        if (measuredH > 0) {
+            clone.style.height = `${measuredH}px`;
+        }
 
         if (clone.tagName === 'IFRAME') {
             clone.setAttribute('allowtransparency', 'true');
@@ -482,7 +502,7 @@ export function openHtmlAppModal(appEl, mesIndexInfo) {
     doc.addEventListener('keydown', escHandler);
 
     doc.body.appendChild(modal);
-    console.log('[TwT HtmlPopup] Modal 弹窗已展开（完全无框线 & 形状对齐）');
+    console.log('[TwT HtmlPopup] Modal 弹窗已展开（顶栏宽度完全对齐组件）');
 }
 
 /**
