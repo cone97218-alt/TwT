@@ -428,7 +428,7 @@ export function getHtmlPopupDefaultSettings() {
 }
 
 /**
- * 样式注入 (彻底消除黑底、无框线、纯透明顶栏，包含 QR 栏左上角高亮主题色圆点提示)
+ * 样式注入 (彻底消除黑底、无框线、纯透明顶栏，包含 QR 栏左上角高亮纯色静止圆点提示)
  */
 function injectStyles() {
     const doc = getDoc();
@@ -445,7 +445,7 @@ function injectStyles() {
             display: none !important;
         }
 
-        /* QR 栏按钮与左上角高亮主题色点 */
+        /* QR 栏按钮与左上角高亮纯色静止圆点 */
         #twt-qr-html-app-btn {
             position: relative;
         }
@@ -453,35 +453,18 @@ function injectStyles() {
         #twt-qr-html-app-btn .twt-qr-badge {
             display: none;
             position: absolute;
-            top: 1px;
-            left: 1px;
-            width: 7px;
-            height: 7px;
-            background-color: var(--SmartThemeQuoteColor, #f38ba8); /* 跟着酒馆主题高亮色走，默认鲜艳高亮粉红 */
+            top: 2px;
+            left: 2px;
+            width: 6px;
+            height: 6px;
+            background-color: var(--SmartThemeQuoteColor, #f38ba8);
             border-radius: 50%;
-            box-shadow: 0 0 7px var(--SmartThemeQuoteColor, rgba(243, 139, 168, 0.95));
             pointer-events: none;
             z-index: 2;
-            animation: twtBadgePulse 1.8s infinite ease-in-out;
         }
 
         #twt-qr-html-app-btn.has-unread .twt-qr-badge {
             display: block;
-        }
-
-        @keyframes twtBadgePulse {
-            0% {
-                transform: scale(0.9);
-                box-shadow: 0 0 4px var(--SmartThemeQuoteColor, rgba(243, 139, 168, 0.7));
-            }
-            50% {
-                transform: scale(1.3);
-                box-shadow: 0 0 9px var(--SmartThemeQuoteColor, rgba(243, 139, 168, 1));
-            }
-            100% {
-                transform: scale(0.9);
-                box-shadow: 0 0 4px var(--SmartThemeQuoteColor, rgba(243, 139, 168, 0.7));
-            }
         }
 
         /* 弹窗顶层遮罩（允许穿透到底图，仅弹窗主体响应鼠标） */
@@ -1261,7 +1244,7 @@ export function applyHtmlPopupSettings() {
             const btnContainer = doc.querySelector('#qr--bar .qr--buttons') || doc.getElementById('qr--bar');
             if (btnContainer) {
                 btnContainer.prepend(btn);
-                console.log('[TwT HtmlPopup] 成功注入 QR 栏召出按钮（含未读高亮主题色点提示）');
+                console.log('[TwT HtmlPopup] 成功注入 QR 栏召出按钮（含未读高亮主题色纯色点提示）');
             } else {
                 console.warn('[TwT HtmlPopup] 未能找到 #qr--bar 容器，稍后重试注入');
             }
