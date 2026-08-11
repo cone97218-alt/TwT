@@ -82,7 +82,7 @@ export function getHtmlPopupDefaultSettings() {
 }
 
 /**
- * 样式注入（完全无框线、纯透明背景、多应用切换支持、支持拖拽）
+ * 样式注入（完全无框线、纯透明背景、多应用箭头+下拉框双切换、支持拖拽）
  */
 function injectStyles() {
     const doc = getDoc();
@@ -157,7 +157,7 @@ function injectStyles() {
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            max-width: 65%;
+            max-width: 55%;
         }
 
         .twt-modal-controls {
@@ -170,12 +170,37 @@ function injectStyles() {
         .twt-modal-switcher {
             display: flex;
             align-items: center;
-            gap: 2px;
+            gap: 4px;
             margin-right: 6px;
             padding-right: 6px;
             border-right: 1px solid rgba(255, 255, 255, 0.15);
             font-size: 11px;
-            opacity: 0.9;
+            opacity: 0.95;
+        }
+
+        .twt-modal-select {
+            background: rgba(30, 30, 46, 0.9);
+            color: #cdd6f4;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            padding: 1px 4px;
+            font-size: 11px;
+            cursor: pointer;
+            outline: none;
+            max-width: 150px;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .twt-modal-select:hover {
+            border-color: rgba(255, 255, 255, 0.4);
+            background: rgba(45, 45, 65, 0.95);
+        }
+
+        .twt-modal-select option {
+            background: #181825;
+            color: #cdd6f4;
+            padding: 4px;
         }
 
         .twt-modal-btn {
@@ -231,7 +256,7 @@ function injectStyles() {
             outline: none !important;
         }
     `;
-    console.log('[TwT HtmlPopup] 样式依赖已更新（支持组件选择持久化记忆）');
+    console.log('[TwT HtmlPopup] 样式依赖已更新（支持箭头+下拉框多组件双重切换）');
 }
 
 /**
@@ -319,7 +344,7 @@ export function getCurrentFocusedMessage() {
 }
 
 /**
- * 展开支持多应用无缝切换、尺寸完全贴合小部件、支持上次阅读组件持久化记忆的 Modal 弹窗
+ * 展开支持多应用无缝切换（箭头+下拉框）、尺寸完全贴合小部件、支持上次阅读组件持久化记忆的 Modal 弹窗
  * @param {Element|Element[]} appEls 目标 HTML 节点或节点数组
  * @param {string} mesIndexInfo 消息序号
  * @param {number|null} initialIndex 初始选中的应用索引（为 null 时自动恢复持久化记忆）
@@ -371,8 +396,7 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null) {
     const controls = doc.createElement('div');
     controls.className = 'twt-modal-controls';
 
-    // 如果多于 1 个应用，增加切换控制区域
-    let indexIndicator = null;
+    // 如果多于 1 个应用，增加（箭头 + 下拉框）双重切换控制区域
     if (appElsList.length > 1) {
         const switcher = doc.createElement('div');
         switcher.className = 'twt-modal-switcher';
@@ -381,17 +405,52 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null) {
         prevBtn.className = 'twt-modal-btn';
         prevBtn.title = '上一个应用';
         prevBtn.innerHTML = `<i class="fa-solid fa-chevron-left"></i>`;
-        prevBtn.onclick = (e) => {
+
+        const selectEl = doc.createElement('select');
+        selectEl.className = 'twt-modal-select';
+        selectEl.title = '下拉选择要查看的 HTML 部件';
+        selectEl.onclick = (e) => e.stopPropagation();
+
+        const populateOptions = () => {
+            selectEl.innerHTML = '';
+            appElsList.forEach((el, idx) => {
+                const opt = doc.createElement('option');
+                opt.value = String(idx);
+                let label = el.getAttribute('data-title') || el.getAttribute('title') || el.getAttribute('name');
+                if (!label && el.querySelector) {
+                    const textNode = el.querySelector('h1, h2, h3, h4, header, .title, [data-title]');
+                    if (textNode && textNode.textContent) label = textNode.textContent.trim();
+                }
+                if (label) {
+                    label = label.replace(/\s+/g, ' ');
+                    if (label.length > 15) label = label.substring(0, 15) + '…';
+                    opt.textContent = `${idx + 1}. ${label}`;
+                } else {
+                    opt.textContent = `部件 #${idx + 1}`;
+                }
+                selectEl.appendChild(opt);
+            });
+            selectEl.value = String(currentIndex);
+        };
+
+        populateOptions();
+
+        selectEl.onchange = (e) => {
             e.stopPropagation();
-            currentIndex = (currentIndex - 1 + appElsList.length) % appElsList.length;
+            currentIndex = parseInt(selectEl.value, 10);
             saveSavedAppIndex(mesIndexInfo, currentIndex);
             updateTitleText();
-            if (indexIndicator) indexIndicator.textContent = `${currentIndex + 1}/${appElsList.length}`;
             renderBodyContent();
         };
 
-        indexIndicator = doc.createElement('span');
-        indexIndicator.textContent = `${currentIndex + 1}/${appElsList.length}`;
+        prevBtn.onclick = (e) => {
+            e.stopPropagation();
+            currentIndex = (currentIndex - 1 + appElsList.length) % appElsList.length;
+            selectEl.value = String(currentIndex);
+            saveSavedAppIndex(mesIndexInfo, currentIndex);
+            updateTitleText();
+            renderBodyContent();
+        };
 
         const nextBtn = doc.createElement('button');
         nextBtn.className = 'twt-modal-btn';
@@ -400,14 +459,14 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null) {
         nextBtn.onclick = (e) => {
             e.stopPropagation();
             currentIndex = (currentIndex + 1) % appElsList.length;
+            selectEl.value = String(currentIndex);
             saveSavedAppIndex(mesIndexInfo, currentIndex);
             updateTitleText();
-            if (indexIndicator) indexIndicator.textContent = `${currentIndex + 1}/${appElsList.length}`;
             renderBodyContent();
         };
 
         switcher.appendChild(prevBtn);
-        switcher.appendChild(indexIndicator);
+        switcher.appendChild(selectEl);
         switcher.appendChild(nextBtn);
         controls.appendChild(switcher);
     }
@@ -482,7 +541,7 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null) {
     };
 
     header.addEventListener('mousedown', (e) => {
-        if (e.target.closest('.twt-modal-btn')) return;
+        if (e.target.closest('.twt-modal-btn, .twt-modal-select')) return;
         startDrag(e.clientX, e.clientY);
 
         const onMouseMove = (moveEv) => moveDrag(moveEv.clientX, moveEv.clientY);
@@ -497,7 +556,7 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null) {
     });
 
     header.addEventListener('touchstart', (e) => {
-        if (e.target.closest('.twt-modal-btn')) return;
+        if (e.target.closest('.twt-modal-btn, .twt-modal-select')) return;
         const touch = e.touches[0];
         if (!touch) return;
         startDrag(touch.clientX, touch.clientY);
@@ -595,7 +654,7 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null) {
     doc.addEventListener('keydown', escHandler);
 
     doc.body.appendChild(modal);
-    console.log('[TwT HtmlPopup] Modal 弹窗已展开（组件索引记忆已激活）');
+    console.log('[TwT HtmlPopup] Modal 弹窗已展开（组件下拉选择框已激活）');
 }
 
 /**
