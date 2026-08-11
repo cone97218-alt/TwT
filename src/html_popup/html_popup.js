@@ -317,7 +317,7 @@ function injectStyles() {
             outline: none !important;
         }
     `;
-    console.log('[TwT HtmlPopup] 样式依赖已更新（移除长标题 & 自定义标题映射）');
+    console.log('[TwT HtmlPopup] 样式依赖已更新');
 }
 
 /**
@@ -440,7 +440,7 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null) {
         dialog.style.transform = 'translate(-50%, -50%)';
     }
 
-    // 头部控制栏（去除了冗长的 "HTML 应用 #X" 文本，仅保留手势抓取图标与控制区）
+    // 头部控制栏
     const header = doc.createElement('div');
     header.className = 'twt-modal-header';
 
@@ -697,7 +697,7 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null) {
     doc.addEventListener('keydown', escHandler);
 
     doc.body.appendChild(modal);
-    console.log('[TwT HtmlPopup] Modal 弹窗已展开（超紧凑无溢出顶栏）');
+    console.log('[TwT HtmlPopup] Modal 弹窗已展开');
 }
 
 /**
@@ -713,7 +713,7 @@ export function closeHtmlAppModal() {
 }
 
 /**
- * 处理 QR 栏按钮点击召出逻辑（支持一条消息内包含多个应用）
+ * 处理 QR 栏按钮点击召出逻辑（若当前聚焦消息无 iframe，自动寻找最后一条有 iframe 的消息）
  */
 function handleQrBtnClick() {
     console.log('[TwT HtmlPopup] 点击了 QR 栏 HTML 应用召出按钮');
@@ -736,27 +736,41 @@ function handleQrBtnClick() {
     );
 
     if (appEls.length === 0) {
-        console.warn(`[TwT HtmlPopup] 当前聚焦消息 (Index: ${mesIndex}) 内未包含匹配选择器 [${selector}] 的应用节点`);
+        console.warn(`[TwT HtmlPopup] 当前聚焦消息 (Index: ${mesIndex}) 内未包含匹配应用节点，开始从最新消息往回寻找最后一条有应用的消息...`);
 
         const doc = getDoc();
-        const allAppEls = Array.from(doc.querySelectorAll(`#chat .mes_text ${selector}`)).filter(
-            el => !el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')
-        );
+        const allMessages = Array.from(doc.querySelectorAll('#chat .mes'));
 
-        if (allAppEls.length > 0) {
-            const latestAppEl = allAppEls[allAppEls.length - 1];
-            const parentMes = latestAppEl.closest('.mes');
-            const fallbackMesIndex = parentMes ? (parentMes.getAttribute('mesid') || parentMes.getAttribute('data-index') || '') : '';
-            console.log(`[TwT HtmlPopup] 自动触发回退，展示对话中最新一条包含应用的消息 (Index: ${fallbackMesIndex})`);
-            if (typeof toastr !== 'undefined') {
-                toastr.info(`当前消息无应用，已为您自动召出最新消息 (#${fallbackMesIndex}) 中的 HTML 应用`, 'TwT 应用召出', { timeOut: 3000 });
+        let targetMes = null;
+        let targetAppEls = [];
+
+        // 倒序寻找最后一条包含应用节点的消息
+        for (let i = allMessages.length - 1; i >= 0; i--) {
+            const mes = allMessages[i];
+            const matchingInMes = Array.from(mes.querySelectorAll(selector)).filter(
+                el => !el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')
+            );
+            if (matchingInMes.length > 0) {
+                targetMes = mes;
+                targetAppEls = matchingInMes;
+                break;
             }
-            openHtmlAppModal(latestAppEl, fallbackMesIndex);
+        }
+
+        if (targetAppEls.length > 0 && targetMes) {
+            const fallbackMesId = targetMes.getAttribute('mesid') || targetMes.id || '';
+            const fallbackMesIndex = targetMes.getAttribute('data-index') || (parseInt(fallbackMesId) + 1) || '';
+            console.log(`[TwT HtmlPopup] 成功定位最后一条包含应用的消息 (#${fallbackMesIndex})，共 ${targetAppEls.length} 个应用节点`);
+
+            if (typeof toastr !== 'undefined') {
+                toastr.info(`当前消息无应用，已自动召出最后一条消息 (#${fallbackMesIndex}) 中的 HTML 应用`, 'TwT 应用召出', { timeOut: 2500 });
+            }
+            openHtmlAppModal(targetAppEls, fallbackMesIndex);
             return;
         }
 
         if (typeof toastr !== 'undefined') {
-            toastr.warning(`当前消息中未找到匹配的 HTML 应用 (选择器: ${selector})`, 'TwT 应用召出');
+            toastr.warning(`聊天记录中未找到任何匹配的 HTML 应用 (选择器: ${selector})`, 'TwT 应用召出');
         }
         return;
     }
