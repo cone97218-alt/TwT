@@ -42,6 +42,35 @@ function saveSavedPosition(left, top) {
 }
 
 /**
+ * 读取与保存消息关联的已选应用索引 (Persistence for last viewed HTML widget)
+ */
+function getSavedAppIndex(mesIndexInfo) {
+    try {
+        if (mesIndexInfo) {
+            const val = localStorage.getItem(`twt_html_popup_index_mes_${mesIndexInfo}`);
+            if (val !== null && !isNaN(parseInt(val, 10))) return parseInt(val, 10);
+        }
+        const globalVal = localStorage.getItem('twt_html_popup_last_index');
+        if (globalVal !== null && !isNaN(parseInt(globalVal, 10))) return parseInt(globalVal, 10);
+    } catch (e) {
+        console.warn('[TwT HtmlPopup] 读取记忆的应用索引失败:', e);
+    }
+    return 0;
+}
+
+function saveSavedAppIndex(mesIndexInfo, index) {
+    try {
+        if (mesIndexInfo) {
+            localStorage.setItem(`twt_html_popup_index_mes_${mesIndexInfo}`, index);
+        }
+        localStorage.setItem('twt_html_popup_last_index', index);
+        console.log(`[TwT HtmlPopup] 消息 #${mesIndexInfo} 的当前应用索引 [${index}] 已保存记忆`);
+    } catch (e) {
+        console.warn('[TwT HtmlPopup] 保存应用索引失败:', e);
+    }
+}
+
+/**
  * 获取默认设置
  */
 export function getHtmlPopupDefaultSettings() {
@@ -202,7 +231,7 @@ function injectStyles() {
             outline: none !important;
         }
     `;
-    console.log('[TwT HtmlPopup] 样式依赖已更新（支持多应用切换）');
+    console.log('[TwT HtmlPopup] 样式依赖已更新（支持组件选择持久化记忆）');
 }
 
 /**
@@ -290,21 +319,23 @@ export function getCurrentFocusedMessage() {
 }
 
 /**
- * 展开支持多应用无缝切换、尺寸完全贴合小部件的 Modal 弹窗
+ * 展开支持多应用无缝切换、尺寸完全贴合小部件、支持上次阅读组件持久化记忆的 Modal 弹窗
  * @param {Element|Element[]} appEls 目标 HTML 节点或节点数组
  * @param {string} mesIndexInfo 消息序号
- * @param {number} initialIndex 初始选中的应用索引
+ * @param {number|null} initialIndex 初始选中的应用索引（为 null 时自动恢复持久化记忆）
  */
-export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = 0) {
+export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null) {
     const doc = getDoc();
     closeHtmlAppModal();
 
     const appElsList = Array.isArray(appEls) ? appEls : [appEls];
     if (appElsList.length === 0) return;
 
-    let currentIndex = Math.max(0, Math.min(initialIndex, appElsList.length - 1));
+    // 恢复上次观看的组件索引
+    let targetIndex = initialIndex !== null ? initialIndex : getSavedAppIndex(mesIndexInfo);
+    let currentIndex = Math.max(0, Math.min(targetIndex, appElsList.length - 1));
 
-    console.log(`[TwT HtmlPopup] 准备展开弹窗，当前消息共有 ${appElsList.length} 个应用，初始索引: ${currentIndex}`);
+    console.log(`[TwT HtmlPopup] 准备展开弹窗，共有 ${appElsList.length} 个应用，恢复历史选中的组件索引: ${currentIndex}`);
 
     const modal = doc.createElement('div');
     modal.id = MODAL_ID;
@@ -353,6 +384,7 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = 0) {
         prevBtn.onclick = (e) => {
             e.stopPropagation();
             currentIndex = (currentIndex - 1 + appElsList.length) % appElsList.length;
+            saveSavedAppIndex(mesIndexInfo, currentIndex);
             updateTitleText();
             if (indexIndicator) indexIndicator.textContent = `${currentIndex + 1}/${appElsList.length}`;
             renderBodyContent();
@@ -368,6 +400,7 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = 0) {
         nextBtn.onclick = (e) => {
             e.stopPropagation();
             currentIndex = (currentIndex + 1) % appElsList.length;
+            saveSavedAppIndex(mesIndexInfo, currentIndex);
             updateTitleText();
             if (indexIndicator) indexIndicator.textContent = `${currentIndex + 1}/${appElsList.length}`;
             renderBodyContent();
@@ -562,7 +595,7 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = 0) {
     doc.addEventListener('keydown', escHandler);
 
     doc.body.appendChild(modal);
-    console.log('[TwT HtmlPopup] Modal 弹窗已展开（顶栏宽度完全对齐组件）');
+    console.log('[TwT HtmlPopup] Modal 弹窗已展开（组件索引记忆已激活）');
 }
 
 /**
