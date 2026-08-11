@@ -1081,11 +1081,28 @@ function handleQrBtnClick() {
 }
 
 /**
- * 监听酒馆 Swipe (滑动换一条)、重roll (重生成)、消息更新等事件，实现秒级即时响应与弹窗自动同步刷新
+ * 监听酒馆 Swipe、重roll、新建对话、切换/退出重开对话、加载历史消息等全套生命周期事件
  */
 export function registerHtmlPopupEvents(context) {
     if (!context || !context.eventSource || !context.eventTypes) return;
 
+    const { eventSource, eventTypes } = context;
+
+    // 针对新建对话、切换对话、退出/重关对话的全量清理与恢复回调
+    const onChatResetOrSwitched = (reason) => {
+        console.log(`[TwT HtmlPopup] [对话状态重置] 原因: ${reason}`);
+
+        // 1. 关闭展开的弹窗并清理 DOM 状态
+        closeHtmlAppModal();
+
+        // 2. 多重延迟触发正文隐藏（确保新建/重开对话加载的历史 Iframe 被隐形）
+        hideMessageHtmlApps();
+        setTimeout(hideMessageHtmlApps, 100);
+        setTimeout(hideMessageHtmlApps, 350);
+        setTimeout(hideMessageHtmlApps, 800);
+    };
+
+    // 针对消息 Swipe (换一条)、重roll (重生成)、消息渲染/更新的回调
     const onMessageChangedOrSwiped = (mesId) => {
         console.log(`[TwT HtmlPopup] [即时响应] 捕获到消息重roll / Swipe / 更新事件 (mesId: ${mesId})`);
 
@@ -1117,15 +1134,14 @@ export function registerHtmlPopupEvents(context) {
         }
     };
 
-    const { eventSource, eventTypes } = context;
     if (eventTypes.MESSAGE_SWIPED) eventSource.on(eventTypes.MESSAGE_SWIPED, onMessageChangedOrSwiped);
     if (eventTypes.MESSAGE_UPDATED) eventSource.on(eventTypes.MESSAGE_UPDATED, onMessageChangedOrSwiped);
     if (eventTypes.CHARACTER_MESSAGE_RENDERED) eventSource.on(eventTypes.CHARACTER_MESSAGE_RENDERED, onMessageChangedOrSwiped);
-    if (eventTypes.CHAT_CHANGED) eventSource.on(eventTypes.CHAT_CHANGED, () => {
-        closeHtmlAppModal();
-        hideMessageHtmlApps();
-        setTimeout(hideMessageHtmlApps, 200);
-    });
+
+    // 覆盖全套对话生命周期事件：切换/新建/退出重开对话、多消息加载、删除消息
+    if (eventTypes.CHAT_CHANGED) eventSource.on(eventTypes.CHAT_CHANGED, () => onChatResetOrSwitched('CHAT_CHANGED'));
+    if (eventTypes.MORE_MESSAGES_LOADED) eventSource.on(eventTypes.MORE_MESSAGES_LOADED, () => onChatResetOrSwitched('MORE_MESSAGES_LOADED'));
+    if (eventTypes.MESSAGE_DELETED) eventSource.on(eventTypes.MESSAGE_DELETED, () => onChatResetOrSwitched('MESSAGE_DELETED'));
 }
 
 /**
