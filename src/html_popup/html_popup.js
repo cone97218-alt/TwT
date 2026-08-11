@@ -428,7 +428,7 @@ export function getHtmlPopupDefaultSettings() {
 }
 
 /**
- * 样式注入 (彻底消除黑底、无框线、纯透明顶栏，包含 QR 栏左上角高亮纯色静止圆点提示)
+ * 样式注入 (彻底消除黑底、无框线、纯透明顶栏，包含平滑过渡手风琴动画)
  */
 function injectStyles() {
     const doc = getDoc();
@@ -494,8 +494,8 @@ function injectStyles() {
             flex-direction: column;
             overflow: visible;
             border-radius: 8px;
-            transition: opacity 0.15s ease-out;
             box-sizing: border-box;
+            transition: width 0.22s cubic-bezier(0.2, 0, 0.2, 1), height 0.22s cubic-bezier(0.2, 0, 0.2, 1), opacity 0.15s ease-out;
         }
 
         .twt-modal-header {
@@ -625,6 +625,7 @@ function injectStyles() {
             outline: none !important;
             display: block;
             background: transparent !important;
+            transition: width 0.22s cubic-bezier(0.2, 0, 0.2, 1), height 0.22s cubic-bezier(0.2, 0, 0.2, 1);
         }
 
         .twt-modal-body > .twt-app-content-wrapper {
@@ -634,6 +635,7 @@ function injectStyles() {
             background: transparent !important;
             border: none !important;
             outline: none !important;
+            transition: width 0.22s cubic-bezier(0.2, 0, 0.2, 1), height 0.22s cubic-bezier(0.2, 0, 0.2, 1);
         }
     `;
 }
@@ -1244,7 +1246,7 @@ export function applyHtmlPopupSettings() {
             const btnContainer = doc.querySelector('#qr--bar .qr--buttons') || doc.getElementById('qr--bar');
             if (btnContainer) {
                 btnContainer.prepend(btn);
-                console.log('[TwT HtmlPopup] 成功注入 QR 栏召出按钮（含未读高亮主题色纯色点提示）');
+                console.log('[TwT HtmlPopup] 成功注入 QR 栏召出按钮（含平滑过渡动画与提示点）');
             } else {
                 console.warn('[TwT HtmlPopup] 未能找到 #qr--bar 容器，稍后重试注入');
             }
