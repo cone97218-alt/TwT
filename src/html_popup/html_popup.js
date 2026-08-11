@@ -17,6 +17,29 @@ function getDoc() {
 
 const QR_BTN_ID = 'twt-qr-html-app-btn';
 const MODAL_ID = 'twt-html-app-modal';
+const POS_KEY = 'twt_html_popup_saved_pos';
+
+/**
+ * 读取与保存弹窗的持久化位置信息
+ */
+function getSavedPosition() {
+    try {
+        const data = localStorage.getItem(POS_KEY);
+        if (data) return JSON.parse(data);
+    } catch (e) {
+        console.warn('[TwT HtmlPopup] 读取本地保存的位置数据失败:', e);
+    }
+    return null;
+}
+
+function saveSavedPosition(left, top) {
+    try {
+        localStorage.setItem(POS_KEY, JSON.stringify({ left, top }));
+        console.log(`[TwT HtmlPopup] 弹窗位置已持久化记忆: Left=${left}px, Top=${top}px`);
+    } catch (e) {
+        console.warn('[TwT HtmlPopup] 保存位置到 localStorage 失败:', e);
+    }
+}
 
 /**
  * 获取默认设置
@@ -30,21 +53,24 @@ export function getHtmlPopupDefaultSettings() {
 }
 
 /**
- * 样式注入（确保在正文中隐藏 DOM，在 Modal 中原样高层级展现）
+ * 样式注入（透明底、无白框、可拖拽 header、不穿透屏蔽）
  */
 function injectStyles() {
     const doc = getDoc();
-    if (doc.getElementById('twt-html-popup-style')) return;
+    let style = doc.getElementById('twt-html-popup-style');
+    if (!style) {
+        style = doc.createElement('style');
+        style.id = 'twt-html-popup-style';
+        doc.head.appendChild(style);
+    }
 
-    const style = doc.createElement('style');
-    style.id = 'twt-html-popup-style';
     style.textContent = `
         /* 正文中隐藏应用 DOM 节点 */
         .twt-app-hidden {
             display: none !important;
         }
 
-        /* 弹窗遮罩与容器 */
+        /* 弹窗顶层遮罩（允许穿透到底图，仅弹窗主体响应鼠标） */
         #twt-html-app-modal {
             position: fixed;
             left: 0;
@@ -52,48 +78,43 @@ function injectStyles() {
             width: 100vw;
             height: 100vh;
             z-index: 999999;
-            background: rgba(0, 0, 0, 0.75);
-            backdrop-filter: blur(4px);
-            -webkit-backdrop-filter: blur(4px);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            animation: twtFadeIn 0.2s ease-out;
+            pointer-events: none;
             box-sizing: border-box;
-            padding: 20px;
-        }
-
-        @keyframes twtFadeIn {
-            from { opacity: 0; transform: scale(0.98); }
-            to { opacity: 1; transform: scale(1); }
         }
 
         .twt-modal-dialog {
-            width: 90vw;
-            height: 88vh;
+            pointer-events: auto;
+            position: absolute;
+            width: 85vw;
+            height: 85vh;
             max-width: 1400px;
             max-height: 900px;
-            background: var(--SmartThemeBlurBg, #1e1e2e);
-            color: var(--SmartThemeBodyColor, #cdd6f4);
-            border: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.15));
-            border-radius: 12px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            background: transparent; /* 纯透明无白底 */
+            border: none;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
             display: flex;
             flex-direction: column;
-            overflow: hidden;
+            overflow: visible;
+            border-radius: 10px;
+            transition: opacity 0.15s ease-out;
         }
 
         .twt-modal-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 10px 16px;
-            background: rgba(0, 0, 0, 0.25);
-            border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.1));
-            font-size: 14px;
+            padding: 8px 14px;
+            background: rgba(30, 30, 46, 0.85); /* 半透明暗色控制顶栏 */
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-bottom: none;
+            border-radius: 10px 10px 0 0;
+            color: #cdd6f4;
+            font-size: 13px;
             font-weight: 600;
             user-select: none;
+            cursor: move; /* 拖拽手势 */
         }
 
         .twt-modal-title {
@@ -108,7 +129,7 @@ function injectStyles() {
         .twt-modal-controls {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
         }
 
         .twt-modal-btn {
@@ -119,13 +140,13 @@ function injectStyles() {
             cursor: pointer;
             padding: 4px 8px;
             border-radius: 4px;
-            font-size: 14px;
+            font-size: 13px;
             transition: all 0.15s ease;
         }
 
         .twt-modal-btn:hover {
             opacity: 1;
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.15);
         }
 
         .twt-modal-btn.close-btn:hover {
@@ -139,9 +160,10 @@ function injectStyles() {
             height: 100%;
             overflow: auto;
             position: relative;
-            background: #ffffff; /* 兼容默认白底 HTML 应用 */
-            border-bottom-left-radius: 11px;
-            border-bottom-right-radius: 11px;
+            background: transparent; /* 移除原来的 #ffffff 白底 */
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-top: none;
+            border-radius: 0 0 10px 10px;
         }
 
         .twt-modal-body > iframe {
@@ -149,16 +171,17 @@ function injectStyles() {
             height: 100%;
             border: none;
             display: block;
+            background: transparent;
         }
 
         .twt-modal-body > .twt-app-content-wrapper {
             width: 100%;
             height: 100%;
             box-sizing: border-box;
+            background: transparent;
         }
     `;
-    doc.head.appendChild(style);
-    console.log('[TwT HtmlPopup] 样式依赖已注入');
+    console.log('[TwT HtmlPopup] 样式依赖已更新（透明背景 & 可拖拽面板）');
 }
 
 /**
@@ -178,7 +201,6 @@ export function hideMessageHtmlApps() {
         let count = 0;
 
         matchingElements.forEach((el) => {
-            // 跳过思维链中的内容
             if (el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')) return;
 
             if (!el.classList.contains('twt-app-hidden')) {
@@ -206,7 +228,6 @@ export function getCurrentFocusedMessage() {
     const messages = Array.from(chat.querySelectorAll('.mes'));
     if (messages.length === 0) return null;
 
-    // 如果处于阅读模式，计算 scrollLeft 定位当前页消息
     if (doc.body.classList.contains('twt-reading-mode')) {
         const chatRect = chat.getBoundingClientRect();
         const chatCenterLeft = chatRect.left + chatRect.width / 2;
@@ -230,7 +251,6 @@ export function getCurrentFocusedMessage() {
         }
     }
 
-    // 经典纵向模式下，捕获可视区域中间的消息
     const winH = getWin().innerHeight;
     let targetMes = null;
     let minCenterDiff = Infinity;
@@ -249,11 +269,11 @@ export function getCurrentFocusedMessage() {
 }
 
 /**
- * 展开 HTML 应用 Modal 弹窗
+ * 展开无白底、支持拖拽与位置持久化记忆的 HTML 应用 Modal 弹窗
  */
 export function openHtmlAppModal(appEl, mesIndexInfo) {
     const doc = getDoc();
-    closeHtmlAppModal(); // 先清理已存在的 Modal
+    closeHtmlAppModal();
 
     console.log('[TwT HtmlPopup] 正在准备弹窗渲染目标元素:', appEl);
 
@@ -263,7 +283,20 @@ export function openHtmlAppModal(appEl, mesIndexInfo) {
     const dialog = doc.createElement('div');
     dialog.className = 'twt-modal-dialog';
 
-    // 头部控制栏
+    // 恢复持久化记忆的位置
+    const savedPos = getSavedPosition();
+    if (savedPos && typeof savedPos.left === 'number' && typeof savedPos.top === 'number') {
+        dialog.style.left = `${savedPos.left}px`;
+        dialog.style.top = `${savedPos.top}px`;
+        dialog.style.transform = 'none';
+        console.log(`[TwT HtmlPopup] 已成功应用历史记忆弹窗位置: left=${savedPos.left}px, top=${savedPos.top}px`);
+    } else {
+        dialog.style.left = '50%';
+        dialog.style.top = '50%';
+        dialog.style.transform = 'translate(-50%, -50%)';
+    }
+
+    // 头部控制栏（拖拽句柄）
     const header = doc.createElement('div');
     header.className = 'twt-modal-header';
 
@@ -279,7 +312,8 @@ export function openHtmlAppModal(appEl, mesIndexInfo) {
     refreshBtn.className = 'twt-modal-btn';
     refreshBtn.title = '刷新 / 重新渲染';
     refreshBtn.innerHTML = `<i class="fa-solid fa-rotate-right"></i>`;
-    refreshBtn.onclick = () => {
+    refreshBtn.onclick = (e) => {
+        e.stopPropagation();
         console.log('[TwT HtmlPopup] 刷新弹窗内容...');
         if (appEl.tagName === 'IFRAME' && appEl.src) {
             appEl.src = appEl.src;
@@ -288,38 +322,98 @@ export function openHtmlAppModal(appEl, mesIndexInfo) {
         }
     };
 
-    // 按钮：新窗口打开
-    const openNewBtn = doc.createElement('button');
-    openNewBtn.className = 'twt-modal-btn';
-    openNewBtn.title = '在新标签页/新窗口打开';
-    openNewBtn.innerHTML = `<i class="fa-solid fa-arrow-up-right-from-square"></i>`;
-    openNewBtn.onclick = () => {
-        try {
-            if (appEl.tagName === 'IFRAME' && appEl.src) {
-                getWin().open(appEl.src, '_blank');
-            } else {
-                const newWin = getWin().open('', '_blank');
-                newWin.document.write(appEl.outerHTML || appEl.innerHTML);
-                newWin.document.close();
-            }
-        } catch (e) {
-            console.error('[TwT HtmlPopup] 新窗口打开失败:', e);
-        }
-    };
-
     // 按钮：关闭
     const closeBtn = doc.createElement('button');
     closeBtn.className = 'twt-modal-btn close-btn';
     closeBtn.title = '关闭弹窗 (Esc)';
     closeBtn.innerHTML = `<i class="fa-solid fa-xmark"></i>`;
-    closeBtn.onclick = closeHtmlAppModal;
+    closeBtn.onclick = (e) => {
+        e.stopPropagation();
+        closeHtmlAppModal();
+    };
 
     controls.appendChild(refreshBtn);
-    controls.appendChild(openNewBtn);
     controls.appendChild(closeBtn);
 
     header.appendChild(title);
     header.appendChild(controls);
+
+    // 绑定鼠标/触摸拖拽功能
+    let isDragging = false;
+    let startX = 0, startY = 0;
+    let initialLeft = 0, initialTop = 0;
+
+    const startDrag = (clientX, clientY) => {
+        isDragging = true;
+        startX = clientX;
+        startY = clientY;
+        const rect = dialog.getBoundingClientRect();
+        initialLeft = rect.left;
+        initialTop = rect.top;
+
+        dialog.style.left = `${initialLeft}px`;
+        dialog.style.top = `${initialTop}px`;
+        dialog.style.transform = 'none';
+    };
+
+    const moveDrag = (clientX, clientY) => {
+        if (!isDragging) return;
+        const dx = clientX - startX;
+        const dy = clientY - startY;
+        const win = getWin();
+        const maxLeft = win.innerWidth - 100;
+        const maxTop = win.innerHeight - 40;
+
+        const newLeft = Math.max(0, Math.min(maxLeft, initialLeft + dx));
+        const newTop = Math.max(0, Math.min(maxTop, initialTop + dy));
+
+        dialog.style.left = `${newLeft}px`;
+        dialog.style.top = `${newTop}px`;
+    };
+
+    const endDrag = () => {
+        if (isDragging) {
+            isDragging = false;
+            const currentLeft = parseInt(dialog.style.left) || 0;
+            const currentTop = parseInt(dialog.style.top) || 0;
+            saveSavedPosition(currentLeft, currentTop);
+        }
+    };
+
+    header.addEventListener('mousedown', (e) => {
+        if (e.target.closest('.twt-modal-btn')) return;
+        startDrag(e.clientX, e.clientY);
+
+        const onMouseMove = (moveEv) => moveDrag(moveEv.clientX, moveEv.clientY);
+        const onMouseUp = () => {
+            endDrag();
+            doc.removeEventListener('mousemove', onMouseMove);
+            doc.removeEventListener('mouseup', onMouseUp);
+        };
+
+        doc.addEventListener('mousemove', onMouseMove);
+        doc.addEventListener('mouseup', onMouseUp);
+    });
+
+    header.addEventListener('touchstart', (e) => {
+        if (e.target.closest('.twt-modal-btn')) return;
+        const touch = e.touches[0];
+        if (!touch) return;
+        startDrag(touch.clientX, touch.clientY);
+
+        const onTouchMove = (moveEv) => {
+            const t = moveEv.touches[0];
+            if (t) moveDrag(t.clientX, t.clientY);
+        };
+        const onTouchEnd = () => {
+            endDrag();
+            doc.removeEventListener('touchmove', onTouchMove);
+            doc.removeEventListener('touchend', onTouchEnd);
+        };
+
+        doc.addEventListener('touchmove', onTouchMove, { passive: true });
+        doc.addEventListener('touchend', onTouchEnd);
+    }, { passive: true });
 
     // 弹窗主体
     const body = doc.createElement('div');
@@ -327,16 +421,16 @@ export function openHtmlAppModal(appEl, mesIndexInfo) {
 
     function renderBodyContent() {
         body.innerHTML = '';
-        // 克隆节点并在 modal 中移除隐藏 class
         const clone = appEl.cloneNode(true);
         clone.classList.remove('twt-app-hidden');
         if (clone.style) {
             clone.style.display = '';
             clone.style.visibility = '';
+            clone.style.backgroundColor = 'transparent';
         }
 
-        // 如果是克隆 iframe，处理 srcdoc / src 重新绑定
         if (clone.tagName === 'IFRAME') {
+            clone.setAttribute('allowtransparency', 'true');
             if (appEl.srcdoc) clone.srcdoc = appEl.srcdoc;
             if (appEl.src) clone.src = appEl.src;
         }
@@ -353,11 +447,6 @@ export function openHtmlAppModal(appEl, mesIndexInfo) {
     dialog.appendChild(body);
     modal.appendChild(dialog);
 
-    // 点击背景关闭
-    modal.onclick = (e) => {
-        if (e.target === modal) closeHtmlAppModal();
-    };
-
     // Esc 键关闭监听
     const escHandler = (e) => {
         if (e.key === 'Escape') {
@@ -368,7 +457,7 @@ export function openHtmlAppModal(appEl, mesIndexInfo) {
     doc.addEventListener('keydown', escHandler);
 
     doc.body.appendChild(modal);
-    console.log('[TwT HtmlPopup] Modal 弹窗显示成功');
+    console.log('[TwT HtmlPopup] Modal 弹窗已展开（透明背景 & 位置持久化）');
 }
 
 /**
@@ -401,13 +490,11 @@ function handleQrBtnClick() {
     const mesId = focusedMes.getAttribute('mesid') || focusedMes.id || '';
     const mesIndex = focusedMes.getAttribute('data-index') || (parseInt(mesId) + 1) || '';
 
-    // 在聚焦消息中寻找匹配的元素
     let appEl = focusedMes.querySelector(selector);
 
     if (!appEl) {
         console.warn(`[TwT HtmlPopup] 当前聚焦消息 (Index: ${mesIndex}) 内未包含匹配选择器 [${selector}] 的应用节点`);
 
-        // 回退机制：在聊天中全局寻找【最新一条】带有应用的消息
         const doc = getDoc();
         const allAppEls = Array.from(doc.querySelectorAll(`#chat .mes_text ${selector}`));
 
@@ -472,7 +559,6 @@ export function applyHtmlPopupSettings() {
             btn.remove();
             console.log('[TwT HtmlPopup] 功能已禁用，已移除 QR 栏按钮');
         }
-        // 恢复隐藏的 DOM 节点
         doc.querySelectorAll('.twt-app-hidden').forEach(el => el.classList.remove('twt-app-hidden'));
     }
 }
@@ -488,7 +574,6 @@ export function initHtmlPopup() {
     const win = getWin();
     const MutationObserverClass = win.MutationObserver || win.parent?.MutationObserver || window.MutationObserver;
 
-    // 实时监听聊天框与 DOM 变化，自动隐藏新流式输出的应用节点
     const observer = new MutationObserverClass(() => {
         if (doc.querySelector('#qr--bar')) {
             applyHtmlPopupSettings();
