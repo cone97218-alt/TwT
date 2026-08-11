@@ -20,14 +20,19 @@ const MODAL_ID = 'twt-html-app-modal';
 const POS_KEY = 'twt_html_popup_saved_pos';
 
 /**
- * 动态 ResizeObserver 句柄 (随 Iframe / DOM 内部内容变化动态跟随自适应)
+ * 动态 ResizeObserver 句柄与 Iframe 内部 MutationObserver
  */
 let activeResizeObserver = null;
+let activeIframeObserver = null;
 
 function stopAppResizeObserver() {
     if (activeResizeObserver) {
         activeResizeObserver.disconnect();
         activeResizeObserver = null;
+    }
+    if (activeIframeObserver) {
+        activeIframeObserver.disconnect();
+        activeIframeObserver = null;
     }
 }
 
@@ -145,6 +150,66 @@ function saveSavedAppIndex(mesIndexInfo, index) {
 }
 
 /**
+ * 物理精确测算并自适应调整 Iframe 及其内部 DOM 内容尺寸
+ */
+function fitIframeToContent(iframeEl, dialogEl) {
+    if (!iframeEl || iframeEl.tagName !== 'IFRAME') return;
+    try {
+        const iDoc = iframeEl.contentDocument || iframeEl.contentWindow?.document;
+        if (!iDoc || !iDoc.body) return;
+
+        const children = Array.from(iDoc.body.children).filter(
+            c => c.tagName !== 'SCRIPT' && c.tagName !== 'STYLE' && c.tagName !== 'LINK'
+        );
+
+        let realWidth = 0;
+        let realHeight = 0;
+
+        // 临时将 body 设为 fit-content 测量内在部件物理真实收紧宽度
+        const oldBodyWidth = iDoc.body.style.width;
+        const oldBodyDisplay = iDoc.body.style.display;
+
+        iDoc.body.style.width = 'fit-content';
+        iDoc.body.style.display = 'inline-block';
+
+        if (children.length > 0) {
+            let maxChildW = 0;
+            children.forEach(child => {
+                const r = child.getBoundingClientRect();
+                if (r.width > maxChildW) maxChildW = r.width;
+            });
+            realWidth = maxChildW || iDoc.body.offsetWidth;
+        } else {
+            realWidth = iDoc.body.offsetWidth;
+        }
+
+        iDoc.body.style.width = oldBodyWidth;
+        iDoc.body.style.display = oldBodyDisplay;
+
+        realHeight = Math.max(iDoc.documentElement.scrollHeight, iDoc.body.scrollHeight);
+
+        const win = getWin();
+        const maxW = win.innerWidth * 0.96;
+        const maxH = win.innerHeight * 0.92;
+
+        if (realWidth > 40 && realWidth < maxW) {
+            const finalW = Math.ceil(realWidth);
+            iframeEl.style.width = `${finalW}px`;
+            if (dialogEl) dialogEl.style.width = `${finalW}px`;
+        }
+
+        if (realHeight > 30) {
+            const finalH = Math.min(Math.ceil(realHeight), maxH);
+            iframeEl.style.height = `${finalH}px`;
+        }
+
+        console.log(`[TwT HtmlPopup] [Iframe 自适应成功] 真实宽度: ${realWidth}px, 高度: ${realHeight}px`);
+    } catch (e) {
+        console.warn('[TwT HtmlPopup] 测算 Iframe 内容尺寸失败:', e);
+    }
+}
+
+/**
  * 实时监测并响应 Iframe / DOM 内部尺寸变化，自适应动态调整
  */
 function observeAppDynamicResizing(appEl, dialogEl) {
@@ -155,16 +220,14 @@ function observeAppDynamicResizing(appEl, dialogEl) {
         if (!appEl || !dialogEl) return;
         try {
             if (appEl.tagName === 'IFRAME') {
-                const iDoc = appEl.contentDocument || appEl.contentWindow?.document;
-                if (iDoc && iDoc.documentElement) {
-                    const scrollW = Math.max(iDoc.documentElement.scrollWidth, iDoc.body?.scrollWidth || 0);
-                    const scrollH = Math.max(iDoc.documentElement.scrollHeight, iDoc.body?.scrollHeight || 0);
-                    if (scrollW > 50 && scrollW < win.innerWidth * 0.98) {
-                        appEl.style.width = `${scrollW}px`;
-                    }
-                    if (scrollH > 50) {
-                        appEl.style.height = `${scrollH}px`;
-                    }
+                fitIframeToContent(appEl, dialogEl);
+            } else {
+                const innerNode = appEl.firstElementChild || appEl;
+                const rect = innerNode.getBoundingClientRect();
+                const curW = rect.width || appEl.offsetWidth;
+                if (curW > 50 && curW < win.innerWidth * 0.98) {
+                    dialogEl.style.width = `${Math.ceil(curW)}px`;
+                    appEl.style.width = '100%';
                 }
             }
         } catch (e) {}
@@ -181,8 +244,24 @@ function observeAppDynamicResizing(appEl, dialogEl) {
     }
 
     if (appEl.tagName === 'IFRAME') {
+        const bindIframeMutation = () => {
+            try {
+                const iDoc = appEl.contentDocument || appEl.contentWindow?.document;
+                if (iDoc && iDoc.body) {
+                    fitIframeToContent(appEl, dialogEl);
+                    const MutationClass = win.MutationObserver || window.MutationObserver;
+                    if (MutationClass) {
+                        activeIframeObserver = new MutationClass(debounce(() => {
+                            fitIframeToContent(appEl, dialogEl);
+                        }, 100));
+                        activeIframeObserver.observe(iDoc.body, { childList: true, subtree: true, attributes: true, characterData: true });
+                    }
+                }
+            } catch (e) {}
+        };
+
         appEl.addEventListener('load', () => {
-            updateDialogBounds();
+            bindIframeMutation();
             try {
                 const iWin = appEl.contentWindow;
                 if (iWin) {
@@ -191,6 +270,8 @@ function observeAppDynamicResizing(appEl, dialogEl) {
                 }
             } catch (e) {}
         });
+
+        bindIframeMutation();
     }
 }
 
@@ -615,7 +696,7 @@ export function getCurrentFocusedMessage() {
 }
 
 /**
- * 展开 Modal 弹窗（彻底移除黑底与框线，完美顺应 Iframe 尺寸自适应）
+ * 展开 Modal 弹窗（彻底移除黑底与框线，完美顺应 Iframe 真实尺寸自适应）
  */
 export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diffFloors = 0) {
     const doc = getDoc();
@@ -880,10 +961,10 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diff
 
         currentlyMovedEl = currentAppEl;
 
-        // 开启尺寸自适应监听
+        // 开启精确的物理自适应测算与动态 DOM/Iframe 监听
         observeAppDynamicResizing(currentAppEl, dialog);
 
-        console.log('[TwT HtmlPopup] 真实 DOM 节点自适应挂载至 Modal（已彻底清除黑底）');
+        console.log('[TwT HtmlPopup] 真实 DOM 节点及其精确尺寸自适应机制已直接挂载至 Modal');
     }
 
     renderBodyContent();
