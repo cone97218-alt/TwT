@@ -20,9 +20,25 @@ const MODAL_ID = 'twt-html-app-modal';
 const POS_KEY = 'twt_html_popup_saved_pos';
 
 /**
- * 当前打开的 Modal 状态同步句柄
+ * 追踪当前移入 Modal 的真实 DOM 节点与其正文占位符
  */
-let currentActiveStateSync = null;
+let currentlyMovedEl = null;
+
+function returnMovedElementBack() {
+    if (currentlyMovedEl && currentlyMovedEl.__twt_placeholder__) {
+        const ph = currentlyMovedEl.__twt_placeholder__;
+        if (ph && ph.parentNode) {
+            ph.parentNode.insertBefore(currentlyMovedEl, ph);
+            ph.remove();
+        }
+        currentlyMovedEl.classList.add('twt-app-hidden');
+        currentlyMovedEl.style.display = '';
+        currentlyMovedEl.style.visibility = '';
+        delete currentlyMovedEl.__twt_placeholder__;
+        console.log('[TwT HtmlPopup] 真实 DOM 节点已原路归位至正文消息中');
+    }
+    currentlyMovedEl = null;
+}
 
 /**
  * 读取与保存弹窗的持久化位置信息
@@ -76,57 +92,6 @@ function saveSavedAppIndex(mesIndexInfo, index) {
 }
 
 /**
- * 读取与保存组件内部 DOM 展开/折叠状态 (localStorage)
- */
-function getAppSavedHtmlState(mesIndexInfo, appIndex) {
-    try {
-        if (mesIndexInfo) {
-            return localStorage.getItem(`twt_html_state_mes_${mesIndexInfo}_app_${appIndex}`);
-        }
-    } catch (e) {
-        console.warn('[TwT HtmlPopup] 读取已保存的展开/折叠状态失败:', e);
-    }
-    return null;
-}
-
-function saveAppHtmlState(mesIndexInfo, appIndex, htmlContent) {
-    try {
-        if (mesIndexInfo && htmlContent) {
-            localStorage.setItem(`twt_html_state_mes_${mesIndexInfo}_app_${appIndex}`, htmlContent);
-            console.log(`[TwT HtmlPopup] 已成功记忆消息 #${mesIndexInfo} 应用 [${appIndex}] 的 DOM 展开/折叠状态`);
-        }
-    } catch (e) {
-        console.warn('[TwT HtmlPopup] 保存 DOM 展开/折叠状态失败:', e);
-    }
-}
-
-/**
- * 将 Modal 内部克隆节点的展开/折叠状态同步回正文原始 DOM 节点
- */
-function syncModalStateToOriginal(currentAppEl, cloneEl, mesIndexInfo, appIndex) {
-    if (!currentAppEl || !cloneEl) return;
-    try {
-        if (cloneEl.tagName !== 'IFRAME') {
-            // 同步 <details> 元素的 open 展开状态
-            const cloneDetails = cloneEl.querySelectorAll('details');
-            const origDetails = currentAppEl.querySelectorAll('details');
-            if (cloneDetails.length > 0 && cloneDetails.length === origDetails.length) {
-                cloneDetails.forEach((d, idx) => {
-                    if (d.open) origDetails[idx].setAttribute('open', '');
-                    else origDetails[idx].removeAttribute('open');
-                });
-            }
-
-            // 更新正文 DOM 节点的 innerHTML
-            currentAppEl.innerHTML = cloneEl.innerHTML;
-            saveAppHtmlState(mesIndexInfo, appIndex, currentAppEl.innerHTML);
-        }
-    } catch (e) {
-        console.warn('[TwT HtmlPopup] 同步组件展开/折叠状态失败:', e);
-    }
-}
-
-/**
  * 解析用户自定义标题映射规则
  */
 function resolveAppTitle(el, index) {
@@ -154,6 +119,7 @@ function resolveAppTitle(el, index) {
     const elClass = el.className || '';
     const dataTitle = el.getAttribute('data-title') || el.getAttribute('title') || el.getAttribute('name') || '';
 
+    // 1. 优先匹配用户自定义规则
     for (const rule of rules) {
         if (
             (elId && elId.includes(rule.pattern)) ||
@@ -165,6 +131,7 @@ function resolveAppTitle(el, index) {
         }
     }
 
+    // 2. 尝试获取内置 title 或 HTML 标签中的标题文本
     if (dataTitle) {
         let cleanTitle = dataTitle.replace(/\s+/g, ' ').trim();
         if (cleanTitle.length > 14) cleanTitle = cleanTitle.substring(0, 14) + '…';
@@ -179,6 +146,7 @@ function resolveAppTitle(el, index) {
         }
     }
 
+    // 3. 兜底
     return `部件 #${index + 1}`;
 }
 
@@ -402,6 +370,8 @@ export function hideMessageHtmlApps() {
         matchingElements.forEach((el) => {
             if (el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')) return;
 
+            if (currentlyMovedEl === el) return; // 如果当前正在 Modal 中挂载，不重复处理
+
             if (!el.classList.contains('twt-app-hidden')) {
                 el.classList.add('twt-app-hidden');
                 count++;
@@ -468,7 +438,7 @@ export function getCurrentFocusedMessage() {
 }
 
 /**
- * 展开支持超紧凑顶栏、展开/折叠状态持久化记忆的 Modal 弹窗
+ * 展开支持 DOM 节点物理移动 (DOM Reparenting)、完整保留事件监听与实时展开/折叠状态的 Modal 弹窗
  * @param {Element|Element[]} appEls 目标 HTML 节点或节点数组
  * @param {string} mesIndexInfo 消息序号
  * @param {number|null} initialIndex 初始选中的应用索引
@@ -553,7 +523,6 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diff
 
         selectEl.onchange = (e) => {
             e.stopPropagation();
-            if (currentActiveStateSync) currentActiveStateSync();
             currentIndex = parseInt(selectEl.value, 10);
             saveSavedAppIndex(mesIndexInfo, currentIndex);
             renderBodyContent();
@@ -561,7 +530,6 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diff
 
         prevBtn.onclick = (e) => {
             e.stopPropagation();
-            if (currentActiveStateSync) currentActiveStateSync();
             currentIndex = (currentIndex - 1 + appElsList.length) % appElsList.length;
             selectEl.value = String(currentIndex);
             saveSavedAppIndex(mesIndexInfo, currentIndex);
@@ -574,7 +542,6 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diff
         nextBtn.innerHTML = `<i class="fa-solid fa-chevron-right"></i>`;
         nextBtn.onclick = (e) => {
             e.stopPropagation();
-            if (currentActiveStateSync) currentActiveStateSync();
             currentIndex = (currentIndex + 1) % appElsList.length;
             selectEl.value = String(currentIndex);
             saveSavedAppIndex(mesIndexInfo, currentIndex);
@@ -695,25 +662,14 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diff
     body.className = 'twt-modal-body';
 
     function renderBodyContent() {
+        // 先归还之前可能已移入 Modal 的物理 DOM 节点
+        returnMovedElementBack();
+
         body.innerHTML = '';
         const currentAppEl = appElsList[currentIndex];
         if (!currentAppEl) return;
 
-        // 尝试从 localStorage 恢复组件之前已保存的展开/折叠 HTML 状态
-        const savedHtml = getAppSavedHtmlState(mesIndexInfo, currentIndex);
-        if (savedHtml && currentAppEl.tagName !== 'IFRAME') {
-            currentAppEl.innerHTML = savedHtml;
-        }
-
-        const clone = currentAppEl.cloneNode(true);
-        clone.classList.remove('twt-app-hidden');
-        if (clone.style) {
-            clone.style.display = '';
-            clone.style.visibility = '';
-            clone.style.backgroundColor = 'transparent';
-        }
-
-        // 精准测算当前小部件真实的物理宽度/高度
+        // 测算组件物理尺寸
         let measuredW = 0;
         let measuredH = 0;
 
@@ -730,46 +686,49 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diff
         if (rect.height > 20) measuredH = rect.height;
 
         if (wasHidden) {
-            currentAppEl.classList.add('twt-app-hidden');
             currentAppEl.style.visibility = '';
             currentAppEl.style.position = '';
         }
 
-        // 锁定弹窗框架宽度与当前选中的小部件等宽
+        // 创建占位符并实施 DOM 物理移入 (DOM Reparenting)
+        const doc = getDoc();
+        const placeholder = doc.createElement('div');
+        placeholder.className = 'twt-app-placeholder';
+        placeholder.style.display = 'none';
+
+        if (currentAppEl.parentNode) {
+            currentAppEl.parentNode.insertBefore(placeholder, currentAppEl);
+            currentAppEl.__twt_placeholder__ = placeholder;
+        }
+
+        currentAppEl.classList.remove('twt-app-hidden');
+        currentAppEl.style.display = '';
+        currentAppEl.style.visibility = '';
+        currentAppEl.style.backgroundColor = 'transparent';
+
+        // 锁定弹窗框架宽度与小部件完全一致
         if (measuredW > 0) {
             dialog.style.width = `${measuredW}px`;
-            clone.style.width = '100%';
+            currentAppEl.style.width = '100%';
         } else {
             dialog.style.width = 'fit-content';
         }
 
         if (measuredH > 0) {
-            clone.style.height = `${measuredH}px`;
+            currentAppEl.style.height = `${measuredH}px`;
         }
 
-        if (clone.tagName === 'IFRAME') {
-            clone.setAttribute('allowtransparency', 'true');
-            if (currentAppEl.srcdoc) clone.srcdoc = currentAppEl.srcdoc;
-            if (currentAppEl.src) clone.src = currentAppEl.src;
+        if (currentAppEl.tagName === 'IFRAME') {
+            currentAppEl.setAttribute('allowtransparency', 'true');
         }
 
         const wrapper = doc.createElement('div');
         wrapper.className = 'twt-app-content-wrapper';
-        wrapper.appendChild(clone);
+        wrapper.appendChild(currentAppEl);
         body.appendChild(wrapper);
 
-        // 设置全局同步闭包，支持实时/切页/关闭时将展开折叠 DOM 状态持久化存回正文和 localStorage
-        currentActiveStateSync = () => {
-            syncModalStateToOriginal(currentAppEl, clone, mesIndexInfo, currentIndex);
-        };
-
-        // 监听组件内的点击/展开折叠 (toggle) 行为
-        wrapper.addEventListener('click', () => {
-            setTimeout(currentActiveStateSync, 50);
-        });
-        wrapper.addEventListener('toggle', () => {
-            currentActiveStateSync();
-        }, true);
+        currentlyMovedEl = currentAppEl;
+        console.log('[TwT HtmlPopup] 真实 DOM 节点及其全部 JS 事件/展开折叠状态已直接挂载至 Modal');
     }
 
     renderBodyContent();
@@ -792,28 +751,21 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diff
 }
 
 /**
- * 关闭 Modal 弹窗（触发展开/折叠状态的同步与持久化）
+ * 关闭 Modal 弹窗（物理归还真实 DOM 节点）
  */
 export function closeHtmlAppModal() {
-    if (currentActiveStateSync) {
-        try {
-            currentActiveStateSync();
-        } catch (e) {
-            console.warn('[TwT HtmlPopup] 关闭弹窗时同步展开/折叠状态失败:', e);
-        }
-        currentActiveStateSync = null;
-    }
+    returnMovedElementBack();
 
     const doc = getDoc();
     const old = doc.getElementById(MODAL_ID);
     if (old) {
         old.remove();
-        console.log('[TwT HtmlPopup] Modal 弹窗已关闭');
+        console.log('[TwT HtmlPopup] Modal 弹窗已关闭，真实 DOM 已归位');
     }
 }
 
 /**
- * 处理 QR 栏按钮点击召出逻辑
+ * 处理 QR 栏按钮点击召出逻辑（无 Toast 打扰，在顶栏标注前 n 层）
  */
 function handleQrBtnClick() {
     console.log('[TwT HtmlPopup] 点击了 QR 栏 HTML 应用召出按钮');
