@@ -85,15 +85,16 @@ function returnMovedElementBack() {
     stopAppResizeObserver();
     if (currentlyMovedEl && currentlyMovedEl.__twt_placeholder__) {
         const ph = currentlyMovedEl.__twt_placeholder__;
-        if (ph && ph.parentNode) {
+        if (ph && ph.parentNode && getDoc().body.contains(ph)) {
             ph.parentNode.insertBefore(currentlyMovedEl, ph);
             ph.remove();
+            currentlyMovedEl.classList.add('twt-app-hidden');
+            currentlyMovedEl.style.display = '';
+            currentlyMovedEl.style.visibility = '';
+        } else {
+            console.log('[TwT HtmlPopup] 占位节点已被酒馆 Swipe/重构替换，释放旧 DOM 引用');
         }
-        currentlyMovedEl.classList.add('twt-app-hidden');
-        currentlyMovedEl.style.display = '';
-        currentlyMovedEl.style.visibility = '';
         delete currentlyMovedEl.__twt_placeholder__;
-        console.log('[TwT HtmlPopup] 真实 DOM 节点已原路归位至正文消息中');
     }
     currentlyMovedEl = null;
 }
@@ -165,7 +166,6 @@ function fitIframeToContent(iframeEl, dialogEl) {
         let realWidth = 0;
         let realHeight = 0;
 
-        // 临时将 body 设为 fit-content 测量内在部件物理真实收紧宽度
         const oldBodyWidth = iDoc.body.style.width;
         const oldBodyDisplay = iDoc.body.style.display;
 
@@ -1078,6 +1078,54 @@ function handleQrBtnClick() {
 
     console.log(`[TwT HtmlPopup] 成功在聚焦消息 (#${mesIndex}) 中提取到 ${appEls.length} 个应用节点`);
     openHtmlAppModal(appEls, mesIndex, null, 0);
+}
+
+/**
+ * 监听酒馆 Swipe (滑动换一条)、重roll (重生成)、消息更新等事件，实现秒级即时响应与弹窗自动同步刷新
+ */
+export function registerHtmlPopupEvents(context) {
+    if (!context || !context.eventSource || !context.eventTypes) return;
+
+    const onMessageChangedOrSwiped = (mesId) => {
+        console.log(`[TwT HtmlPopup] [即时响应] 捕获到消息重roll / Swipe / 更新事件 (mesId: ${mesId})`);
+
+        returnMovedElementBack();
+
+        hideMessageHtmlApps();
+        setTimeout(hideMessageHtmlApps, 100);
+        setTimeout(hideMessageHtmlApps, 350);
+
+        const doc = getDoc();
+        const modal = doc.getElementById(MODAL_ID);
+        if (modal) {
+            setTimeout(() => {
+                const focusedMes = getCurrentFocusedMessage();
+                if (focusedMes) {
+                    const settings = extension_settings?.twt;
+                    const selector = settings?.htmlPopupSelector || 'iframe, .twt-custom-app, [data-app-container], .rendered-html-app';
+                    const newAppEls = Array.from(focusedMes.querySelectorAll(selector)).filter(
+                        el => !el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')
+                    );
+                    if (newAppEls.length > 0) {
+                        const mId = focusedMes.getAttribute('mesid') || focusedMes.id || '';
+                        const mIndex = focusedMes.getAttribute('data-index') || (parseInt(mId) + 1) || '';
+                        console.log(`[TwT HtmlPopup] [自动刷新] 实时加载 Swipe/重roll 后的新 Iframe 应用 (Index: #${mIndex})`);
+                        openHtmlAppModal(newAppEls, mIndex, 0);
+                    }
+                }
+            }, 180);
+        }
+    };
+
+    const { eventSource, eventTypes } = context;
+    if (eventTypes.MESSAGE_SWIPED) eventSource.on(eventTypes.MESSAGE_SWIPED, onMessageChangedOrSwiped);
+    if (eventTypes.MESSAGE_UPDATED) eventSource.on(eventTypes.MESSAGE_UPDATED, onMessageChangedOrSwiped);
+    if (eventTypes.CHARACTER_MESSAGE_RENDERED) eventSource.on(eventTypes.CHARACTER_MESSAGE_RENDERED, onMessageChangedOrSwiped);
+    if (eventTypes.CHAT_CHANGED) eventSource.on(eventTypes.CHAT_CHANGED, () => {
+        closeHtmlAppModal();
+        hideMessageHtmlApps();
+        setTimeout(hideMessageHtmlApps, 200);
+    });
 }
 
 /**

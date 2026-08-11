@@ -4,7 +4,7 @@ import { applyPaginationMode, initPaginationEvent, resetPaginationBinding, reali
 import { applyVisualMode } from './src/visual/visual.js';
 import { initMulu, applyMuluSettings } from './src/mulu/mulu.js';
 import { initMenu, applyMenuMode, applyFullscreenMode } from './src/menu/menu.js';
-import { initHtmlPopup, applyHtmlPopupSettings } from './src/html_popup/html_popup.js';
+import { initHtmlPopup, applyHtmlPopupSettings, registerHtmlPopupEvents } from './src/html_popup/html_popup.js';
 
 let parentDoc = document;
 try {
@@ -3183,6 +3183,12 @@ jQuery(async () => {
     updateInjectedStyles();
     initMulu();
     initHtmlPopup();
+    try {
+        const ctx = getContext();
+        registerHtmlPopupEvents(ctx);
+    } catch (e) {
+        console.warn('[TwT] Register html popup events failed:', e);
+    }
     initThemeLinkListener();
     initPaginationEvent(() => extension_settings.twt);
     initMenu(() => extension_settings.twt, (active) => {
