@@ -42,7 +42,7 @@ function saveSavedPosition(left, top) {
 }
 
 /**
- * 读取与保存消息关联的已选应用索引 (Persistence for last viewed HTML widget)
+ * 读取与保存消息关联的已选应用索引
  */
 function getSavedAppIndex(mesIndexInfo) {
     try {
@@ -71,18 +71,78 @@ function saveSavedAppIndex(mesIndexInfo, index) {
 }
 
 /**
+ * 解析用户自定义标题映射规则
+ */
+function resolveAppTitle(el, index) {
+    const rawMapStr = extension_settings?.twt?.htmlPopupTitleMap || '';
+    const rules = [];
+
+    if (rawMapStr.trim()) {
+        const lines = rawMapStr.split('\n');
+        lines.forEach((line) => {
+            const trimmed = line.trim();
+            if (!trimmed) return;
+            let parts = trimmed.split('=');
+            if (parts.length < 2) parts = trimmed.split(':');
+            if (parts.length >= 2) {
+                const pattern = parts[0].trim();
+                const replacement = parts.slice(1).join('=').trim();
+                if (pattern && replacement) {
+                    rules.push({ pattern, replacement });
+                }
+            }
+        });
+    }
+
+    const elId = el.id || '';
+    const elClass = el.className || '';
+    const dataTitle = el.getAttribute('data-title') || el.getAttribute('title') || el.getAttribute('name') || '';
+
+    // 1. 优先匹配用户自定义规则
+    for (const rule of rules) {
+        if (
+            (elId && elId.includes(rule.pattern)) ||
+            (elClass && elClass.includes(rule.pattern)) ||
+            (dataTitle && dataTitle.includes(rule.pattern)) ||
+            (el.outerHTML && el.outerHTML.includes(rule.pattern))
+        ) {
+            return rule.replacement;
+        }
+    }
+
+    // 2. 尝试获取内置 title 或 HTML 标签中的标题文本
+    if (dataTitle) {
+        let cleanTitle = dataTitle.replace(/\s+/g, ' ').trim();
+        if (cleanTitle.length > 14) cleanTitle = cleanTitle.substring(0, 14) + '…';
+        return cleanTitle;
+    }
+
+    if (el.querySelector) {
+        const titleEl = el.querySelector('h1, h2, h3, h4, header, .title, [data-title]');
+        if (titleEl && titleEl.textContent) {
+            let t = titleEl.textContent.trim().replace(/\s+/g, ' ');
+            if (t && t.length < 16) return t;
+        }
+    }
+
+    // 3. 兜底
+    return `部件 #${index + 1}`;
+}
+
+/**
  * 获取默认设置
  */
 export function getHtmlPopupDefaultSettings() {
     return {
         htmlPopupEnabled: true,
         htmlPopupSelector: 'iframe, .twt-custom-app, [data-app-container], .rendered-html-app',
+        htmlPopupTitleMap: 'TH-message=剧情摘要\napp-stat=角色状态',
         htmlPopupHideInStream: true,
     };
 }
 
 /**
- * 样式注入（完全无框线、纯透明背景、多应用箭头+下拉框双切换、支持拖拽）
+ * 样式注入（超紧凑无溢出顶栏、无框线、纯透明背景、自定义标题映射、支持拖拽）
  */
 function injectStyles() {
     const doc = getDoc();
@@ -134,8 +194,8 @@ function injectStyles() {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 4px 10px;
-            background: rgba(20, 20, 32, 0.88); /* 简约半透明顶栏 */
+            padding: 3px 8px;
+            background: rgba(18, 18, 28, 0.88); /* 超紧凑半透明顶栏 */
             backdrop-filter: blur(8px);
             -webkit-backdrop-filter: blur(8px);
             border: none !important;
@@ -148,31 +208,32 @@ function injectStyles() {
             cursor: move; /* 拖拽手势 */
             width: 100%;
             box-sizing: border-box;
+            gap: 6px;
         }
 
-        .twt-modal-title {
+        .twt-modal-drag-handle {
             display: flex;
             align-items: center;
-            gap: 6px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            max-width: 55%;
+            opacity: 0.65;
+            font-size: 11px;
+            padding: 0 2px;
+            flex-shrink: 0;
         }
 
         .twt-modal-controls {
             display: flex;
             align-items: center;
-            gap: 4px;
+            gap: 3px;
             flex-shrink: 0;
+            margin-left: auto;
         }
 
         .twt-modal-switcher {
             display: flex;
             align-items: center;
-            gap: 4px;
-            margin-right: 6px;
-            padding-right: 6px;
+            gap: 3px;
+            margin-right: 4px;
+            padding-right: 4px;
             border-right: 1px solid rgba(255, 255, 255, 0.15);
             font-size: 11px;
             opacity: 0.95;
@@ -187,7 +248,7 @@ function injectStyles() {
             font-size: 11px;
             cursor: pointer;
             outline: none;
-            max-width: 150px;
+            max-width: 130px;
             text-overflow: ellipsis;
             white-space: nowrap;
         }
@@ -210,7 +271,7 @@ function injectStyles() {
             color: currentColor;
             opacity: 0.75;
             cursor: pointer;
-            padding: 2px 6px;
+            padding: 2px 5px;
             border-radius: 4px;
             font-size: 12px;
             transition: all 0.15s ease;
@@ -256,7 +317,7 @@ function injectStyles() {
             outline: none !important;
         }
     `;
-    console.log('[TwT HtmlPopup] 样式依赖已更新（支持箭头+下拉框多组件双重切换）');
+    console.log('[TwT HtmlPopup] 样式依赖已更新（移除长标题 & 自定义标题映射）');
 }
 
 /**
@@ -344,10 +405,10 @@ export function getCurrentFocusedMessage() {
 }
 
 /**
- * 展开支持多应用无缝切换（箭头+下拉框）、尺寸完全贴合小部件、支持上次阅读组件持久化记忆的 Modal 弹窗
+ * 展开支持超紧凑顶栏（无冗余 HTML 应用字样）、自定义标题映射、尺寸完全贴合小部件的 Modal 弹窗
  * @param {Element|Element[]} appEls 目标 HTML 节点或节点数组
  * @param {string} mesIndexInfo 消息序号
- * @param {number|null} initialIndex 初始选中的应用索引（为 null 时自动恢复持久化记忆）
+ * @param {number|null} initialIndex 初始选中的应用索引
  */
 export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null) {
     const doc = getDoc();
@@ -356,11 +417,10 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null) {
     const appElsList = Array.isArray(appEls) ? appEls : [appEls];
     if (appElsList.length === 0) return;
 
-    // 恢复上次观看的组件索引
     let targetIndex = initialIndex !== null ? initialIndex : getSavedAppIndex(mesIndexInfo);
     let currentIndex = Math.max(0, Math.min(targetIndex, appElsList.length - 1));
 
-    console.log(`[TwT HtmlPopup] 准备展开弹窗，共有 ${appElsList.length} 个应用，恢复历史选中的组件索引: ${currentIndex}`);
+    console.log(`[TwT HtmlPopup] 准备展开弹窗，共有 ${appElsList.length} 个应用，恢复历史索引: ${currentIndex}`);
 
     const modal = doc.createElement('div');
     modal.id = MODAL_ID;
@@ -380,18 +440,15 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null) {
         dialog.style.transform = 'translate(-50%, -50%)';
     }
 
-    // 头部控制栏
+    // 头部控制栏（去除了冗长的 "HTML 应用 #X" 文本，仅保留手势抓取图标与控制区）
     const header = doc.createElement('div');
     header.className = 'twt-modal-header';
 
-    const title = doc.createElement('div');
-    title.className = 'twt-modal-title';
-
-    const updateTitleText = () => {
-        const indexText = appElsList.length > 1 ? ` (${currentIndex + 1}/${appElsList.length})` : '';
-        title.innerHTML = `<i class="fa-solid fa-window-maximize"></i> <span>HTML 应用 ${mesIndexInfo ? `#${mesIndexInfo}` : ''}${indexText}</span>`;
-    };
-    updateTitleText();
+    const dragHandle = doc.createElement('div');
+    dragHandle.className = 'twt-modal-drag-handle';
+    dragHandle.title = '按住拖拽移动弹窗';
+    dragHandle.innerHTML = `<i class="fa-solid fa-grip-lines"></i>`;
+    header.appendChild(dragHandle);
 
     const controls = doc.createElement('div');
     controls.className = 'twt-modal-controls';
@@ -416,18 +473,8 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null) {
             appElsList.forEach((el, idx) => {
                 const opt = doc.createElement('option');
                 opt.value = String(idx);
-                let label = el.getAttribute('data-title') || el.getAttribute('title') || el.getAttribute('name');
-                if (!label && el.querySelector) {
-                    const textNode = el.querySelector('h1, h2, h3, h4, header, .title, [data-title]');
-                    if (textNode && textNode.textContent) label = textNode.textContent.trim();
-                }
-                if (label) {
-                    label = label.replace(/\s+/g, ' ');
-                    if (label.length > 15) label = label.substring(0, 15) + '…';
-                    opt.textContent = `${idx + 1}. ${label}`;
-                } else {
-                    opt.textContent = `部件 #${idx + 1}`;
-                }
+                const customTitle = resolveAppTitle(el, idx);
+                opt.textContent = `${idx + 1}. ${customTitle}`;
                 selectEl.appendChild(opt);
             });
             selectEl.value = String(currentIndex);
@@ -439,7 +486,6 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null) {
             e.stopPropagation();
             currentIndex = parseInt(selectEl.value, 10);
             saveSavedAppIndex(mesIndexInfo, currentIndex);
-            updateTitleText();
             renderBodyContent();
         };
 
@@ -448,7 +494,6 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null) {
             currentIndex = (currentIndex - 1 + appElsList.length) % appElsList.length;
             selectEl.value = String(currentIndex);
             saveSavedAppIndex(mesIndexInfo, currentIndex);
-            updateTitleText();
             renderBodyContent();
         };
 
@@ -461,7 +506,6 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null) {
             currentIndex = (currentIndex + 1) % appElsList.length;
             selectEl.value = String(currentIndex);
             saveSavedAppIndex(mesIndexInfo, currentIndex);
-            updateTitleText();
             renderBodyContent();
         };
 
@@ -495,7 +539,6 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null) {
     controls.appendChild(refreshBtn);
     controls.appendChild(closeBtn);
 
-    header.appendChild(title);
     header.appendChild(controls);
 
     // 绑定拖拽功能
@@ -654,7 +697,7 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null) {
     doc.addEventListener('keydown', escHandler);
 
     doc.body.appendChild(modal);
-    console.log('[TwT HtmlPopup] Modal 弹窗已展开（组件下拉选择框已激活）');
+    console.log('[TwT HtmlPopup] Modal 弹窗已展开（超紧凑无溢出顶栏）');
 }
 
 /**

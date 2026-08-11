@@ -98,8 +98,16 @@
                     <label for="twt_html_popup_selector" style="margin-bottom: 5px; font-size: 0.95em;">目标 HTML 应用 CSS 选择器</label>
                     <input type="text" id="twt_html_popup_selector" placeholder="默认：iframe, .twt-custom-app, [data-app-container]" style="width: 100%; box-sizing: border-box; padding: 6px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px;" />
                 </div>
-                <div style="font-size: 0.85em; opacity: 0.6; margin-bottom: 15px; padding-left: 2px;">
+                <div style="font-size: 0.85em; opacity: 0.6; margin-bottom: 10px; padding-left: 2px;">
                     * 提示：匹配到的 HTML 节点将在正文中隐藏，并转由 QR 栏按钮弹窗召出。
+                </div>
+
+                <div class="twt-setting-row" style="display: flex; flex-direction: column; margin-bottom: 5px;">
+                    <label for="twt_html_popup_title_map" style="margin-bottom: 5px; font-size: 0.95em;">下拉组件标题映射规则 (每行如：关键字=自定义名称)</label>
+                    <textarea id="twt_html_popup_title_map" rows="3" placeholder="例如：&#10;TH-message=剧情摘要&#10;app-stat=角色状态" style="width: 100%; box-sizing: border-box; padding: 6px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-family: monospace; font-size: 0.9em; resize: vertical;"></textarea>
+                </div>
+                <div style="font-size: 0.85em; opacity: 0.6; margin-bottom: 15px; padding-left: 2px;">
+                    * 提示：匹配到的 ID、Class 或标签关键字将自动替换为好看的自定义标题名。
                 </div>
 
                 
