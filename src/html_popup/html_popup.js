@@ -696,6 +696,66 @@ export function getCurrentFocusedMessage() {
 }
 
 /**
+ * 提取指定消息内的所有有效 HTML 应用节点
+ */
+function getMessageAppElements(mesEl, selector) {
+    if (!mesEl) return [];
+    return Array.from(mesEl.querySelectorAll(selector)).filter(
+        el => !el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')
+    );
+}
+
+/**
+ * 回退寻找前几楼包含应用的消息
+ */
+function fallbackToPreviousFloors(focusedMes, selector) {
+    const doc = getDoc();
+    const allMessages = Array.from(doc.querySelectorAll('#chat .mes'));
+    const focusedMesIndex = allMessages.indexOf(focusedMes);
+
+    let targetMes = null;
+    let targetAppEls = [];
+    let targetMesIndex = -1;
+
+    const startIdx = focusedMesIndex >= 0 ? focusedMesIndex - 1 : allMessages.length - 1;
+    for (let i = startIdx; i >= 0; i--) {
+        const mes = allMessages[i];
+        const matchingInMes = getMessageAppElements(mes, selector);
+        if (matchingInMes.length > 0) {
+            targetMes = mes;
+            targetAppEls = matchingInMes;
+            targetMesIndex = i;
+            break;
+        }
+    }
+
+    if (targetAppEls.length === 0) {
+        for (let i = allMessages.length - 1; i >= 0; i--) {
+            const mes = allMessages[i];
+            const matchingInMes = getMessageAppElements(mes, selector);
+            if (matchingInMes.length > 0) {
+                targetMes = mes;
+                targetAppEls = matchingInMes;
+                targetMesIndex = i;
+                break;
+            }
+        }
+    }
+
+    if (targetAppEls.length > 0 && targetMes) {
+        const fallbackMesId = targetMes.getAttribute('mesid') || targetMes.id || '';
+        const fallbackMesIndex = targetMes.getAttribute('data-index') || (parseInt(fallbackMesId) + 1) || '';
+        const diffFloors = (focusedMesIndex >= 0 && targetMesIndex >= 0) ? Math.abs(focusedMesIndex - targetMesIndex) : 1;
+
+        console.log(`[TwT HtmlPopup] 定位跨楼层应用消息 (#${fallbackMesIndex})，相差 ${diffFloors} 层`);
+        openHtmlAppModal(targetAppEls, fallbackMesIndex, null, diffFloors);
+        return;
+    }
+
+    console.warn(`[TwT HtmlPopup] 聊天记录中未找到任何匹配的 HTML 应用 (选择器: ${selector})`);
+}
+
+/**
  * 展开 Modal 弹窗（彻底移除黑底与框线，完美顺应 Iframe 真实尺寸自适应）
  */
 export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diffFloors = 0) {
@@ -1001,7 +1061,7 @@ export function closeHtmlAppModal() {
 }
 
 /**
- * 处理 QR 栏按钮点击召出逻辑
+ * 处理 QR 栏按钮点击召出逻辑 (防竞态智能等待版)
  */
 function handleQrBtnClick() {
     console.log('[TwT HtmlPopup] 点击了 QR 栏 HTML 应用召出按钮');
@@ -1009,100 +1069,71 @@ function handleQrBtnClick() {
     const selector = settings?.htmlPopupSelector || 'iframe, .twt-custom-app, [data-app-container], .rendered-html-app';
 
     const focusedMes = getCurrentFocusedMessage();
-    if (!focusedMes) {
-        console.warn('[TwT HtmlPopup] 当前未捕获到任何消息节点');
-        return;
-    }
-
-    const doc = getDoc();
-    const allMessages = Array.from(doc.querySelectorAll('#chat .mes'));
-    const focusedMesIndex = allMessages.indexOf(focusedMes);
+    if (!focusedMes) return;
 
     const mesId = focusedMes.getAttribute('mesid') || focusedMes.id || '';
     const mesIndex = focusedMes.getAttribute('data-index') || (parseInt(mesId) + 1) || '';
 
-    // 捕获聚焦消息内【所有】匹配的应用节点
-    const appEls = Array.from(focusedMes.querySelectorAll(selector)).filter(
-        el => !el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')
-    );
+    // 1. 尝试直接获取已渲染完成的应用节点
+    let appEls = getMessageAppElements(focusedMes, selector);
 
-    if (appEls.length === 0) {
-        console.warn(`[TwT HtmlPopup] 当前聚焦消息 (Index: #${mesIndex}) 内无应用节点，开始隐式寻找前面有应用的消息...`);
-
-        let targetMes = null;
-        let targetAppEls = [];
-        let targetMesIndex = -1;
-
-        const startIdx = focusedMesIndex >= 0 ? focusedMesIndex - 1 : allMessages.length - 1;
-        for (let i = startIdx; i >= 0; i--) {
-            const mes = allMessages[i];
-            const matchingInMes = Array.from(mes.querySelectorAll(selector)).filter(
-                el => !el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')
-            );
-            if (matchingInMes.length > 0) {
-                targetMes = mes;
-                targetAppEls = matchingInMes;
-                targetMesIndex = i;
-                break;
-            }
-        }
-
-        if (targetAppEls.length === 0) {
-            for (let i = allMessages.length - 1; i >= 0; i--) {
-                const mes = allMessages[i];
-                const matchingInMes = Array.from(mes.querySelectorAll(selector)).filter(
-                    el => !el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')
-                );
-                if (matchingInMes.length > 0) {
-                    targetMes = mes;
-                    targetAppEls = matchingInMes;
-                    targetMesIndex = i;
-                    break;
-                }
-            }
-        }
-
-        if (targetAppEls.length > 0 && targetMes) {
-            const fallbackMesId = targetMes.getAttribute('mesid') || targetMes.id || '';
-            const fallbackMesIndex = targetMes.getAttribute('data-index') || (parseInt(fallbackMesId) + 1) || '';
-            const diffFloors = (focusedMesIndex >= 0 && targetMesIndex >= 0) ? Math.abs(focusedMesIndex - targetMesIndex) : 1;
-
-            console.log(`[TwT HtmlPopup] 成功无干扰定位跨楼层应用消息 (#${fallbackMesIndex})，相差 ${diffFloors} 层`);
-            openHtmlAppModal(targetAppEls, fallbackMesIndex, null, diffFloors);
-            return;
-        }
-
-        console.warn(`[TwT HtmlPopup] 聊天记录中未找到任何匹配的 HTML 应用 (选择器: ${selector})`);
+    if (appEls.length > 0) {
+        console.log(`[TwT HtmlPopup] 提取到聚焦消息 (#${mesIndex}) 中的 ${appEls.length} 个应用节点`);
+        openHtmlAppModal(appEls, mesIndex, null, 0);
         return;
     }
 
-    console.log(`[TwT HtmlPopup] 成功在聚焦消息 (#${mesIndex}) 中提取到 ${appEls.length} 个应用节点`);
-    openHtmlAppModal(appEls, mesIndex, null, 0);
+    // 2. 防竞态处理：检测文本是否包含待渲染的代码/标签，若有则开启毫秒级轻量智能等待
+    const rawText = focusedMes.textContent || '';
+    const hasUnrenderedCode = rawText.includes('<iframe') || rawText.includes('```html') || rawText.includes('```xml') || rawText.includes('data-app');
+
+    if (hasUnrenderedCode) {
+        console.log(`[TwT HtmlPopup] [防竞态开启] 检测到未完成渲染的标签，智能等待前置插件渲染...`);
+        let retries = 0;
+        const maxRetries = 10; // 最多等待 1 秒 (10 * 100ms)
+
+        const pollCheck = () => {
+            appEls = getMessageAppElements(focusedMes, selector);
+            if (appEls.length > 0) {
+                console.log(`[TwT HtmlPopup] [防竞态成功] 前置插件渲染完成，已于 ${retries * 100}ms 内捕获应用节点`);
+                hideMessageHtmlApps();
+                openHtmlAppModal(appEls, mesIndex, null, 0);
+                return;
+            }
+            retries++;
+            if (retries < maxRetries) {
+                setTimeout(pollCheck, 100);
+            } else {
+                fallbackToPreviousFloors(focusedMes, selector);
+            }
+        };
+
+        setTimeout(pollCheck, 50);
+        return;
+    }
+
+    // 3. 当前消息无待渲染代码，正常回退寻找前几楼
+    fallbackToPreviousFloors(focusedMes, selector);
 }
 
 /**
- * 监听酒馆 Swipe、重roll、新建对话、切换/退出重开对话、加载历史消息等全套生命周期事件
+ * 监听酒馆全套生命周期事件，实现即时响应与弹窗自动刷新
  */
 export function registerHtmlPopupEvents(context) {
     if (!context || !context.eventSource || !context.eventTypes) return;
 
     const { eventSource, eventTypes } = context;
 
-    // 针对新建对话、切换对话、退出/重关对话的全量清理与恢复回调
     const onChatResetOrSwitched = (reason) => {
         console.log(`[TwT HtmlPopup] [对话状态重置] 原因: ${reason}`);
-
-        // 1. 关闭展开的弹窗并清理 DOM 状态
         closeHtmlAppModal();
 
-        // 2. 多重延迟触发正文隐藏（确保新建/重开对话加载的历史 Iframe 被隐形）
         hideMessageHtmlApps();
         setTimeout(hideMessageHtmlApps, 100);
         setTimeout(hideMessageHtmlApps, 350);
         setTimeout(hideMessageHtmlApps, 800);
     };
 
-    // 针对消息 Swipe (换一条)、重roll (重生成)、消息渲染/更新的回调
     const onMessageChangedOrSwiped = (mesId) => {
         console.log(`[TwT HtmlPopup] [即时响应] 捕获到消息重roll / Swipe / 更新事件 (mesId: ${mesId})`);
 
@@ -1120,9 +1151,7 @@ export function registerHtmlPopupEvents(context) {
                 if (focusedMes) {
                     const settings = extension_settings?.twt;
                     const selector = settings?.htmlPopupSelector || 'iframe, .twt-custom-app, [data-app-container], .rendered-html-app';
-                    const newAppEls = Array.from(focusedMes.querySelectorAll(selector)).filter(
-                        el => !el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')
-                    );
+                    const newAppEls = getMessageAppElements(focusedMes, selector);
                     if (newAppEls.length > 0) {
                         const mId = focusedMes.getAttribute('mesid') || focusedMes.id || '';
                         const mIndex = focusedMes.getAttribute('data-index') || (parseInt(mId) + 1) || '';
@@ -1138,7 +1167,6 @@ export function registerHtmlPopupEvents(context) {
     if (eventTypes.MESSAGE_UPDATED) eventSource.on(eventTypes.MESSAGE_UPDATED, onMessageChangedOrSwiped);
     if (eventTypes.CHARACTER_MESSAGE_RENDERED) eventSource.on(eventTypes.CHARACTER_MESSAGE_RENDERED, onMessageChangedOrSwiped);
 
-    // 覆盖全套对话生命周期事件：切换/新建/退出重开对话、多消息加载、删除消息
     if (eventTypes.CHAT_CHANGED) eventSource.on(eventTypes.CHAT_CHANGED, () => onChatResetOrSwitched('CHAT_CHANGED'));
     if (eventTypes.MORE_MESSAGES_LOADED) eventSource.on(eventTypes.MORE_MESSAGES_LOADED, () => onChatResetOrSwitched('MORE_MESSAGES_LOADED'));
     if (eventTypes.MESSAGE_DELETED) eventSource.on(eventTypes.MESSAGE_DELETED, () => onChatResetOrSwitched('MESSAGE_DELETED'));
