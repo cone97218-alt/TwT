@@ -179,3 +179,45 @@ body.twt-reading-mode #chat .mes_text > .twt-html-needs-break:first-child {
 body.twt-reading-mode #chat .mes_text > .twt-html-needs-break + .twt-html-needs-break {
     break-before: auto !important;
 }
+
+/* ============================================================
+ * 翻页模式：装饰性伪元素 pointer-events 防护
+ * ============================================================
+ * 问题：部分自定义美化主题（如"未染文集"）将 .mesAvatarWrapper
+ * 的 ::before/::after 伪元素用作绝对定位的竖排标题装饰，占满消
+ * 息顶部区域。虽然 .mesAvatarWrapper 本身设了 pointer-events:none，
+ * 但 CSS 伪元素不继承该属性（默认 auto），导致整个装饰区域拦截
+ * 所有点击，翻页完全失效。
+ *
+ * 修复：翻页模式下，对 .mes 内已知的装饰性容器及其伪元素统一设置
+ * pointer-events: none，作为通用防护层。
+ * ============================================================ */
+
+/* 1. 主防护：.mesAvatarWrapper 及其伪元素在翻页模式下完全透明点击 */
+body.twt-reading-mode #chat .mes .mesAvatarWrapper,
+body.twt-reading-mode #chat .mes .mesAvatarWrapper::before,
+body.twt-reading-mode #chat .mes .mesAvatarWrapper::after {
+    pointer-events: none !important;
+}
+
+/* 2. 消息容器自身的伪元素（如水印 .mes::after）也不应接受点击 */
+body.twt-reading-mode #chat .mes::before,
+body.twt-reading-mode #chat .mes::after {
+    pointer-events: none !important;
+}
+
+/* 3. 防护页眉信息栏（mesIDDisplay / tokenCounter / mes_timer）
+ *    这些是 position:absolute 悬浮在顶部装饰区的文字，同样不应拦截翻页 */
+body.twt-reading-mode #chat .mes .mesIDDisplay,
+body.twt-reading-mode #chat .mes .tokenCounterDisplay,
+body.twt-reading-mode #chat .mes .mes_timer,
+body.twt-reading-mode #chat .mes .mesIDDisplay::before,
+body.twt-reading-mode #chat .mes .mesIDDisplay::after,
+body.twt-reading-mode #chat .mes .tokenCounterDisplay::before,
+body.twt-reading-mode #chat .mes .tokenCounterDisplay::after,
+body.twt-reading-mode #chat .mes .mes_timer::before,
+body.twt-reading-mode #chat .mes .mes_timer::after {
+    pointer-events: none !important;
+}
+
+

@@ -926,18 +926,29 @@ export function initPaginationEvent(getSettings) {
         const chat = getChat();
         if (!chat?.contains(e.target)) return;
 
-        // 交互元素判断
-        const baseSelector = 'button, a, input, textarea, select, label, summary, [onclick], [role="button"], [tabindex], .mes_button, .swipe-button, .ch_name, .avatar, img, .svg-icon';
-        let interactive = false;
-        if (settings.customWhitelist?.trim()) {
-            try { interactive = !!e.target.closest(settings.customWhitelist.trim()); }
-            catch { /* 无效选择器忽略 */ }
+        // 装饰层穿透修复：若 e.target 的 pointer-events 计算值为 none，
+        // 说明它是美化主题中的装饰性容器（如 .mesAvatarWrapper），
+        // 其伪元素（::before/::after）虽拦截了点击，但父容器声明不接受事件，
+        // 此类点击应视为对空白区域的翻页意图，跳过交互元素检测。
+        let skipInteractiveCheck = false;
+        try {
+            if (getComputedStyle(e.target).pointerEvents === 'none') skipInteractiveCheck = true;
+        } catch { /* ignore */ }
+
+        if (!skipInteractiveCheck) {
+            // 交互元素判断
+            const baseSelector = 'button, a, input, textarea, select, label, summary, [onclick], [role="button"], [tabindex], .mes_button, .swipe-button, .ch_name, .avatar, img, .svg-icon';
+            let interactive = false;
+            if (settings.customWhitelist?.trim()) {
+                try { interactive = !!e.target.closest(settings.customWhitelist.trim()); }
+                catch { /* 无效选择器忽略 */ }
+            }
+            if (!interactive) interactive = !!e.target.closest(baseSelector);
+            if (!interactive) {
+                try { interactive = getComputedStyle(e.target).cursor === 'pointer'; } catch { /* ignore */ }
+            }
+            if (interactive) return;
         }
-        if (!interactive) interactive = !!e.target.closest(baseSelector);
-        if (!interactive) {
-            try { interactive = getComputedStyle(e.target).cursor === 'pointer'; } catch { /* ignore */ }
-        }
-        if (interactive) return;
 
         // 有文字选区时不翻页
         if (window.getSelection().toString().length > 0) return;
