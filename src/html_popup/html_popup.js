@@ -38,15 +38,23 @@ function updateQrBadge(show) {
  */
 let activeResizeObserver = null;
 let activeIframeObserver = null;
+let activeMsgListenerCleanup = null; // iframe postMessage 监听器的清理函数
 
 function stopAppResizeObserver() {
     if (activeResizeObserver) {
-        activeResizeObserver.disconnect();
+        if (typeof activeResizeObserver.disconnect === 'function') {
+            activeResizeObserver.disconnect();
+        }
         activeResizeObserver = null;
     }
     if (activeIframeObserver) {
         activeIframeObserver.disconnect();
         activeIframeObserver = null;
+    }
+    // 清理 iframe postMessage 监听器
+    if (activeMsgListenerCleanup) {
+        activeMsgListenerCleanup();
+        activeMsgListenerCleanup = null;
     }
 }
 
@@ -80,6 +88,7 @@ function cleanOldAppHtmlStates() {
         }
         if (keys.length > MAX_STORED_STATES) {
             const toRemoveCount = keys.length - MAX_STORED_STATES;
+            keys.sort(); // 按字典序排序后删除前段，尽量保留较新的键
             for (let i = 0; i < toRemoveCount; i++) {
                 localStorage.removeItem(keys[i]);
             }
@@ -97,20 +106,26 @@ let currentlyMovedEl = null;
 
 function returnMovedElementBack() {
     stopAppResizeObserver();
-    if (currentlyMovedEl && currentlyMovedEl.__twt_placeholder__) {
-        const ph = currentlyMovedEl.__twt_placeholder__;
-        if (ph && ph.parentNode && getDoc().body.contains(ph)) {
-            ph.parentNode.insertBefore(currentlyMovedEl, ph);
-            ph.remove();
-            currentlyMovedEl.classList.add('twt-app-hidden');
-            currentlyMovedEl.style.display = '';
-            currentlyMovedEl.style.visibility = '';
-        } else {
-            console.log('[TwT HtmlPopup] 占位节点已被酒馆 Swipe/重构替换，释放旧 DOM 引用');
-        }
-        delete currentlyMovedEl.__twt_placeholder__;
-    }
+    // 先原子性清空全局引用，防止并发调用（ESC + swipe 同时触发）造成双重归位竞态
+    const el = currentlyMovedEl;
     currentlyMovedEl = null;
+    if (!el) return;
+
+    const ph = el.__twt_placeholder__;
+    if (ph) delete el.__twt_placeholder__;
+
+    if (ph && ph.parentNode && getDoc().body.contains(ph)) {
+        // 正常路径：占位符仍在文档树中，将应用节点插回原位
+        ph.parentNode.insertBefore(el, ph);
+        ph.remove();
+    } else if (el.parentNode) {
+        // 竞态路径：占位符已随 Swipe/重构重建的 DOM 消失，安全移除避免孤立节点泄漏
+        el.parentNode.removeChild(el);
+        console.log('[TwT HtmlPopup] 占位节点已消失，应用节点已从当前父节点安全移除（防泄漏）');
+    }
+    el.classList.add('twt-app-hidden');
+    el.style.display = '';
+    el.style.visibility = '';
 }
 
 /**
@@ -165,77 +180,126 @@ function saveSavedAppIndex(mesIndexInfo, index) {
 }
 
 /**
- * 物理精确测算并自适应调整 Iframe 及其内部 DOM 内容尺寸
+ * 向 iframe 注入尺寸监听脚本（非侵入式）
+ * 利用 ResizeObserver 监听 documentElement 尺寸变化，通过 postMessage 把真实宽高推给父窗口
+ * 完全无副作用 —— 不修改 iframe 内任何样式，不触发重排
  */
-function fitIframeToContent(iframeEl, dialogEl) {
+const IFRAME_RESIZE_MSG = 'twt-iframe-resize';
+const INJECTED_SCRIPT_ATTR = 'data-twt-resize-injected';
+
+function injectIframeResizeScript(iframeEl) {
+    if (iframeEl.getAttribute(INJECTED_SCRIPT_ATTR)) return; // 防重复注入
+    try {
+        const iDoc = iframeEl.contentDocument || iframeEl.contentWindow?.document;
+        if (!iDoc || !iDoc.body) return;
+
+        const script = iDoc.createElement('script');
+        script.textContent = `
+(function() {
+    if (window.__twt_resize_injected__) return;
+    window.__twt_resize_injected__ = true;
+    var sendSize = function() {
+        var w = Math.max(
+            document.documentElement.scrollWidth,
+            document.documentElement.offsetWidth,
+            document.body ? document.body.scrollWidth : 0,
+            document.body ? document.body.offsetWidth : 0
+        );
+        var h = Math.max(
+            document.documentElement.scrollHeight,
+            document.documentElement.offsetHeight,
+            document.body ? document.body.scrollHeight : 0,
+            document.body ? document.body.offsetHeight : 0
+        );
+        try { window.parent.postMessage({ type: '${IFRAME_RESIZE_MSG}', w: w, h: h, src: location.href }, '*'); } catch(e) {}
+    };
+    if (window.ResizeObserver) {
+        var ro = new ResizeObserver(function() { sendSize(); });
+        ro.observe(document.documentElement);
+        if (document.body) ro.observe(document.body);
+    } else {
+        // 降级：定时轮询
+        setInterval(sendSize, 400);
+    }
+    sendSize();
+})();
+        `;
+        iDoc.head ? iDoc.head.appendChild(script) : iDoc.body.appendChild(script);
+        iframeEl.setAttribute(INJECTED_SCRIPT_ATTR, '1');
+        console.log('[TwT HtmlPopup] [非侵入式] iframe 尺寸监听脚本注入成功');
+    } catch (e) {
+        // 跨域 iframe 无法注入，降级处理
+        console.warn('[TwT HtmlPopup] [跨域降级] 无法注入监听脚本，将使用 scrollSize 测量:', e.message);
+    }
+}
+
+/**
+ * 降级方案：跨域 / 永远无法注入脚本时，用 scrollWidth/scrollHeight 直接测量
+ * 注意：不修改 body 样式，废弃原有的侵入式测量逻辑
+ */
+function measureIframeFallback(iframeEl, dialogEl) {
     if (!iframeEl || iframeEl.tagName !== 'IFRAME') return;
     try {
         const iDoc = iframeEl.contentDocument || iframeEl.contentWindow?.document;
         if (!iDoc || !iDoc.body) return;
 
-        const children = Array.from(iDoc.body.children).filter(
-            c => c.tagName !== 'SCRIPT' && c.tagName !== 'STYLE' && c.tagName !== 'LINK'
+        // 直接读取 scrollWidth/scrollHeight，不改任何样式
+        const realWidth = Math.max(
+            iDoc.documentElement.scrollWidth,
+            iDoc.documentElement.offsetWidth,
+            iDoc.body.scrollWidth,
+            iDoc.body.offsetWidth
+        );
+        const realHeight = Math.max(
+            iDoc.documentElement.scrollHeight,
+            iDoc.documentElement.offsetHeight,
+            iDoc.body.scrollHeight,
+            iDoc.body.offsetHeight
         );
 
-        let realWidth = 0;
-        let realHeight = 0;
-
-        const oldBodyWidth = iDoc.body.style.width;
-        const oldBodyDisplay = iDoc.body.style.display;
-
-        iDoc.body.style.width = 'fit-content';
-        iDoc.body.style.display = 'inline-block';
-
-        if (children.length > 0) {
-            let maxChildW = 0;
-            children.forEach(child => {
-                const r = child.getBoundingClientRect();
-                if (r.width > maxChildW) maxChildW = r.width;
-            });
-            realWidth = maxChildW || iDoc.body.offsetWidth;
-        } else {
-            realWidth = iDoc.body.offsetWidth;
-        }
-
-        iDoc.body.style.width = oldBodyWidth;
-        iDoc.body.style.display = oldBodyDisplay;
-
-        realHeight = Math.max(iDoc.documentElement.scrollHeight, iDoc.body.scrollHeight);
-
-        const win = getWin();
-        const maxW = win.innerWidth * 0.96;
-        const maxH = win.innerHeight * 0.92;
-
-        if (realWidth > 40 && realWidth < maxW) {
-            const finalW = Math.ceil(realWidth);
-            iframeEl.style.width = `${finalW}px`;
-            if (dialogEl) dialogEl.style.width = `${finalW}px`;
-        }
-
-        if (realHeight > 30) {
-            const finalH = Math.min(Math.ceil(realHeight), maxH);
-            iframeEl.style.height = `${finalH}px`;
-        }
-
-        console.log(`[TwT HtmlPopup] [Iframe 自适应成功] 真实宽度: ${realWidth}px, 高度: ${realHeight}px`);
+        applyIframeSize(iframeEl, dialogEl, realWidth, realHeight);
     } catch (e) {
-        console.warn('[TwT HtmlPopup] 测算 Iframe 内容尺寸失败:', e);
+        // 跨域无法读取，静默失败
     }
 }
 
 /**
+ * 将测量到的宽高应用到 iframe 和对话框
+ */
+function applyIframeSize(iframeEl, dialogEl, realWidth, realHeight) {
+    const win = getWin();
+    const maxW = win.innerWidth * 0.96;
+    const maxH = win.innerHeight * 0.92;
+
+    if (realWidth > 40 && realWidth < maxW) {
+        const finalW = Math.ceil(realWidth);
+        if (iframeEl.style.width !== `${finalW}px`) {
+            iframeEl.style.width = `${finalW}px`;
+            if (dialogEl) dialogEl.style.width = `${finalW}px`;
+        }
+    }
+    if (realHeight > 30) {
+        const finalH = Math.min(Math.ceil(realHeight), maxH);
+        if (iframeEl.style.height !== `${finalH}px`) {
+            iframeEl.style.height = `${finalH}px`;
+        }
+    }
+}
+
+
+/**
  * 实时监测并响应 Iframe / DOM 内部尺寸变化，自适应动态调整
+ * 核心架构：非侵入 postMessage 方案，不修改 iframe 内任何样式
  */
 function observeAppDynamicResizing(appEl, dialogEl) {
     stopAppResizeObserver();
     const win = getWin();
 
-    const updateDialogBounds = () => {
-        if (!appEl || !dialogEl) return;
-        try {
-            if (appEl.tagName === 'IFRAME') {
-                fitIframeToContent(appEl, dialogEl);
-            } else {
+    if (appEl.tagName !== 'IFRAME') {
+        // 普通 DOM 元素：用 ResizeObserver 监听自身尺寸
+        const updateDomBounds = () => {
+            if (!appEl || !dialogEl) return;
+            try {
                 const innerNode = appEl.firstElementChild || appEl;
                 const rect = innerNode.getBoundingClientRect();
                 const curW = rect.width || appEl.offsetWidth;
@@ -243,50 +307,74 @@ function observeAppDynamicResizing(appEl, dialogEl) {
                     dialogEl.style.width = `${Math.ceil(curW)}px`;
                     appEl.style.width = '100%';
                 }
-            }
-        } catch (e) {}
-    };
-
-    updateDialogBounds();
-
-    if (window.ResizeObserver) {
-        activeResizeObserver = new ResizeObserver(() => {
-            requestAnimationFrame(updateDialogBounds);
-        });
-        activeResizeObserver.observe(appEl);
-        if (appEl.firstElementChild) activeResizeObserver.observe(appEl.firstElementChild);
-    }
-
-    if (appEl.tagName === 'IFRAME') {
-        const bindIframeMutation = () => {
-            try {
-                const iDoc = appEl.contentDocument || appEl.contentWindow?.document;
-                if (iDoc && iDoc.body) {
-                    fitIframeToContent(appEl, dialogEl);
-                    const MutationClass = win.MutationObserver || window.MutationObserver;
-                    if (MutationClass) {
-                        activeIframeObserver = new MutationClass(debounce(() => {
-                            fitIframeToContent(appEl, dialogEl);
-                        }, 100));
-                        activeIframeObserver.observe(iDoc.body, { childList: true, subtree: true, attributes: true, characterData: true });
-                    }
-                }
             } catch (e) {}
         };
-
-        appEl.addEventListener('load', () => {
-            bindIframeMutation();
-            try {
-                const iWin = appEl.contentWindow;
-                if (iWin) {
-                    iWin.addEventListener('resize', updateDialogBounds);
-                    iWin.addEventListener('click', () => setTimeout(updateDialogBounds, 120));
-                }
-            } catch (e) {}
-        });
-
-        bindIframeMutation();
+        updateDomBounds();
+        if (window.ResizeObserver) {
+            activeResizeObserver = new ResizeObserver(() => requestAnimationFrame(updateDomBounds));
+            activeResizeObserver.observe(appEl);
+            if (appEl.firstElementChild) activeResizeObserver.observe(appEl.firstElementChild);
+        }
+        return;
     }
+
+    // ===== iframe 専用路径 =====
+    // 创建一个唯一 ID 用于识别本 iframe 发来的 postMessage
+    const iframeId = `twt-iframe-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    appEl.setAttribute('data-twt-iframe-id', iframeId);
+
+    // 监听父窗口的 postMessage
+    let msgListener = null;
+    const startMsgListener = () => {
+        if (msgListener) return;
+        msgListener = (ev) => {
+            if (!ev.data || ev.data.type !== IFRAME_RESIZE_MSG) return;
+            // 验证来源：必须是当前展示的 iframe
+            if (appEl.getAttribute('data-twt-iframe-id') !== iframeId) {
+                // 当前 iframe 已经不是活跃状态，移除监听器
+                win.removeEventListener('message', msgListener);
+                msgListener = null;
+                return;
+            }
+            const { w, h } = ev.data;
+            if (w > 0 && h > 0) {
+                applyIframeSize(appEl, dialogEl, w, h);
+            }
+        };
+        win.addEventListener('message', msgListener);
+        // 将清理逆转到全局可询位置
+        activeMsgListenerCleanup = () => {
+            if (msgListener) {
+                win.removeEventListener('message', msgListener);
+                msgListener = null;
+            }
+            appEl.removeAttribute('data-twt-iframe-id');
+        };
+    };
+
+
+
+    const tryInjectAndListen = () => {
+        injectIframeResizeScript(appEl);
+        startMsgListener();
+        // 尝试注入后立即也进行一次降级测量作为初始尺寸基准
+        measureIframeFallback(appEl, dialogEl);
+    };
+
+    appEl.addEventListener('load', () => {
+        // iframe 重新加载后需重新注入（原有脚本随文档消失）
+        appEl.removeAttribute(INJECTED_SCRIPT_ATTR);
+        tryInjectAndListen();
+        // 同时在 iframe 内部的 window 监听 resize 事件（内部布局变化时）
+        try {
+            const iWin = appEl.contentWindow;
+            if (iWin) {
+                iWin.addEventListener('resize', () => measureIframeFallback(appEl, dialogEl));
+            }
+        } catch (e) { /* 跨域无法监听，忽略 */ }
+    });
+
+    tryInjectAndListen();
 }
 
 /**
@@ -299,7 +387,9 @@ function attachIframeStateTracker(iframeEl, mesIndexInfo, appIndex) {
             if (doc && doc.documentElement) {
                 const fullHtml = doc.documentElement.outerHTML;
                 if (fullHtml && fullHtml.length > 20) {
-                    iframeEl.srcdoc = fullHtml;
+                    // ✂️ 已移除 iframeEl.srcdoc = fullHtml
+                    // 该赋值会触发 iframe reload → load 事件 → tryBind 重复注册监听器
+                    // 形成指数级堆积：每次交互后监听器数量 ×4
                     cleanOldAppHtmlStates();
                     localStorage.setItem(`twt_app_saved_html_${mesIndexInfo}_${appIndex}`, fullHtml);
                     console.log(`[TwT HtmlPopup] 防抖保存 Iframe 展开状态 (Msg #${mesIndexInfo}, App #${appIndex})`);
@@ -310,16 +400,27 @@ function attachIframeStateTracker(iframeEl, mesIndexInfo, appIndex) {
         }
     };
 
-    const debouncedSave = debounce(rawSave, 200);
+    const debouncedSave = debounce(rawSave, 300);
+    let boundDoc = null; // 追踪已绑定监听器的 document，防止 iframe reload 后重复注册
 
     const tryBind = () => {
         try {
             const doc = iframeEl.contentDocument || iframeEl.contentWindow?.document;
-            if (doc) {
+            if (doc && doc !== boundDoc) {
+                // 先解绑旧 document 上的监听器（iframe reload 后 contentDocument 会变化）
+                if (boundDoc) {
+                    try {
+                        boundDoc.removeEventListener('click', debouncedSave, true);
+                        boundDoc.removeEventListener('toggle', debouncedSave, true);
+                        boundDoc.removeEventListener('change', debouncedSave, true);
+                        boundDoc.removeEventListener('input', debouncedSave, true);
+                    } catch (e) { /* 旧 doc 已失效，忽略 */ }
+                }
                 doc.addEventListener('click', debouncedSave, true);
                 doc.addEventListener('toggle', debouncedSave, true);
                 doc.addEventListener('change', debouncedSave, true);
                 doc.addEventListener('input', debouncedSave, true);
+                boundDoc = doc;
             }
         } catch (e) {}
     };
@@ -645,9 +746,16 @@ function injectStyles() {
  */
 let hideScheduled = false;
 
-export function hideMessageHtmlApps() {
+export function hideMessageHtmlApps(forceHide = false) {
     const settings = extension_settings?.twt;
     if (!settings || settings.htmlPopupEnabled === false) return;
+
+    // 流式输出中且用户设置了不在生成时隐藏，跳过（避免 AI 生成时 iframe 闪烁消失）
+    if (!forceHide && settings.htmlPopupHideInStream === false) {
+        const doc = getDoc();
+        if (doc.body.classList.contains('is_send_press') ||
+            doc.body.classList.contains('mes_stop')) return;
+    }
 
     if (hideScheduled) return;
     hideScheduled = true;
@@ -659,6 +767,8 @@ export function hideMessageHtmlApps() {
         const chat = doc.getElementById('chat');
         if (!chat) return;
 
+        const modal = doc.getElementById(MODAL_ID);
+
         try {
             const matchingElements = chat.querySelectorAll(`.mes_text ${selector}`);
             let count = 0;
@@ -666,6 +776,7 @@ export function hideMessageHtmlApps() {
             matchingElements.forEach((el) => {
                 if (el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')) return;
                 if (currentlyMovedEl === el) return;
+                if (modal && modal.contains(el)) return; // modal 内的活跃节点不隐藏
 
                 if (!el.classList.contains('twt-app-hidden')) {
                     el.classList.add('twt-app-hidden');
@@ -675,7 +786,6 @@ export function hideMessageHtmlApps() {
 
             if (count > 0) {
                 console.log(`[TwT HtmlPopup] [性能优化] 增量隐藏了 ${count} 个匹配选择器 [${selector}] 的 HTML 应用节点`);
-                const modal = doc.getElementById(MODAL_ID);
                 if (!modal) {
                     updateQrBadge(true);
                 }
@@ -698,25 +808,34 @@ export function getCurrentFocusedMessage() {
     if (messages.length === 0) return null;
 
     if (doc.body.classList.contains('twt-reading-mode')) {
-        const chatRect = chat.getBoundingClientRect();
-        const chatCenterLeft = chatRect.left + chatRect.width / 2;
+        // 翻页模式下用 scrollLeft 计算当前列，再按展示列重叠面积找最匹配的消息
+        // 比原中心点距离算法更准确，解决跨列消息被错误选中的问题
+        const colW = chat.offsetWidth || 1;
+        const currentPage = Math.round(chat.scrollLeft / colW);
+        const viewLeft = currentPage * colW;
+        const viewRight = viewLeft + colW;
+        const chatBoundLeft = chat.getBoundingClientRect().left;
 
-        let closestMes = null;
-        let minDist = Infinity;
+        let bestMes = null;
+        let bestOverlap = -1;
 
         messages.forEach((mes) => {
+            // 跳过 display:none 的消息（getBoundingClientRect 全零干扰计算）
+            if (getComputedStyle(mes).display === 'none') return;
             const rect = mes.getBoundingClientRect();
-            const mesCenterLeft = rect.left + rect.width / 2;
-            const dist = Math.abs(mesCenterLeft - chatCenterLeft);
-            if (dist < minDist) {
-                minDist = dist;
-                closestMes = mes;
+            // 将屏幕坐标转换为 chat 内部滚动坐标
+            const mesScrollLeft = chat.scrollLeft + rect.left - chatBoundLeft;
+            const mesScrollRight = mesScrollLeft + rect.width;
+            const overlap = Math.max(0, Math.min(mesScrollRight, viewRight) - Math.max(mesScrollLeft, viewLeft));
+            if (overlap > bestOverlap) {
+                bestOverlap = overlap;
+                bestMes = mes;
             }
         });
 
-        if (closestMes) {
-            console.log('[TwT HtmlPopup] 阅读模式下捕获聚焦消息 ID:', closestMes.getAttribute('mesid') || closestMes.id);
-            return closestMes;
+        if (bestMes) {
+            console.log('[TwT HtmlPopup] 翻页模式下捕获聚焦消息（列重叠检测）ID:', bestMes.getAttribute('mesid') || bestMes.id);
+            return bestMes;
         }
     }
 
@@ -972,8 +1091,8 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diff
     const endDrag = () => {
         if (isDragging) {
             isDragging = false;
-            const currentLeft = parseInt(dialog.style.left) || 0;
-            const currentTop = parseInt(dialog.style.top) || 0;
+            const currentLeft = parseFloat(dialog.style.left) || 0;
+            const currentTop = parseFloat(dialog.style.top) || 0;
             saveSavedPosition(currentLeft, currentTop);
         }
     };
@@ -1128,9 +1247,17 @@ function handleQrBtnClick() {
         return;
     }
 
-    // 2. 防竞态处理：检测文本是否包含待渲染的代码/标签，若有则开启毫秒级轻量智能等待
-    const rawText = focusedMes.textContent || '';
-    const hasUnrenderedCode = rawText.includes('<iframe') || rawText.includes('```html') || rawText.includes('```xml') || rawText.includes('data-app');
+    // 2. 防竞态处理：检测 .mes_text 的 innerHTML 是否存在未被渲染的代码块且实际尚无匹配应用节点
+    const mesTextEl = focusedMes.querySelector('.mes_text');
+    const rawHtml = mesTextEl ? mesTextEl.innerHTML : '';
+    // innerHTML 中的展开了的 html/xml 语言代码块，且实际还没有匹配的应用 DOM 节点
+    const hasUnrenderedCode = (
+        (rawHtml.includes('language-html') || rawHtml.includes('language-xml') || rawHtml.includes('language-iframe')) &&
+        !focusedMes.querySelector(selector)
+    ) || (
+        // 或者 innerHTML 中包含转义的 &lt;iframe（未被渲染为真实 iframe 元素）
+        rawHtml.includes('&lt;iframe') && !focusedMes.querySelector('iframe')
+    );
 
     if (hasUnrenderedCode) {
         console.log(`[TwT HtmlPopup] [防竞态开启] 检测到未完成渲染的标签，智能等待前置插件渲染...`);
@@ -1202,7 +1329,7 @@ export function registerHtmlPopupEvents(context) {
                         const mId = focusedMes.getAttribute('mesid') || focusedMes.id || '';
                         const mIndex = focusedMes.getAttribute('data-index') || (parseInt(mId) + 1) || '';
                         console.log(`[TwT HtmlPopup] [自动刷新] 实时加载 Swipe/重roll 后的新 Iframe 应用 (Index: #${mIndex})`);
-                        openHtmlAppModal(newAppEls, mIndex, 0);
+                        openHtmlAppModal(newAppEls, mIndex, null, 0);
                     }
                 }
             }, 180);
@@ -1275,13 +1402,32 @@ export function initHtmlPopup() {
     const win = getWin();
     const MutationObserverClass = win.MutationObserver || win.parent?.MutationObserver || window.MutationObserver;
 
-    const observer = new MutationObserverClass(() => {
+    // 如果 #qr--bar 已经存在，直接注入，无需创建 Observer
+    if (doc.querySelector('#qr--bar')) {
+        applyHtmlPopupSettings();
+        setTimeout(applyHtmlPopupSettings, 1000); // 兆底保证状态同步
+        return;
+    }
+
+    // #qr--bar 尚未出现，监听等待；注入成功后立即 disconnect，防止内存泄漏
+    let initObserver = null;
+    initObserver = new MutationObserverClass(() => {
         if (doc.querySelector('#qr--bar')) {
+            // 先 disconnect，再注入：防止 applyHtmlPopupSettings 注入 style 节点时再次触发 observer
+            initObserver.disconnect();
+            initObserver = null;
+            console.log('[TwT HtmlPopup] 检测到 #qr--bar，初始化 Observer 已断开');
             applyHtmlPopupSettings();
         }
     });
+    initObserver.observe(doc.body, { childList: true, subtree: true });
 
-    observer.observe(doc.body, { childList: true, subtree: true });
-
-    setTimeout(applyHtmlPopupSettings, 1000);
+    // 1s 兆底：强制注入并确保 Observer 已断开
+    setTimeout(() => {
+        if (initObserver) {
+            initObserver.disconnect();
+            initObserver = null;
+        }
+        applyHtmlPopupSettings();
+    }, 1000);
 }

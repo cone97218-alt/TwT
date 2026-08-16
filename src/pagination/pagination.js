@@ -171,7 +171,19 @@ function containOversizedElements() {
 
     // 如果启用了 HTML 弹窗召出功能，则跳过在翻页文本流中的断页与强制收容逻辑
     if (extension_settings?.twt?.htmlPopupEnabled !== false) {
-        console.log('[TwT Pagination] 已启用 HTML 弹窗召出，文本流跳过长 HTML 断页适配');
+        // 清理之前可能残留的收容标记，防止 htmlPopup 开关切换时样式不一致
+        const existingScrollable = chat.querySelectorAll('.twt-pagination-scrollable');
+        if (existingScrollable.length > 0) {
+            existingScrollable.forEach(el => {
+                el.style.removeProperty('max-height');
+                el.style.removeProperty('overflow-y');
+                el.classList.remove('twt-pagination-scrollable');
+            });
+        }
+        const existingBreaks = chat.querySelectorAll('.twt-html-needs-break');
+        if (existingBreaks.length > 0) {
+            existingBreaks.forEach(el => el.classList.remove('twt-html-needs-break'));
+        }
         return;
     }
 
