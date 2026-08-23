@@ -127,6 +127,56 @@ body.twt-reading-mode #chat .mes_text .markdown-table {
     max-width: 100%;
 }
 
+/* ============================================================
+ * 生图兼容：SD / NAI / 标签→图片 等扩展生成图片的防断页与尺寸收容
+ *
+ * SillyTavern 图片生成扩展将图片插入 .mes_media_wrapper，
+ * 该元素在 .mes_block 内、.mes_text 之外，不在原有保护层覆盖范围内。
+ *
+ * 三层防护策略：
+ *   1. .mes_media_wrapper：整体防断，确保图片区域不被多列拦腰截断
+ *   2. .mes_media_container：每个独立图片/视频容器也防断
+ *   3. img.mes_img / video.mes_video：限高防超页
+ *      - 多列布局下列高 ≈ 视口高，使用 dvh（移动端动态视口高度）
+ *      - 浏览器不支持 dvh 时自动回退到 vh
+ *      - 预留 CSS 变量 --twt-media-max-height 供 JS 精确覆盖（保留扩展性）
+ * ============================================================ */
+
+/* 1. 图片区域整体防断：当剩余空间不足时，浏览器自动将整块推到下一列 */
+body.twt-reading-mode #chat .mes_media_wrapper {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    -webkit-column-break-inside: avoid !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+/* 2. 单个图片/视频容器防断 */
+body.twt-reading-mode #chat .mes_media_container {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    -webkit-column-break-inside: avoid !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+/* 3. 图片/视频本体：限高防超页，保持宽高比居中显示 */
+body.twt-reading-mode #chat .mes_img {
+    max-width: 100% !important;
+    max-height: var(--twt-media-max-height, min(90dvh, 90vh)) !important;
+    object-fit: contain !important;
+    display: block !important;
+    margin: 0 auto !important;
+}
+
+body.twt-reading-mode #chat .mes_video {
+    max-width: 100% !important;
+    max-height: var(--twt-media-max-height, min(90dvh, 90vh)) !important;
+    object-fit: contain !important;
+    display: block !important;
+    margin: 0 auto !important;
+}
+
 /* 代码块和思维链：只控制横向溢出，绝对不能加 break-inside: avoid，必须允许垂直自然断页 */
 body.twt-reading-mode #chat .mes_text pre,
 body.twt-reading-mode #chat .thought-block {
