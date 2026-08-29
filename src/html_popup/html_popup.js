@@ -39,6 +39,54 @@ function getChatContextKey() {
 }
 
 /**
+ * 判断一个代码块（PRE / CODE）是否包含可执行/可展示的 HTML 或 Iframe 应用
+ */
+function isHtmlAppCodeBlock(el) {
+    if (!el) return false;
+    if (el.closest?.('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')) return false;
+
+    const pre = el.tagName === 'PRE' ? el : el.closest?.('pre');
+    const codeEl = el.tagName === 'CODE' ? el : (el.querySelector?.('code') || el);
+
+    const cls = ((pre?.className || '') + ' ' + (codeEl?.className || '')).toLowerCase();
+    const text = (codeEl?.textContent || pre?.textContent || '').trim();
+    if (text.length < 15) return false;
+
+    // 1. 明确标记为 HTML/XML/IFRAME 代码块
+    const isHtmlLang = cls.includes('language-html') ||
+                       cls.includes('language-xml') ||
+                       cls.includes('language-iframe') ||
+                       cls.includes('language-htm');
+
+    // 2. 文本内容特征检测
+    const hasIframe = /<iframe[\s\S]*?>/i.test(text);
+    const hasHtmlDoc = /<!DOCTYPE\s+html|<html[\s>]/i.test(text);
+    const hasComplexHtml = /<(div|canvas|svg|style|script)[\s\S]*?>/i.test(text) && text.length > 50;
+
+    return isHtmlLang || hasIframe || hasHtmlDoc || (cls.includes('language-') && hasComplexHtml);
+}
+
+/**
+ * 从代码块提取纯净的 HTML 字符串 (支持解析 <iframe srcdoc="..."> 嵌套)
+ */
+function extractHtmlFromCodeBlock(el) {
+    const codeNode = el.querySelector?.('code') || el;
+    let rawCode = (codeNode.textContent || '').trim();
+
+    // 如果是用 <iframe srcdoc="..."> 包装的代码，优先解析出内部真正的内容
+    if (/<iframe[\s\S]*srcdoc=/i.test(rawCode)) {
+        const match = rawCode.match(/srcdoc=(["'])([\s\S]*?)\1/i);
+        if (match && match[2]) {
+            const d = getDoc().createElement('textarea');
+            d.innerHTML = match[2];
+            return d.value;
+        }
+    }
+
+    return rawCode;
+}
+
+/**
  * 新 Iframe 被捕捉未读状态标志与更新器
  */
 let hasUnreadApp = false;
@@ -117,7 +165,7 @@ function cleanOldAppHtmlStates() {
         }
         if (keys.length > MAX_STORED_STATES) {
             const toRemoveCount = keys.length - MAX_STORED_STATES;
-            keys.sort(); // 按字典序排序后删除前段，尽量保留较新的键
+            keys.sort(); 
             for (let i = 0; i < toRemoveCount; i++) {
                 localStorage.removeItem(keys[i]);
             }
@@ -449,13 +497,15 @@ function resolveAppTitle(el, index) {
 
     const elId = el.id || '';
     const elClass = el.className || '';
-    const dataTitle = el.getAttribute('data-title') || el.getAttribute('title') || el.getAttribute('name') || '';
+    const dataTitle = el.getAttribute?.('data-title') || el.getAttribute?.('title') || el.getAttribute?.('name') || '';
+    const textSample = (el.textContent || '').substring(0, 400);
 
     for (const rule of rules) {
         if (
             (elId && elId.includes(rule.pattern)) ||
             (elClass && elClass.includes(rule.pattern)) ||
             (dataTitle && dataTitle.includes(rule.pattern)) ||
+            (textSample && textSample.includes(rule.pattern)) ||
             (el.outerHTML && el.outerHTML.includes(rule.pattern))
         ) {
             return rule.replacement;
@@ -476,7 +526,7 @@ function resolveAppTitle(el, index) {
         }
     }
 
-    return `部件 #${index + 1}`;
+    return `应用 #${index + 1}`;
 }
 
 /**
@@ -505,7 +555,7 @@ function injectStyles() {
     }
 
     style.textContent = `
-        /* 正文中隐藏应用 DOM 节点 */
+        /* 正文中隐藏应用 DOM 节点与 HTML 代码块 */
         .twt-app-hidden {
             display: none !important;
         }
@@ -551,7 +601,7 @@ function injectStyles() {
             height: auto !important;
             max-width: 98vw;
             max-height: 98vh;
-            background: transparent !important; /* 彻底移除黑底背景 */
+            background: transparent !important;
             border: none !important;
             outline: none !important;
             box-shadow: none !important;
@@ -568,7 +618,7 @@ function injectStyles() {
             align-items: center;
             justify-content: space-between;
             padding: 2px 6px;
-            background: transparent !important; /* 顶栏彻底透明，无黑底 */
+            background: transparent !important;
             border: none !important;
             outline: none !important;
             color: #cdd6f4;
@@ -679,7 +729,7 @@ function injectStyles() {
             max-height: 92vh;
             overflow: auto;
             position: relative;
-            background: transparent !important; /* 完全无框无黑底 */
+            background: transparent !important;
             border: none !important;
             outline: none !important;
             box-sizing: border-box;
@@ -714,7 +764,7 @@ function injectStyles() {
 }
 
 /**
- * 提取并隐藏正文中的匹配元素
+ * 提取并隐藏正文中的匹配元素（同时支持已渲染 DOM 节点与原生 HTML 代码块）
  */
 let hideScheduled = false;
 
@@ -742,10 +792,18 @@ export function hideMessageHtmlApps(forceHide = false) {
         const modal = doc.getElementById(MODAL_ID);
 
         try {
-            // 正确解析多项选择器并限制在 .mes_text 内
+            // 1. 匹配标准 DOM 元素选择器
             const selList = selector.split(',').map(s => s.trim()).filter(Boolean);
             const fullSelector = selList.map(s => `.mes_text ${s}`).join(', ');
-            const matchingElements = chat.querySelectorAll(fullSelector);
+            const matchingElements = Array.from(chat.querySelectorAll(fullSelector));
+
+            // 2. 匹配未渲染的 HTML / Iframe 代码块 (PRE)
+            chat.querySelectorAll('.mes_text pre').forEach((pre) => {
+                if (isHtmlAppCodeBlock(pre) && !matchingElements.includes(pre)) {
+                    matchingElements.push(pre);
+                }
+            });
+
             let count = 0;
 
             matchingElements.forEach((el) => {
@@ -760,7 +818,7 @@ export function hideMessageHtmlApps(forceHide = false) {
             });
 
             if (count > 0) {
-                console.log(`[TwT HtmlPopup] [性能优化] 增量隐藏了 ${count} 个匹配选择器 [${selector}] 的 HTML 应用节点`);
+                console.log(`[TwT HtmlPopup] [性能优化] 增量隐藏了 ${count} 个匹配选择器 [${selector}] 的 HTML 应用/代码块节点`);
                 if (!modal) {
                     updateQrBadge(true);
                 }
@@ -772,7 +830,34 @@ export function hideMessageHtmlApps(forceHide = false) {
 }
 
 /**
- * 定位当前翻页/阅读模式下视口聚焦的消息 Element
+ * 提取指定消息内的所有有效 HTML 应用节点（含已渲染 DOM 节点与 HTML 代码块）
+ */
+function getMessageAppElements(mesEl, selector) {
+    if (!mesEl) return [];
+    try {
+        const results = [];
+        const selList = selector.split(',').map(s => s.trim()).filter(Boolean);
+        const fullSelector = selList.join(', ');
+        const matching = Array.from(mesEl.querySelectorAll(fullSelector)).filter(
+            el => !el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')
+        );
+        results.push(...matching);
+
+        // 识别 HTML/iframe 代码块
+        mesEl.querySelectorAll('.mes_text pre').forEach((pre) => {
+            if (isHtmlAppCodeBlock(pre) && !results.includes(pre)) {
+                results.push(pre);
+            }
+        });
+
+        return results;
+    } catch (e) {
+        return [];
+    }
+}
+
+/**
+ * 定位当前视口聚焦的消息 Element（支持多栏翻页模式与手机端/普通纵向滚动模式）
  */
 export function getCurrentFocusedMessage() {
     const doc = getDoc();
@@ -785,19 +870,18 @@ export function getCurrentFocusedMessage() {
     const settings = extension_settings?.twt;
     const selector = settings?.htmlPopupSelector || 'iframe, .twt-custom-app, [data-app-container], .rendered-html-app';
 
+    // 1. 多栏水平翻页/阅读模式
     if (doc.body.classList.contains('twt-reading-mode')) {
         const chatRect = chat.getBoundingClientRect();
         const chatWidth = chat.clientWidth || window.innerWidth;
         const chatLeft = chatRect.left;
 
-        // 收集当前视口内可见的消息
         const visibleMessages = [];
         messages.forEach((mes) => {
             if (getComputedStyle(mes).display === 'none') return;
             const r = mes.getBoundingClientRect();
             const mesLeft = r.left - chatLeft;
             const mesRight = mesLeft + r.width;
-            // 计算在视口 [0, chatWidth] 内的重叠宽度
             const overlap = Math.max(0, Math.min(mesRight, chatWidth) - Math.max(mesLeft, 0));
             if (overlap > 10) {
                 visibleMessages.push({ mes, overlap });
@@ -805,62 +889,47 @@ export function getCurrentFocusedMessage() {
         });
 
         // 优先在当前可见消息中寻找直接含有 HTML 应用的消息
-        for (const item of visibleMessages) {
-            if (getMessageAppElements(item.mes, selector).length > 0) {
-                console.log('[TwT HtmlPopup] 翻页模式下直接聚焦到含应用消息 ID:', item.mes.getAttribute('mesid') || item.mes.id);
-                return item.mes;
+        for (let i = visibleMessages.length - 1; i >= 0; i--) {
+            if (getMessageAppElements(visibleMessages[i].mes, selector).length > 0) {
+                console.log('[TwT HtmlPopup] 翻页模式下直接聚焦到含应用消息 ID:', visibleMessages[i].mes.getAttribute('mesid') || visibleMessages[i].mes.id);
+                return visibleMessages[i].mes;
             }
         }
 
-        // 若当前可见消息中没有含应用的，选取重叠面积最大的主消息
         if (visibleMessages.length > 0) {
             visibleMessages.sort((a, b) => b.overlap - a.overlap);
             return visibleMessages[0].mes;
         }
     }
 
-    // 普通纵向滚动模式
+    // 2. 普通纵向滚动模式（手机端与桌面默认）
     const winH = getWin().innerHeight;
-    let targetMes = null;
-    let minCenterDiff = Infinity;
+    const visibleList = [];
 
     messages.forEach((mes) => {
         if (getComputedStyle(mes).display === 'none') return;
         const rect = mes.getBoundingClientRect();
-        // 优先检查视口内的消息是否有应用
-        if (rect.top < winH && rect.bottom > 0) {
-            if (getMessageAppElements(mes, selector).length > 0) {
-                targetMes = mes;
-                minCenterDiff = -1;
-            }
-        }
-        if (minCenterDiff !== -1) {
-            const mesCenterY = rect.top + rect.height / 2;
-            const diff = Math.abs(mesCenterY - winH / 2);
-            if (diff < minCenterDiff) {
-                minCenterDiff = diff;
-                targetMes = mes;
-            }
+        if (rect.bottom > 15 && rect.top < winH - 15) {
+            const visibleHeight = Math.min(rect.bottom, winH) - Math.max(rect.top, 0);
+            const hasApp = getMessageAppElements(mes, selector).length > 0;
+            visibleList.push({ mes, rect, visibleHeight, hasApp });
         }
     });
 
-    return targetMes || messages[messages.length - 1];
-}
-
-/**
- * 提取指定消息内的所有有效 HTML 应用节点
- */
-function getMessageAppElements(mesEl, selector) {
-    if (!mesEl) return [];
-    try {
-        const selList = selector.split(',').map(s => s.trim()).filter(Boolean);
-        const fullSelector = selList.join(', ');
-        return Array.from(mesEl.querySelectorAll(fullSelector)).filter(
-            el => !el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')
-        );
-    } catch (e) {
-        return [];
+    // 视口内有可见消息包含应用时，优先选择最新的可见含应用消息（通常为最新生成的 AI 回复）
+    for (let i = visibleList.length - 1; i >= 0; i--) {
+        if (visibleList[i].hasApp) {
+            console.log('[TwT HtmlPopup] 纵向视口内优先命中含应用消息 ID:', visibleList[i].mes.getAttribute('mesid') || visibleList[i].mes.id);
+            return visibleList[i].mes;
+        }
     }
+
+    if (visibleList.length > 0) {
+        visibleList.sort((a, b) => b.visibleHeight - a.visibleHeight);
+        return visibleList[0].mes;
+    }
+
+    return messages[messages.length - 1];
 }
 
 /**
@@ -1150,48 +1219,71 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diff
         // 优先从 localStorage 恢复已保存的 HTML 展开/折叠状态 (按角色卡隔离)
         const cKey = getChatContextKey();
         const savedHtml = localStorage.getItem(`twt_app_saved_html_${cKey}_${mesIndexInfo}_${currentIndex}`);
-        if (savedHtml) {
-            if (currentAppEl.tagName === 'IFRAME') {
-                currentAppEl.srcdoc = savedHtml;
-            } else {
-                currentAppEl.innerHTML = savedHtml;
-            }
-        }
 
-        // 创建占位符并实施 DOM 物理移入 (DOM Reparenting)
-        const doc = getDoc();
-        const placeholder = doc.createElement('div');
-        placeholder.className = 'twt-app-placeholder';
-        placeholder.style.display = 'none';
+        const isCodeBlock = currentAppEl.tagName === 'PRE' || isHtmlAppCodeBlock(currentAppEl);
 
-        if (currentAppEl.parentNode) {
-            currentAppEl.parentNode.insertBefore(placeholder, currentAppEl);
-            currentAppEl.__twt_placeholder__ = placeholder;
-        }
+        if (isCodeBlock) {
+            // 针对未被其他插件渲染为 DOM 的原生 HTML/Iframe 代码块，由 TwT 动态创建 Iframe 驱动
+            const dynamicIframe = doc.createElement('iframe');
+            dynamicIframe.className = 'twt-dynamic-html-app';
+            dynamicIframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-same-origin allow-popups allow-modals');
+            dynamicIframe.setAttribute('allowtransparency', 'true');
+            dynamicIframe.style.backgroundColor = 'transparent';
 
-        currentAppEl.classList.remove('twt-app-hidden');
-        currentAppEl.style.display = '';
-        currentAppEl.style.visibility = '';
-        currentAppEl.style.backgroundColor = 'transparent';
+            let srcContent = savedHtml || extractHtmlFromCodeBlock(currentAppEl);
+            dynamicIframe.srcdoc = srcContent;
 
-        if (currentAppEl.tagName === 'IFRAME') {
-            currentAppEl.setAttribute('allowtransparency', 'true');
-            attachIframeStateTracker(currentAppEl, mesIndexInfo, currentIndex);
+            const wrapper = doc.createElement('div');
+            wrapper.className = 'twt-app-content-wrapper';
+            wrapper.appendChild(dynamicIframe);
+            body.appendChild(wrapper);
+
+            currentlyMovedEl = null;
+
+            observeAppDynamicResizing(dynamicIframe, dialog);
+            attachIframeStateTracker(dynamicIframe, mesIndexInfo, currentIndex);
         } else {
-            attachDomStateTracker(currentAppEl, mesIndexInfo, currentIndex);
+            // 针对已由酒馆/其他扩展渲染为真实 DOM 的节点，执行 Reparenting
+            if (savedHtml) {
+                if (currentAppEl.tagName === 'IFRAME') {
+                    currentAppEl.srcdoc = savedHtml;
+                } else {
+                    currentAppEl.innerHTML = savedHtml;
+                }
+            }
+
+            const placeholder = doc.createElement('div');
+            placeholder.className = 'twt-app-placeholder';
+            placeholder.style.display = 'none';
+
+            if (currentAppEl.parentNode) {
+                currentAppEl.parentNode.insertBefore(placeholder, currentAppEl);
+                currentAppEl.__twt_placeholder__ = placeholder;
+            }
+
+            currentAppEl.classList.remove('twt-app-hidden');
+            currentAppEl.style.display = '';
+            currentAppEl.style.visibility = '';
+            currentAppEl.style.backgroundColor = 'transparent';
+
+            if (currentAppEl.tagName === 'IFRAME') {
+                currentAppEl.setAttribute('allowtransparency', 'true');
+                attachIframeStateTracker(currentAppEl, mesIndexInfo, currentIndex);
+            } else {
+                attachDomStateTracker(currentAppEl, mesIndexInfo, currentIndex);
+            }
+
+            const wrapper = doc.createElement('div');
+            wrapper.className = 'twt-app-content-wrapper';
+            wrapper.appendChild(currentAppEl);
+            body.appendChild(wrapper);
+
+            currentlyMovedEl = currentAppEl;
+
+            observeAppDynamicResizing(currentAppEl, dialog);
         }
 
-        const wrapper = doc.createElement('div');
-        wrapper.className = 'twt-app-content-wrapper';
-        wrapper.appendChild(currentAppEl);
-        body.appendChild(wrapper);
-
-        currentlyMovedEl = currentAppEl;
-
-        // 开启精确的物理自适应测算与动态 DOM/Iframe 监听
-        observeAppDynamicResizing(currentAppEl, dialog);
-
-        console.log('[TwT HtmlPopup] 真实 DOM 节点及其精确尺寸自适应机制已直接挂载至 Modal');
+        console.log('[TwT HtmlPopup] 应用节点及其精确尺寸自适应机制已直接挂载至 Modal');
     }
 
     renderBodyContent();
@@ -1338,7 +1430,7 @@ function handleQrBtnClick() {
         const pollCheck = () => {
             appEls = getMessageAppElements(focusedMes, selector);
             if (appEls.length > 0) {
-                console.log(`[TwT HtmlPopup] [防竞态成功] 前置插件渲染完成，已捕获应用节点`);
+                console.log(`[TwT HtmlPopup] [防竞态成功] 捕获到应用节点`);
                 hideMessageHtmlApps();
                 openHtmlAppModal(appEls, mesIndex, null, 0);
                 return;
