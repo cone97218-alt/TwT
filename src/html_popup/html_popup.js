@@ -306,7 +306,7 @@ function saveSavedAppIndex(mesIndexInfo, index) {
 }
 
 /**
- * 物理精确测算并自适应调整 Iframe 及其内部 DOM 内容尺寸 (极速低开销版)
+ * 物理精确测算并自适应调整 Iframe 及其内部 DOM 内容尺寸 (防负反馈收缩版)
  */
 function fitIframeToContent(iframeEl, dialogEl) {
     if (!iframeEl || iframeEl.tagName !== 'IFRAME') return;
@@ -315,66 +315,76 @@ function fitIframeToContent(iframeEl, dialogEl) {
         const win = getWin();
         const maxW = Math.floor(win.innerWidth * 0.96);
         const maxH = Math.floor(win.innerHeight * 0.92);
+        const defaultW = Math.min(Math.floor(win.innerWidth * 0.94), 620);
 
-        let measuredW = 0;
-        let measuredH = 0;
+        // 1. 确定稳定宽度（以属性声明或基准视口宽度为锚点，杜绝响应式 body 负反馈收缩）
+        let targetW = 0;
+        const attrW = parseInt(iframeEl.getAttribute('width'), 10);
+        if (!isNaN(attrW) && attrW > 50) {
+            targetW = attrW;
+        }
 
+        if (!targetW) {
+            targetW = defaultW;
+        }
+
+        // 仅当内部元素存在明确的水平溢出（例如超宽表格或非响应式固定宽容器）时才适度扩宽
         if (iDoc && iDoc.body) {
-            // 遍历所有直接子元素找出最大边界
+            const bodyScrollW = iDoc.body.scrollWidth || 0;
+            const docScrollW = iDoc.documentElement ? (iDoc.documentElement.scrollWidth || 0) : 0;
+            const overflowW = Math.max(bodyScrollW, docScrollW);
+            if (overflowW > targetW + 15 && overflowW <= maxW) {
+                targetW = overflowW;
+            }
+        }
+
+        const finalW = Math.min(Math.max(Math.ceil(targetW), 100), maxW);
+
+        // 2. 测算自适应高度
+        let measuredH = 0;
+        if (iDoc && iDoc.body) {
             const children = Array.from(iDoc.body.children).filter(
                 c => c.tagName !== 'SCRIPT' && c.tagName !== 'STYLE' && c.tagName !== 'LINK'
             );
 
-            let maxChildW = 0;
             let maxChildH = 0;
-
             children.forEach(child => {
                 const r = child.getBoundingClientRect();
-                if (r.right > maxChildW) maxChildW = r.right;
                 if (r.bottom > maxChildH) maxChildH = r.bottom;
-                if (r.width > maxChildW) maxChildW = r.width;
             });
 
-            const bodyScrollW = iDoc.body.scrollWidth || 0;
-            const docScrollW = iDoc.documentElement ? (iDoc.documentElement.scrollWidth || 0) : 0;
             const bodyScrollH = iDoc.body.scrollHeight || 0;
             const docScrollH = iDoc.documentElement ? (iDoc.documentElement.scrollHeight || 0) : 0;
+            const bodyOffsetH = iDoc.body.offsetHeight || 0;
 
-            measuredW = Math.max(maxChildW, bodyScrollW, docScrollW, iDoc.body.offsetWidth || 0);
-            measuredH = Math.max(maxChildH, bodyScrollH, docScrollH, iDoc.body.offsetHeight || 0);
+            measuredH = Math.max(maxChildH, bodyScrollH, docScrollH, bodyOffsetH);
         }
 
-        // 检查 iframe 自身属性与样式
-        if (measuredW <= 40) {
-            const attrW = parseInt(iframeEl.getAttribute('width'), 10);
-            if (!isNaN(attrW) && attrW > 40) measuredW = attrW;
-        }
         if (measuredH <= 30) {
             const attrH = parseInt(iframeEl.getAttribute('height'), 10);
             if (!isNaN(attrH) && attrH > 30) measuredH = attrH;
         }
-
-        // 保底合理默认尺寸
-        if (measuredW <= 40) measuredW = Math.min(600, maxW);
         if (measuredH <= 30) measuredH = Math.min(420, maxH);
 
-        const finalW = Math.min(Math.max(Math.ceil(measuredW), 100), maxW);
         const finalH = Math.min(Math.max(Math.ceil(measuredH), 50), maxH);
 
-        if (iframeEl.style.width !== `${finalW}px`) iframeEl.style.width = `${finalW}px`;
-        if (iframeEl.style.height !== `${finalH}px`) iframeEl.style.height = `${finalH}px`;
+        // 3. 应用尺寸（iframe 始终铺满 wrapper 宽度，避免嵌套挤压）
+        iframeEl.style.width = '100%';
         if (dialogEl && dialogEl.style.width !== `${finalW}px`) {
             dialogEl.style.width = `${finalW}px`;
         }
 
-        console.log(`[TwT HtmlPopup] [Iframe 自适应成功] 真实宽度: ${finalW}px, 高度: ${finalH}px`);
+        const curH = parseInt(iframeEl.style.height, 10) || 0;
+        if (Math.abs(curH - finalH) > 3) {
+            iframeEl.style.height = `${finalH}px`;
+        }
     } catch (e) {
         console.warn('[TwT HtmlPopup] 测算 Iframe 内容尺寸失败:', e);
     }
 }
 
 /**
- * 实时监测并响应 Iframe / DOM 内部尺寸变化，自适应动态调整 (急速响应)
+ * 实时监测并响应 Iframe / DOM 内部尺寸变化，自适应动态调整 (防循环触发)
  */
 function observeAppDynamicResizing(appEl, dialogEl) {
     stopAppResizeObserver();
@@ -411,15 +421,10 @@ function observeAppDynamicResizing(appEl, dialogEl) {
                 const iDoc = appEl.contentDocument || appEl.contentWindow?.document;
                 if (iDoc) {
                     doFit();
-                    const iWin = appEl.contentWindow;
-                    if (iWin) {
-                        iWin.addEventListener('resize', debounce(doFit, 80));
-                    }
                     const ResizeObserverClass = win.ResizeObserver || window.ResizeObserver;
                     if (ResizeObserverClass && iDoc.body) {
-                        activeResizeObserver = new ResizeObserverClass(debounce(doFit, 80));
+                        activeResizeObserver = new ResizeObserverClass(debounce(doFit, 100));
                         activeResizeObserver.observe(iDoc.body);
-                        if (iDoc.documentElement) activeResizeObserver.observe(iDoc.documentElement);
                     }
                 }
             } catch (e) {}
