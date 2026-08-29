@@ -193,6 +193,11 @@ function returnMovedElementBack() {
     const ph = el.__twt_placeholder__;
     if (ph) delete el.__twt_placeholder__;
 
+    // 关键：在插回文档流之前，先设置完全隐藏，杜绝未隐藏状态导致的瞬时高度撑开与多栏布局位移
+    el.classList.add('twt-app-hidden');
+    el.style.display = 'none';
+    el.style.visibility = 'hidden';
+
     if (ph && ph.parentNode && getDoc().body.contains(ph)) {
         // 正常路径：占位符仍在文档树中，将应用节点插回原位
         ph.parentNode.insertBefore(el, ph);
@@ -202,9 +207,6 @@ function returnMovedElementBack() {
         el.parentNode.removeChild(el);
         console.log('[TwT HtmlPopup] 占位节点已消失，应用节点已从当前父节点安全移除（防泄漏）');
     }
-    el.classList.add('twt-app-hidden');
-    el.style.display = '';
-    el.style.visibility = '';
 }
 
 /**
@@ -551,9 +553,37 @@ function injectStyles() {
     }
 
     style.textContent = `
-        /* 正文中隐藏应用 DOM 节点与 HTML 代码块 */
-        .twt-app-hidden {
+        /* 正文中隐藏应用 DOM 节点与 HTML 代码块，及其占位符与空包裹容器 */
+        .twt-app-hidden,
+        .twt-app-placeholder {
             display: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            height: 0 !important;
+            min-height: 0 !important;
+            border: none !important;
+            line-height: 0 !important;
+            font-size: 0 !important;
+        }
+
+        /* 当段落、代码块外层或容器内仅含有被隐藏的应用节点时，彻底消除其占据的空白与间距 */
+        .mes_text p:empty,
+        .mes_text p:has(> .twt-app-hidden:only-child),
+        .mes_text p:has(> .twt-app-placeholder:only-child),
+        .mes_text div:has(> .twt-app-hidden:only-child),
+        .mes_text div:has(> .twt-app-placeholder:only-child),
+        .mes_text .code-block-container:has(.twt-app-hidden),
+        .mes_text .code-block-container:has(.twt-app-placeholder),
+        .mes_text .code-wrapper:has(.twt-app-hidden),
+        .mes_text .code-wrapper:has(.twt-app-placeholder) {
+            display: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            height: 0 !important;
+            min-height: 0 !important;
+            border: none !important;
+            line-height: 0 !important;
+            font-size: 0 !important;
         }
 
         /* QR 栏按钮与左上角高亮纯色静止圆点 */
@@ -820,6 +850,20 @@ export function hideMessageHtmlApps(forceHide = false) {
                     el.classList.add('twt-app-hidden');
                     count++;
                 }
+
+                // 如果外层包裹容器（如 <p> 或代码块包装 div）仅包含此应用节点，同时隐藏外层容器，彻底消除留白
+                const parent = el.parentElement;
+                if (parent && !parent.classList.contains('mes_text')) {
+                    const nonHiddenSiblings = Array.from(parent.childNodes).filter(node => {
+                        if (node === el) return false;
+                        if (node.nodeType === Node.TEXT_NODE && node.textContent.trim() === '') return false;
+                        if (node.nodeType === Node.ELEMENT_NODE && (node.tagName === 'BR' || node.classList?.contains('twt-app-hidden') || node.classList?.contains('twt-app-placeholder'))) return false;
+                        return true;
+                    });
+                    if (nonHiddenSiblings.length === 0) {
+                        parent.classList.add('twt-app-hidden');
+                    }
+                }
             });
 
             if (count > 0) {
@@ -1074,17 +1118,21 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diff
 
         selectEl.onchange = (e) => {
             e.stopPropagation();
+            e.preventDefault();
             currentIndex = parseInt(selectEl.value, 10);
             saveSavedAppIndex(mesIndexInfo, currentIndex);
             renderBodyContent();
+            selectEl.blur();
         };
 
         prevBtn.onclick = (e) => {
             e.stopPropagation();
+            e.preventDefault();
             currentIndex = (currentIndex - 1 + appElsList.length) % appElsList.length;
             selectEl.value = String(currentIndex);
             saveSavedAppIndex(mesIndexInfo, currentIndex);
             renderBodyContent();
+            prevBtn.blur();
         };
 
         const nextBtn = doc.createElement('button');
@@ -1093,10 +1141,12 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diff
         nextBtn.innerHTML = `<i class="fa-solid fa-chevron-right"></i>`;
         nextBtn.onclick = (e) => {
             e.stopPropagation();
+            e.preventDefault();
             currentIndex = (currentIndex + 1) % appElsList.length;
             selectEl.value = String(currentIndex);
             saveSavedAppIndex(mesIndexInfo, currentIndex);
             renderBodyContent();
+            nextBtn.blur();
         };
 
         switcher.appendChild(prevBtn);
@@ -1211,6 +1261,10 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diff
     body.className = 'twt-modal-body';
 
     function renderBodyContent() {
+        const chat = doc.getElementById('chat');
+        const savedScrollLeft = chat ? chat.scrollLeft : 0;
+        const savedScrollTop = chat ? chat.scrollTop : 0;
+
         returnMovedElementBack();
 
         body.innerHTML = '';
@@ -1283,6 +1337,16 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diff
             currentlyMovedEl = currentAppEl;
 
             observeAppDynamicResizing(currentAppEl, dialog);
+        }
+
+        // 恢复聊天流滚动位置（防止因为 DOM 节点移动触发浏览器 auto-scroll 导致正文大幅度翻页）
+        if (chat) {
+            if (chat.scrollLeft !== savedScrollLeft) chat.scrollLeft = savedScrollLeft;
+            if (chat.scrollTop !== savedScrollTop) chat.scrollTop = savedScrollTop;
+            requestAnimationFrame(() => {
+                if (chat.scrollLeft !== savedScrollLeft) chat.scrollLeft = savedScrollLeft;
+                if (chat.scrollTop !== savedScrollTop) chat.scrollTop = savedScrollTop;
+            });
         }
     }
 
