@@ -94,6 +94,15 @@
                     开启后，消息正文中的 HTML / Iframe 将不在翻页文本流中直接展示，而是通过点击 QR 栏【应用】按钮在弹窗中原样召出。
                 </div>
 
+                <div class="twt-setting-row"
+                    style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
+                    <label for="twt_html_popup_fallback_enabled">无应用时自动回溯历史楼层</label>
+                    <input type="checkbox" id="twt_html_popup_fallback_enabled" />
+                </div>
+                <div style="font-size: 0.85em; opacity: 0.6; margin-bottom: 10px; margin-top: -2px; padding-left: 2px;">
+                    开启后，若当前可视楼层无 HTML 应用，将自动向前回溯寻找最近出现过的应用（适合 RPG 全局状态栏面板）；关闭则仅召出当前楼层应用。
+                </div>
+
                 <div class="twt-setting-row" style="display: flex; flex-direction: column; margin-bottom: 5px;">
                     <label for="twt_html_popup_selector" style="margin-bottom: 5px; font-size: 0.95em;">目标 HTML 应用 CSS 选择器</label>
                     <input type="text" id="twt_html_popup_selector" placeholder="默认：iframe, .twt-custom-app, [data-app-container]" style="width: 100%; box-sizing: border-box; padding: 6px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px;" />

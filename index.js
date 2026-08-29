@@ -97,6 +97,7 @@ const defaultSettings = {
     messagePageEnabled: false,
     htmlPageBreakEnabled: true,
     htmlPopupEnabled: true,
+    htmlPopupFallbackEnabled: false,
     htmlPopupSelector: 'iframe, .twt-custom-app, [data-app-container], .rendered-html-app',
     htmlPopupTitleMap: 'TH-message=剧情摘要\napp-stat=角色状态',
     avatarLayoutMode: 'float',
@@ -1020,6 +1021,7 @@ function bindUI() {
     const $messagePageEnabled = $('#twt_message_page_enabled');
     const $htmlPageBreakEnabled = $('#twt_html_page_break_enabled');
     const $htmlPopupEnabled = $('#twt_html_popup_enabled');
+    const $htmlPopupFallbackEnabled = $('#twt_html_popup_fallback_enabled');
     const $htmlPopupSelector = $('#twt_html_popup_selector');
     const $htmlPopupTitleMap = $('#twt_html_popup_title_map');
     const $avatarLayoutMode = $('#twt_avatar_layout_mode');
@@ -1076,6 +1078,7 @@ function bindUI() {
     $messagePageEnabled.prop('checked', extension_settings.twt.messagePageEnabled);
     $htmlPageBreakEnabled.prop('checked', extension_settings.twt.htmlPageBreakEnabled);
     $htmlPopupEnabled.prop('checked', extension_settings.twt.htmlPopupEnabled !== false);
+    $htmlPopupFallbackEnabled.prop('checked', extension_settings.twt.htmlPopupFallbackEnabled === true);
     $htmlPopupSelector.val(extension_settings.twt.htmlPopupSelector || 'iframe, .twt-custom-app, [data-app-container], .rendered-html-app');
     $htmlPopupTitleMap.val(extension_settings.twt.htmlPopupTitleMap || '');
     $avatarLayoutMode.val(extension_settings.twt.avatarLayoutMode || 'float');
@@ -1761,6 +1764,11 @@ function bindUI() {
         extension_settings.twt.htmlPopupEnabled = $(this).prop('checked');
         getContext().saveSettingsDebounced();
         applyHtmlPopupSettings();
+    });
+
+    $htmlPopupFallbackEnabled.on('change', function () {
+        extension_settings.twt.htmlPopupFallbackEnabled = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
     });
 
     $htmlPopupSelector.on('input', function () {

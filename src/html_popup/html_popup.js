@@ -485,6 +485,7 @@ function resolveAppTitle(el, index) {
 export function getHtmlPopupDefaultSettings() {
     return {
         htmlPopupEnabled: true,
+        htmlPopupFallbackEnabled: false,
         htmlPopupSelector: 'iframe, .twt-custom-app, [data-app-container], .rendered-html-app',
         htmlPopupTitleMap: 'TH-message=剧情摘要\napp-stat=角色状态',
         htmlPopupHideInStream: true,
@@ -859,6 +860,63 @@ function getMessageAppElements(mesEl, selector) {
         );
     } catch (e) {
         return [];
+    }
+}
+
+/**
+ * 历史楼层回溯：在当前楼层未找到应用时，向前查找最近出现过 HTML 应用的消息
+ */
+function fallbackToPreviousFloors(focusedMes, selector) {
+    const doc = getDoc();
+    const allMessages = Array.from(doc.querySelectorAll('#chat .mes'));
+    if (allMessages.length === 0) return;
+
+    const focusedMesIndex = focusedMes ? allMessages.indexOf(focusedMes) : allMessages.length - 1;
+
+    let targetMes = null;
+    let targetAppEls = [];
+    let targetMesIndex = -1;
+
+    const startIdx = focusedMesIndex >= 0 ? focusedMesIndex - 1 : allMessages.length - 1;
+    for (let i = startIdx; i >= 0; i--) {
+        const mes = allMessages[i];
+        if (getComputedStyle(mes).display === 'none') continue;
+        const matchingInMes = getMessageAppElements(mes, selector);
+        if (matchingInMes.length > 0) {
+            targetMes = mes;
+            targetAppEls = matchingInMes;
+            targetMesIndex = i;
+            break;
+        }
+    }
+
+    if (targetAppEls.length === 0) {
+        for (let i = allMessages.length - 1; i >= 0; i--) {
+            const mes = allMessages[i];
+            if (getComputedStyle(mes).display === 'none') continue;
+            const matchingInMes = getMessageAppElements(mes, selector);
+            if (matchingInMes.length > 0) {
+                targetMes = mes;
+                targetAppEls = matchingInMes;
+                targetMesIndex = i;
+                break;
+            }
+        }
+    }
+
+    if (targetAppEls.length > 0 && targetMes) {
+        const fallbackMesId = targetMes.getAttribute('mesid') || targetMes.id || '';
+        const fallbackMesIndex = targetMes.getAttribute('data-index') || (parseInt(fallbackMesId) + 1) || (targetMesIndex + 1);
+        const diffFloors = (focusedMesIndex >= 0 && targetMesIndex >= 0) ? Math.abs(focusedMesIndex - targetMesIndex) : 0;
+
+        console.log(`[TwT HtmlPopup] [回溯成功] 召出历史楼层应用 (#${fallbackMesIndex})，相差 ${diffFloors} 层`);
+        openHtmlAppModal(targetAppEls, fallbackMesIndex, null, diffFloors);
+        return;
+    }
+
+    console.warn(`[TwT HtmlPopup] 聊天记录中未找到任何匹配的 HTML 应用 (选择器: ${selector})`);
+    if (typeof toastr !== 'undefined') {
+        toastr.info('当前聊天记录中未检测到任何可召出的 HTML / iframe 应用', 'TwT 应用召出');
     }
 }
 
@@ -1289,8 +1347,13 @@ function handleQrBtnClick() {
             if (retries < maxRetries) {
                 setTimeout(pollCheck, 100);
             } else {
-                if (typeof toastr !== 'undefined') {
-                    toastr.info('当前所在楼层未检测到 HTML / iframe 应用', 'TwT 应用召出');
+                if (settings?.htmlPopupFallbackEnabled === true) {
+                    console.log('[TwT HtmlPopup] 当前楼层无应用，根据用户配置执行历史楼层回溯...');
+                    fallbackToPreviousFloors(focusedMes, selector);
+                } else {
+                    if (typeof toastr !== 'undefined') {
+                        toastr.info('当前所在楼层未检测到 HTML / iframe 应用', 'TwT 应用召出');
+                    }
                 }
             }
         };
@@ -1299,9 +1362,14 @@ function handleQrBtnClick() {
         return;
     }
 
-    // 5. 当前楼层未检测到任何应用，直接提示，不跨楼层回退
-    if (typeof toastr !== 'undefined') {
-        toastr.info('当前所在楼层未检测到 HTML / iframe 应用', 'TwT 应用召出');
+    // 5. 当前楼层未检测到任何应用，根据配置决定是否回溯
+    if (settings?.htmlPopupFallbackEnabled === true) {
+        console.log('[TwT HtmlPopup] 当前楼层无应用，根据用户配置执行历史楼层回溯...');
+        fallbackToPreviousFloors(focusedMes, selector);
+    } else {
+        if (typeof toastr !== 'undefined') {
+            toastr.info('当前所在楼层未检测到 HTML / iframe 应用', 'TwT 应用召出');
+        }
     }
 }
 
