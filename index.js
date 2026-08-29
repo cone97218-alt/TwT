@@ -100,6 +100,7 @@ const defaultSettings = {
     htmlPopupFallbackEnabled: false,
     htmlPopupSelector: 'iframe, .twt-custom-app, [data-app-container], .rendered-html-app',
     htmlPopupTitleMap: 'TH-message=剧情摘要\napp-stat=角色状态',
+    htmlPopupWhitelist: '',
     avatarLayoutMode: 'float',
     customWhitelist: '.mes_reasoning_details, .thought-block',
     menuEnabled: false,
@@ -1024,6 +1025,7 @@ function bindUI() {
     const $htmlPopupFallbackEnabled = $('#twt_html_popup_fallback_enabled');
     const $htmlPopupSelector = $('#twt_html_popup_selector');
     const $htmlPopupTitleMap = $('#twt_html_popup_title_map');
+    const $htmlPopupWhitelist = $('#twt_html_popup_whitelist');
     const $avatarLayoutMode = $('#twt_avatar_layout_mode');
     const $customWhitelist = $('#twt_custom_whitelist');
     const $menuEnabled = $('#twt_menu_enabled');
@@ -1081,6 +1083,7 @@ function bindUI() {
     $htmlPopupFallbackEnabled.prop('checked', extension_settings.twt.htmlPopupFallbackEnabled === true);
     $htmlPopupSelector.val(extension_settings.twt.htmlPopupSelector || 'iframe, .twt-custom-app, [data-app-container], .rendered-html-app');
     $htmlPopupTitleMap.val(extension_settings.twt.htmlPopupTitleMap || '');
+    $htmlPopupWhitelist.val(extension_settings.twt.htmlPopupWhitelist || '');
     $avatarLayoutMode.val(extension_settings.twt.avatarLayoutMode || 'float');
     $customWhitelist.val(extension_settings.twt.customWhitelist || '');
     $menuEnabled.prop('checked', extension_settings.twt.menuEnabled);
@@ -1780,6 +1783,14 @@ function bindUI() {
     $htmlPopupTitleMap.on('input', function () {
         extension_settings.twt.htmlPopupTitleMap = $(this).val();
         getContext().saveSettingsDebounced();
+    });
+
+    $htmlPopupWhitelist.on('input', function () {
+        extension_settings.twt.htmlPopupWhitelist = $(this).val();
+        getContext().saveSettingsDebounced();
+        if (typeof hideMessageHtmlApps === 'function') {
+            hideMessageHtmlApps(true);
+        }
     });
 
     $avatarLayoutMode.on('change', function () {

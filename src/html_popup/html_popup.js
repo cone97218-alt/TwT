@@ -39,11 +39,54 @@ function getChatContextKey() {
 }
 
 /**
+ * 检查指定 DOM 节点或代码块是否匹配用户设置的正文内嵌白名单 (不抽离至弹窗)
+ */
+export function isElementWhitelisted(el) {
+    if (!el) return false;
+    const rawWhitelist = extension_settings?.twt?.htmlPopupWhitelist || '';
+    if (!rawWhitelist.trim()) return false;
+
+    // 解析规则（支持按换行或逗号分割）
+    const rules = rawWhitelist
+        .split(/[\n,]+/)
+        .map(r => r.trim())
+        .filter(Boolean);
+
+    if (rules.length === 0) return false;
+
+    const elId = el.id || '';
+    const elClass = (typeof el.className === 'string' ? el.className : (el.getAttribute?.('class') || ''));
+    const elOuter = (el.outerHTML || '').substring(0, 1500);
+    const codeText = (el.textContent || '').substring(0, 1500);
+
+    for (const rule of rules) {
+        // 1. 尝试作为标准 CSS 选择器匹配
+        try {
+            if (typeof el.matches === 'function' && el.matches(rule)) return true;
+            if (typeof el.closest === 'function' && el.closest(rule)) return true;
+            if (typeof el.querySelector === 'function' && el.querySelector(rule)) return true;
+        } catch (e) {}
+
+        // 2. 关键字/子串模式匹配 (ID, Class, 属性, 内容)
+        const cleanRule = rule.replace(/^[.#\[\]]/g, '').trim();
+        if (cleanRule) {
+            if (elId && elId.includes(cleanRule)) return true;
+            if (elClass && typeof elClass === 'string' && elClass.includes(cleanRule)) return true;
+            if (elOuter.includes(rule) || elOuter.includes(cleanRule)) return true;
+            if (codeText.includes(rule) || codeText.includes(cleanRule)) return true;
+        }
+    }
+
+    return false;
+}
+
+/**
  * 判断一个代码块（PRE / CODE）是否包含可执行/可展示的 HTML 或 Iframe 应用
  */
 function isHtmlAppCodeBlock(el) {
     if (!el) return false;
     if (el.closest?.('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')) return false;
+    if (isElementWhitelisted(el)) return false;
 
     const pre = el.tagName === 'PRE' ? el : el.closest?.('pre');
     const codeEl = el.tagName === 'CODE' ? el : (el.querySelector?.('code') || el);
@@ -536,6 +579,7 @@ export function getHtmlPopupDefaultSettings() {
         htmlPopupFallbackEnabled: false,
         htmlPopupSelector: 'iframe, .twt-custom-app, [data-app-container], .rendered-html-app',
         htmlPopupTitleMap: 'TH-message=剧情摘要\napp-stat=角色状态',
+        htmlPopupWhitelist: '',
         htmlPopupHideInStream: true,
     };
 }
@@ -839,12 +883,39 @@ export function hideMessageHtmlApps(forceHide = false) {
                 }
             });
 
+            // 恢复之前被隐藏但现在匹配白名单的元素
+            chat.querySelectorAll('.twt-app-hidden').forEach((hiddenEl) => {
+                if (isElementWhitelisted(hiddenEl)) {
+                    hiddenEl.classList.remove('twt-app-hidden');
+                    hiddenEl.style.display = '';
+                    hiddenEl.style.visibility = '';
+                    if (hiddenEl.parentElement && hiddenEl.parentElement.classList.contains('twt-app-hidden')) {
+                        hiddenEl.parentElement.classList.remove('twt-app-hidden');
+                        hiddenEl.parentElement.style.display = '';
+                    }
+                }
+            });
+
             let count = 0;
 
             matchingElements.forEach((el) => {
                 if (el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')) return;
                 if (currentlyMovedEl === el) return;
                 if (modal && modal.contains(el)) return; // modal 内的活跃节点不隐藏
+
+                if (isElementWhitelisted(el)) {
+                    // 白名单元素：在文本流中正常显示
+                    if (el.classList.contains('twt-app-hidden')) {
+                        el.classList.remove('twt-app-hidden');
+                        el.style.display = '';
+                        el.style.visibility = '';
+                    }
+                    if (el.parentElement && el.parentElement.classList.contains('twt-app-hidden')) {
+                        el.parentElement.classList.remove('twt-app-hidden');
+                        el.parentElement.style.display = '';
+                    }
+                    return;
+                }
 
                 if (!el.classList.contains('twt-app-hidden')) {
                     el.classList.add('twt-app-hidden');
@@ -878,7 +949,7 @@ export function hideMessageHtmlApps(forceHide = false) {
 }
 
 /**
- * 提取指定消息内的所有有效 HTML 应用节点（含已渲染 DOM 节点与 HTML 代码块）
+ * 提取指定消息内的所有有效 HTML 应用节点（含已渲染 DOM 节点与 HTML 代码块，自动排除白名单内嵌应用）
  */
 function getMessageAppElements(mesEl, selector) {
     if (!mesEl) return [];
@@ -887,13 +958,13 @@ function getMessageAppElements(mesEl, selector) {
         const selList = selector.split(',').map(s => s.trim()).filter(Boolean);
         const fullSelector = selList.join(', ');
         const matching = Array.from(mesEl.querySelectorAll(fullSelector)).filter(
-            el => !el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')
+            el => !el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body') && !isElementWhitelisted(el)
         );
         results.push(...matching);
 
         // 识别 HTML/iframe 代码块
         mesEl.querySelectorAll('.mes_text pre').forEach((pre) => {
-            if (isHtmlAppCodeBlock(pre) && !results.includes(pre)) {
+            if (isHtmlAppCodeBlock(pre) && !isElementWhitelisted(pre) && !results.includes(pre)) {
                 results.push(pre);
             }
         });

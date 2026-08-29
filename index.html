@@ -119,6 +119,14 @@
                     * 提示：匹配到的 ID、Class 或标签关键字将自动替换为好看的自定义标题名。
                 </div>
 
+                <div class="twt-setting-row" style="display: flex; flex-direction: column; margin-bottom: 5px;">
+                    <label for="twt_html_popup_whitelist" style="margin-bottom: 5px; font-size: 0.95em;">正文内嵌渲染白名单 (不抽离至弹窗)</label>
+                    <textarea id="twt_html_popup_whitelist" rows="2" placeholder="例如：&#10;.inline-app, #dice-roller&#10;twt-inline" style="width: 100%; box-sizing: border-box; padding: 6px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-family: monospace; font-size: 0.9em; resize: vertical;"></textarea>
+                </div>
+                <div style="font-size: 0.85em; opacity: 0.6; margin-bottom: 15px; padding-left: 2px;">
+                    * 提示：匹配白名单中的选择器（如类名、ID、属性）或 HTML/代码块包含的关键字的 Iframe/应用，将保留在文本流中直接渲染，不抽离至 QR 弹窗。
+                </div>
+
                 
                 <div style="border-top: 1px dashed var(--SmartThemeBorderColor); padding-top: 10px; margin-top: 10px;">
                     <div class="twt-setting-row" style="display: flex; flex-direction: column; margin-bottom: 5px;">
