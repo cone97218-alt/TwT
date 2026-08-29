@@ -1223,7 +1223,7 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diff
         const isCodeBlock = currentAppEl.tagName === 'PRE' || isHtmlAppCodeBlock(currentAppEl);
 
         if (isCodeBlock) {
-            // 针对未被其他插件渲染为 DOM 的原生 HTML/Iframe 代码块，由 TwT 动态创建 Iframe 驱动
+            // 针对原生 HTML/Iframe 代码块，直接提取当前消息中的最新代码 (杜绝旧 swipe 缓存污染)
             const dynamicIframe = doc.createElement('iframe');
             dynamicIframe.className = 'twt-dynamic-html-app';
             dynamicIframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-same-origin allow-popups allow-modals');
@@ -1232,7 +1232,7 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diff
             dynamicIframe.style.width = '100%';
             dynamicIframe.style.height = '400px';
 
-            let srcContent = savedHtml || extractHtmlFromCodeBlock(currentAppEl);
+            let srcContent = extractHtmlFromCodeBlock(currentAppEl);
             dynamicIframe.srcdoc = srcContent;
 
             const wrapper = doc.createElement('div');
@@ -1245,13 +1245,13 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diff
             observeAppDynamicResizing(dynamicIframe, dialog);
             attachIframeStateTracker(dynamicIframe, mesIndexInfo, currentIndex);
         } else {
-            // 针对已由酒馆/其他扩展渲染为真实 DOM 的节点，执行 Reparenting
-            if (savedHtml) {
-                if (currentAppEl.tagName === 'IFRAME') {
+            // 针对真实 DOM 节点，如果已有内容直接使用真实内容，只有在内容为空时才使用 savedHtml
+            if (currentAppEl.tagName === 'IFRAME') {
+                if (!currentAppEl.srcdoc && !currentAppEl.src && savedHtml) {
                     currentAppEl.srcdoc = savedHtml;
-                } else {
-                    currentAppEl.innerHTML = savedHtml;
                 }
+            } else if (!currentAppEl.innerHTML && savedHtml) {
+                currentAppEl.innerHTML = savedHtml;
             }
 
             const placeholder = doc.createElement('div');
@@ -1326,6 +1326,25 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diff
     requestAnimationFrame(() => {
         dialog.classList.remove('no-transition');
     });
+}
+
+/**
+ * 清除指定消息的 HTML 展开状态缓存
+ */
+function clearAppHtmlStateForMessage(mesIndexOrId) {
+    try {
+        const cKey = getChatContextKey();
+        const prefix1 = `twt_app_saved_html_${cKey}_${mesIndexOrId}_`;
+        const prefix2 = `twt_app_saved_html_${cKey}_${parseInt(mesIndexOrId) + 1}_`;
+        const toRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && (k.startsWith(prefix1) || k.startsWith(prefix2))) {
+                toRemove.push(k);
+            }
+        }
+        toRemove.forEach(k => localStorage.removeItem(k));
+    } catch (e) {}
 }
 
 /**
@@ -1412,32 +1431,24 @@ function handleQrBtnClick() {
     // 4. 防竞态处理：仅在确定存在尚未完成 DOM 初始化的标签时做轻量探测
     const mesTextEl = focusedMes.querySelector('.mes_text');
     const rawHtml = mesTextEl ? mesTextEl.innerHTML : '';
-    const hasUnrenderedCode = (
-        (rawHtml.includes('language-html') || rawHtml.includes('language-xml') || rawHtml.includes('language-iframe')) &&
-        !focusedMes.querySelector(selector)
-    ) || (
-        rawHtml.includes('&lt;iframe') && !focusedMes.querySelector('iframe')
-    );
+    const hasUnrenderedCode = rawHtml.includes('&lt;iframe') && !focusedMes.querySelector('iframe');
 
     if (hasUnrenderedCode) {
-        console.log(`[TwT HtmlPopup] [防竞态开启] 检测到未完成渲染的标签，智能等待前置插件渲染...`);
         let retries = 0;
-        const maxRetries = 10;
+        const maxRetries = 6;
 
         const pollCheck = () => {
             appEls = getMessageAppElements(focusedMes, selector);
             if (appEls.length > 0) {
-                console.log(`[TwT HtmlPopup] [防竞态成功] 捕获到应用节点`);
                 hideMessageHtmlApps();
                 openHtmlAppModal(appEls, mesIndex, null, 0);
                 return;
             }
             retries++;
             if (retries < maxRetries) {
-                setTimeout(pollCheck, 100);
+                setTimeout(pollCheck, 60);
             } else {
                 if (settings?.htmlPopupFallbackEnabled === true) {
-                    console.log('[TwT HtmlPopup] 当前楼层无应用，根据用户配置执行历史楼层回溯...');
                     fallbackToPreviousFloors(focusedMes, selector);
                 } else {
                     if (typeof toastr !== 'undefined') {
@@ -1447,7 +1458,7 @@ function handleQrBtnClick() {
             }
         };
 
-        setTimeout(pollCheck, 50);
+        setTimeout(pollCheck, 30);
         return;
     }
 
