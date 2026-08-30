@@ -793,7 +793,11 @@ export function setLastUserPage(page) {
 }
 
 /**
- * 核心归正功能：诊断向左偏移偏差，重新校准多列布局网格，并重置 scrollLeft
+ * 核心归正功能：全向深度归正（左右翻页网格校准 + 纵向打字顶出位移复原）
+ * 1. 深度清零 #chat、所有祖先容器及 window/body 的 scrollTop 纵向偏移
+ * 2. 解除可能处于冻结状态的 #chat 容器高度与焦点保护锁
+ * 3. 强制重置 #chat 内部所有消息块及子容器的纵向滚动偏位
+ * 4. 触发强制重排 (Reflow) 与列宽校准，消除横向亚像素漂移并重置 scrollLeft
  * @param {boolean} verbose 是否弹出 Toast 提示与打印控制台诊断日志
  * @returns {object|null} 返回归正前后的物理偏差诊断报告
  */
@@ -806,7 +810,46 @@ export function realignPagination(verbose = true) {
         return null;
     }
 
-    // 1. 采集归正前的精准物理数据
+    // 1. 采集归正前的纵向漂移与横向物理数据
+    const prevChatScrollTop = chat.scrollTop || 0;
+    const prevWinScrollY = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+    
+    let ancestorScrollTopSum = 0;
+    let node = chat.parentElement;
+    while (node && node !== document.body && node !== document.documentElement) {
+        if (node.scrollTop > 0) {
+            ancestorScrollTopSum += node.scrollTop;
+            node.scrollTop = 0;
+        }
+        node = node.parentElement;
+    }
+
+    // 2. 解除输入框键盘高度冻结状态与位置锁
+    isFocusGuarding = false;
+    isKeyboardOpen = false;
+    clearTimeout(focusGuardTimer);
+    clearTimeout(keyboardRestoreTimer);
+    stopPositionLock();
+    unfreezeHeight(chat);
+
+    // 3. 强制清零所有层级的纵向滚动
+    chat.scrollTop = 0;
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    try {
+        window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    } catch {}
+
+    const sheld = document.getElementById('sheld');
+    if (sheld) sheld.scrollTop = 0;
+
+    // 清理聊天区内部所有子元素可能产生的 scrollTop
+    const internalScrolled = chat.querySelectorAll('.mes, .mes_text, .mes_block');
+    internalScrolled.forEach(el => {
+        if (el.scrollTop > 0) el.scrollTop = 0;
+    });
+
+    // 4. 采集横向网格数据
     const rawW = chat.getBoundingClientRect().width || chat.clientWidth || 0;
     const scrollW = chat.scrollWidth || 0;
     const currentScrollLeft = chat.scrollLeft;
@@ -818,27 +861,7 @@ export function realignPagination(verbose = true) {
     const subpixelDrift = (currentScrollLeft % (calcStep || 1)).toFixed(3);
     const totalPages = calcStep > 0 ? Math.round(scrollW / calcStep) : 1;
 
-    const report = {
-        currentPage,
-        totalPages,
-        currentScrollLeft: Number(currentScrollLeft.toFixed(2)),
-        expectedScrollLeft: Number(expectedScrollLeft.toFixed(2)),
-        offsetDelta: Number(offsetDelta.toFixed(2)),
-        subpixelDrift: Number(subpixelDrift),
-        colWidth: Number(calcStep.toFixed(2)),
-        scrollWidth: scrollW,
-        viewportWidth: rawW
-    };
-
-    // 2. 诊断日志输出
-    const logMsg = `🔍 翻页偏移诊断：当前页 [${currentPage + 1}/${totalPages}]，` +
-                   `实际 ScrollLeft: ${currentScrollLeft.toFixed(2)}px，` +
-                   `理论 ScrollLeft: ${expectedScrollLeft.toFixed(2)}px，` +
-                   `偏移偏差: ${offsetDelta > 0 ? '+' : ''}${offsetDelta.toFixed(2)}px ` +
-                   `(亚像素漂移: ${subpixelDrift}px, 单列宽: ${calcStep.toFixed(2)}px)`;
-    console.log('[TwT] ' + logMsg);
-
-    // 3. 执行物理归正重置
+    // 5. 执行物理归正重置与强制 Reflow
     stableColWidth = 0;
     lastKnownScrollWidth = 0;
     clearTimeout(stableColWidthTimer);
@@ -848,6 +871,9 @@ export function realignPagination(verbose = true) {
     }
 
     containOversizedElements();
+
+    // 强制同步重排，确保高度和列断点恢复正常
+    void chat.offsetHeight;
 
     const newSw = chat.scrollWidth;
     if (newSw > 0 && rawW > 0) {
@@ -863,11 +889,41 @@ export function realignPagination(verbose = true) {
 
     // 物理强行归正对齐
     chat.scrollLeft = targetPage * finalStep;
+    chat.scrollTop = 0;
+    try { window.scrollTo({ top: 0, left: 0, behavior: 'instant' }); } catch {}
 
-    // 4. 用户 Toast 反馈
+    const totalVerticalDrift = Number((prevChatScrollTop + prevWinScrollY + ancestorScrollTopSum).toFixed(2));
+    const report = {
+        currentPage: targetPage,
+        totalPages: finalMaxPage + 1,
+        currentScrollLeft: Number(currentScrollLeft.toFixed(2)),
+        expectedScrollLeft: Number(expectedScrollLeft.toFixed(2)),
+        offsetDelta: Number(offsetDelta.toFixed(2)),
+        subpixelDrift: Number(subpixelDrift),
+        verticalDrift: totalVerticalDrift,
+        colWidth: Number(calcStep.toFixed(2)),
+        scrollWidth: newSw,
+        viewportWidth: rawW
+    };
+
+    // 6. 诊断日志输出
+    const logMsg = `🔍 全向归正诊断：当前页 [${targetPage + 1}/${finalMaxPage + 1}]，` +
+                   `横向偏差: ${offsetDelta > 0 ? '+' : ''}${offsetDelta.toFixed(2)}px，` +
+                   `纵向顶出位移: ${totalVerticalDrift}px (已完全复原)`;
+    console.log('[TwT] ' + logMsg);
+
+    // 7. 用户 Toast 反馈
     if (verbose && typeof toastr !== 'undefined') {
         const absDelta = Math.abs(offsetDelta).toFixed(1);
-        toastr.success(`翻页网格已完成归正！(偏移偏差: ${offsetDelta > 0 ? '+' : ''}${absDelta}px → 归正为 0.00px)`, '翻页归正');
+        let msg = '翻页排版已完成全向归正！';
+        if (totalVerticalDrift > 0 && Math.abs(offsetDelta) > 1) {
+            msg = `翻页排版已归正！(复原顶出: ${totalVerticalDrift}px，修正偏移: ${absDelta}px)`;
+        } else if (totalVerticalDrift > 0) {
+            msg = `上下顶出已复原！(清理纵向位移: ${totalVerticalDrift}px)`;
+        } else {
+            msg = `翻页网格已完成归正！(偏移偏差: ${offsetDelta > 0 ? '+' : ''}${absDelta}px → 0.00px)`;
+        }
+        toastr.success(msg, '翻页归正');
     }
 
     return report;

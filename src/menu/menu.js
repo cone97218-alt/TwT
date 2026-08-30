@@ -184,6 +184,18 @@ export function initMenu(getSettings, onToggleExcerpt) {
             }, 0);
         }
     });
+
+    // 接管酒馆原生消息编辑小铅笔按钮点击，以全屏弹窗形式呼出全文编辑
+    chatContainer.on('click', '.mes_edit, [title="Edit message"], [name="editMessage"]', function(e) {
+        if (!document.body.classList.contains('twt-reading-mode')) return;
+        const $mes = $(this).closest('.mes');
+        const mesId = Number($mes.attr('mesid'));
+        if (!isNaN(mesId)) {
+            e.preventDefault();
+            e.stopPropagation();
+            openFullTextEditor(mesId);
+        }
+    });
 }
 
 function showContextMenu(e, $mes, clientX, clientY, settings) {
@@ -255,11 +267,12 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
         }
     };
 
-    const order = settings.menuOrder || [
+    let order = settings.menuOrder || [
         'menuOptRegenerate',
         'menuOptSwipe',
         'menuOptManage',
         'menuOptEdit',
+        'menuOptFullEdit',
         'menuOptRealign',
         'menuOptNewChat',
         'menuOptCloseChat',
@@ -270,6 +283,15 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
         'menuOptPurifierDiff',
         'menuOptPromptViewer'
     ];
+
+    if (!order.includes('menuOptFullEdit')) {
+        const editIdx = order.indexOf('menuOptEdit');
+        if (editIdx !== -1) {
+            order = [...order.slice(0, editIdx + 1), 'menuOptFullEdit', ...order.slice(editIdx + 1)];
+        } else {
+            order = [...order, 'menuOptFullEdit'];
+        }
+    }
 
     for (const key of order) {
         if (key === 'menuOptRegenerate' && settings.menuOptRegenerate && isLatestAi) {
@@ -347,10 +369,20 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
         if (key === 'menuOptEdit' && settings.menuOptEdit) {
             appendMenuItem({
                 label: '分段编辑',
-                shortLabel: '编辑',
+                shortLabel: '分段',
                 icon: 'fa-regular fa-pen-to-square',
                 isGridItem: true,
                 onClick: () => openParagraphEditor(mesId, clientX, clientY)
+            });
+        }
+
+        if (key === 'menuOptFullEdit' && settings.menuOptFullEdit !== false) {
+            appendMenuItem({
+                label: '全文编辑',
+                shortLabel: '全文',
+                icon: 'fa-solid fa-file-pen',
+                isGridItem: true,
+                onClick: () => openFullTextEditor(mesId)
             });
         }
 
@@ -1279,4 +1311,222 @@ function showScreenshotPreviewModal(canvas) {
     });
 
     parentDoc.body.appendChild(modal);
+}
+
+
+// ============================================================
+// 全屏全文编辑弹窗 (对接酒馆原生编辑与消息更新)
+// ============================================================
+export function openFullTextEditor(mesId) {
+    const context = getContext();
+    const chat = context.chat;
+    if (!chat || !chat.length) return;
+
+    const message = chat[mesId];
+    if (!message) return;
+
+    const parentDoc = getParentDoc();
+    const oldModal = parentDoc.getElementById('twt-full-edit-modal');
+    if (oldModal) oldModal.remove();
+
+    const rawContent = message.mes || '';
+    const charName = message.name || (message.is_user ? 'User' : 'AI');
+
+    const modal = parentDoc.createElement('div');
+    modal.id = 'twt-full-edit-modal';
+    modal.style.cssText = `
+        position: fixed;
+        top: 0; left: 0; width: 100vw; height: 100vh;
+        z-index: 1000005;
+        background: rgba(0, 0, 0, 0.75);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        padding: 20px; box-sizing: border-box;
+        font-family: var(--monoFontFamily, sans-serif);
+    `;
+
+    const container = parentDoc.createElement('div');
+    container.style.cssText = `
+        background: var(--SmartThemeBlurTintColor, var(--SmartThemePanelColor, #1e1e1e));
+        border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.2));
+        border-radius: 12px;
+        padding: 18px 20px;
+        width: 90vw;
+        max-width: 1000px;
+        height: 85vh;
+        display: flex; flex-direction: column;
+        box-shadow: 0 16px 48px rgba(0,0,0,0.6);
+        box-sizing: border-box;
+    `;
+
+    const titleRow = parentDoc.createElement('div');
+    titleRow.style.cssText = 'width: 100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; color: var(--SmartThemeBodyColor, #fff); font-weight: bold; font-size: 1.1em;';
+    
+    const titleLeft = parentDoc.createElement('div');
+    titleLeft.style.cssText = 'display: flex; align-items: center; gap: 8px;';
+    titleLeft.innerHTML = `<i class="fa-solid fa-file-pen" style="color: var(--SmartThemeQuoteColor, #4a9eff);"></i><span>全文编辑 <small style="opacity: 0.7; font-weight: normal;">(#${mesId} - ${charName})</small></span>`;
+
+    const titleRight = parentDoc.createElement('div');
+    titleRight.style.cssText = 'display: flex; align-items: center; gap: 8px; font-size: 0.85em; opacity: 0.9; font-weight: normal;';
+    
+    const charCounter = parentDoc.createElement('span');
+    charCounter.style.cssText = 'margin-right: 6px; opacity: 0.75; font-size: 0.95em;';
+    charCounter.innerText = `字数: ${rawContent.length}`;
+
+    const scrollTopBtn = parentDoc.createElement('button');
+    scrollTopBtn.className = 'menu_button';
+    scrollTopBtn.title = '一键回顶';
+    scrollTopBtn.style.cssText = 'display: inline-flex; align-items: center; justify-content: center; padding: 4px 8px; font-size: 0.95em; cursor: pointer; border-radius: 4px;';
+    scrollTopBtn.innerHTML = '<i class="fa-solid fa-angles-up"></i>';
+    scrollTopBtn.addEventListener('click', () => {
+        textarea.scrollTo({ top: 0, behavior: 'smooth' });
+        textarea.focus();
+        textarea.setSelectionRange(0, 0);
+    });
+
+    const scrollBottomBtn = parentDoc.createElement('button');
+    scrollBottomBtn.className = 'menu_button';
+    scrollBottomBtn.title = '一键回底';
+    scrollBottomBtn.style.cssText = 'display: inline-flex; align-items: center; justify-content: center; padding: 4px 8px; font-size: 0.95em; cursor: pointer; border-radius: 4px;';
+    scrollBottomBtn.innerHTML = '<i class="fa-solid fa-angles-down"></i>';
+    scrollBottomBtn.addEventListener('click', () => {
+        textarea.scrollTo({ top: textarea.scrollHeight, behavior: 'smooth' });
+        textarea.focus();
+        const len = textarea.value.length;
+        textarea.setSelectionRange(len, len);
+    });
+
+    const closeIcon = parentDoc.createElement('i');
+    closeIcon.className = 'fa-solid fa-xmark interactable';
+    closeIcon.title = '关闭';
+    closeIcon.style.cssText = 'cursor: pointer; font-size: 1.25em; padding: 4px 6px; margin-left: 4px; opacity: 0.85;';
+    closeIcon.addEventListener('click', () => {
+        if (textarea.value !== rawContent) {
+            if (confirm('内容尚未保存，确定要退出编辑吗？')) modal.remove();
+        } else {
+            modal.remove();
+        }
+    });
+
+    titleRight.appendChild(charCounter);
+    titleRight.appendChild(scrollTopBtn);
+    titleRight.appendChild(scrollBottomBtn);
+    titleRight.appendChild(closeIcon);
+    titleRow.appendChild(titleLeft);
+    titleRow.appendChild(titleRight);
+
+    const textareaWrapper = parentDoc.createElement('div');
+    textareaWrapper.style.cssText = 'flex: 1; display: flex; width: 100%; min-height: 0; margin-bottom: 14px;';
+
+    const textarea = parentDoc.createElement('textarea');
+    textarea.className = 'twt-full-edit-textarea';
+    textarea.placeholder = '输入消息内容...';
+    textarea.value = rawContent;
+    textarea.style.cssText = `
+        width: 100%;
+        height: 100%;
+        box-sizing: border-box;
+        padding: 14px 16px;
+        background: var(--SmartThemeDarkColor, rgba(0, 0, 0, 0.3));
+        color: var(--SmartThemeBodyColor, #ffffff);
+        border: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.15));
+        border-radius: 8px;
+        font-family: inherit;
+        font-size: 1.05em;
+        line-height: 1.7;
+        resize: none;
+        outline: none;
+        overflow-y: auto;
+    `;
+
+    textarea.addEventListener('input', () => {
+        charCounter.innerText = `字数: ${textarea.value.length}`;
+    });
+
+    textareaWrapper.appendChild(textarea);
+
+    const btnRow = parentDoc.createElement('div');
+    btnRow.style.cssText = 'display: flex; gap: 10px; justify-content: flex-end; align-items: center; width: 100%;';
+
+    const cancelBtn = parentDoc.createElement('button');
+    cancelBtn.className = 'menu_button';
+    cancelBtn.title = '取消 (Esc)';
+    cancelBtn.style.cssText = 'display: inline-flex; align-items: center; justify-content: center; padding: 6px 16px; font-size: 1.1em; cursor: pointer; border-radius: 6px;';
+    cancelBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+    cancelBtn.addEventListener('click', () => {
+        if (textarea.value !== rawContent) {
+            if (confirm('内容尚未保存，确定要退出编辑吗？')) modal.remove();
+        } else {
+            modal.remove();
+        }
+    });
+
+    const saveBtn = parentDoc.createElement('button');
+    saveBtn.className = 'menu_button menu_button_primary';
+    saveBtn.title = '保存 (Ctrl+Enter)';
+    saveBtn.style.cssText = 'display: inline-flex; align-items: center; justify-content: center; padding: 6px 16px; font-size: 1.1em; cursor: pointer; border-radius: 6px;';
+    saveBtn.innerHTML = '<i class="fa-solid fa-check"></i>';
+
+    const handleSave = async () => {
+        const newContent = textarea.value;
+        modal.remove();
+        if (newContent !== rawContent) {
+            message.mes = newContent;
+            await context.updateMessageBlock(mesId, message, { rerenderMessage: true });
+            await context.saveChat();
+            if (typeof toastr !== 'undefined') {
+                toastr.success('消息已保存', '全文编辑');
+            }
+            if (document.body.classList.contains('twt-reading-mode')) {
+                const { realignPagination } = await import('../pagination/pagination.js');
+                realignPagination(false);
+            }
+        }
+    };
+
+    saveBtn.addEventListener('click', handleSave);
+
+    btnRow.appendChild(cancelBtn);
+    btnRow.appendChild(saveBtn);
+
+    // Keyboard shortcuts
+    const handleKeyDown = (e) => {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            if (textarea.value !== rawContent) {
+                if (confirm('内容尚未保存，确定要退出编辑吗？')) modal.remove();
+            } else {
+                modal.remove();
+            }
+        } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            handleSave();
+        }
+    };
+    textarea.addEventListener('keydown', handleKeyDown);
+
+    container.appendChild(titleRow);
+    container.appendChild(textareaWrapper);
+    container.appendChild(btnRow);
+    modal.appendChild(container);
+
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            if (textarea.value !== rawContent) {
+                if (confirm('内容尚未保存，确定要退出编辑吗？')) modal.remove();
+            } else {
+                modal.remove();
+            }
+        }
+    });
+
+    parentDoc.body.appendChild(modal);
+
+    setTimeout(() => {
+        textarea.focus();
+        const len = textarea.value.length;
+        textarea.setSelectionRange(len, len);
+    }, 50);
 }

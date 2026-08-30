@@ -108,6 +108,7 @@ const defaultSettings = {
     menuOptSwipe: true,
     menuOptManage: true,
     menuOptEdit: true,
+    menuOptFullEdit: true,
     menuOptRealign: true,
     paragraphToolbarBottom: 15,
     paragraphIconSize: 20,
@@ -129,6 +130,7 @@ const defaultSettings = {
         'menuOptSwipe',
         'menuOptManage',
         'menuOptEdit',
+        'menuOptFullEdit',
         'menuOptRealign',
         'menuOptNewChat',
         'menuOptCloseChat',
@@ -1036,6 +1038,7 @@ function bindUI() {
     const $menuOptSwipe = $('#twt_menu_opt_swipe');
     const $menuOptManage = $('#twt_menu_opt_manage');
     const $menuOptEdit = $('#twt_menu_opt_edit');
+    const $menuOptFullEdit = $('#twt_menu_opt_full_edit');
     const $paragraphToolbarBottom = $('#twt_paragraph_toolbar_bottom');
     const $paragraphIconSize = $('#twt_paragraph_icon_size');
     const $paragraphXmlWhitelist = $('#twt_paragraph_xml_whitelist');
@@ -1094,6 +1097,7 @@ function bindUI() {
     $menuOptSwipe.prop('checked', extension_settings.twt.menuOptSwipe);
     $menuOptManage.prop('checked', extension_settings.twt.menuOptManage);
     $menuOptEdit.prop('checked', extension_settings.twt.menuOptEdit);
+    $menuOptFullEdit.prop('checked', extension_settings.twt.menuOptFullEdit !== false);
     $paragraphToolbarBottom.val(extension_settings.twt.paragraphToolbarBottom !== undefined ? extension_settings.twt.paragraphToolbarBottom : 15);
     $paragraphIconSize.val(extension_settings.twt.paragraphIconSize !== undefined ? extension_settings.twt.paragraphIconSize : 20);
     $paragraphXmlWhitelist.val(extension_settings.twt.paragraphXmlWhitelist !== undefined ? extension_settings.twt.paragraphXmlWhitelist : 'thought, TavernThought, reasoning, details');
@@ -2285,11 +2289,21 @@ function renderMenuOrderList() {
         'menuOptPromptViewer'
     ];
 
+    if (!extension_settings.twt.menuOrder.includes('menuOptFullEdit')) {
+        const editIdx = extension_settings.twt.menuOrder.indexOf('menuOptEdit');
+        if (editIdx !== -1) {
+            extension_settings.twt.menuOrder.splice(editIdx + 1, 0, 'menuOptFullEdit');
+        } else {
+            extension_settings.twt.menuOrder.push('menuOptFullEdit');
+        }
+    }
+
     const labels = {
         menuOptRegenerate: '重新生成',
         menuOptSwipe: '滑动',
         menuOptManage: '管理消息',
         menuOptEdit: '分段编辑',
+        menuOptFullEdit: '全文编辑',
         menuOptRealign: '翻页归正',
         menuOptNewChat: '新对话',
         menuOptCloseChat: '关闭',
