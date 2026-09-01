@@ -125,6 +125,7 @@ const defaultSettings = {
     menuOptNewChat: true,
     menuOptCloseChat: true,
     menuOptPromptViewer: false,
+    menuOptRandomInspect: false,
     menuOrder: [
         'menuOptRegenerate',
         'menuOptSwipe',
@@ -139,7 +140,8 @@ const defaultSettings = {
         'menuOptApi',
         'menuOptPurifier',
         'menuOptPurifierDiff',
-        'menuOptPromptViewer'
+        'menuOptPromptViewer',
+        'menuOptRandomInspect'
     ],
     isFullscreen: false,
     menuInvokeMethod: 'longpress',
@@ -1055,6 +1057,7 @@ function bindUI() {
     const $menuOptCloseChat = $('#twt_menu_opt_close_chat');
     const $menuOptRealign = $('#twt_menu_opt_realign');
     const $menuOptPromptViewer = $('#twt_menu_opt_prompt_viewer');
+    const $menuOptRandomInspect = $('#twt_menu_opt_random_inspect');
     const $menuOptScreenshot = $('#twt_menu_opt_screenshot');
     const $menuStyle = $('#twt_menu_style');
     const $menuFontSize = $('#twt_menu_font_size');
@@ -1114,6 +1117,7 @@ function bindUI() {
     $menuOptCloseChat.prop('checked', extension_settings.twt.menuOptCloseChat);
     $menuOptRealign.prop('checked', extension_settings.twt.menuOptRealign !== false);
     $menuOptPromptViewer.prop('checked', extension_settings.twt.menuOptPromptViewer);
+    $menuOptRandomInspect.prop('checked', extension_settings.twt.menuOptRandomInspect);
     $menuOptScreenshot.prop('checked', extension_settings.twt.menuOptScreenshot !== false);
     $menuStyle.val(extension_settings.twt.menuStyle || 'grid');
     $menuFontSize.val(extension_settings.twt.menuFontSize !== undefined ? extension_settings.twt.menuFontSize : 14);
@@ -1969,6 +1973,11 @@ function bindUI() {
         getContext().saveSettingsDebounced();
     });
 
+    $menuOptRandomInspect.on('change', function () {
+        extension_settings.twt.menuOptRandomInspect = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+    });
+
     $menuStyle.on('change', function () {
         extension_settings.twt.menuStyle = $(this).val();
         getContext().saveSettingsDebounced();
@@ -2286,7 +2295,8 @@ function renderMenuOrderList() {
         'menuOptApi',
         'menuOptPurifier',
         'menuOptPurifierDiff',
-        'menuOptPromptViewer'
+        'menuOptPromptViewer',
+        'menuOptRandomInspect'
     ];
 
     if (!extension_settings.twt.menuOrder.includes('menuOptFullEdit')) {
@@ -2296,6 +2306,10 @@ function renderMenuOrderList() {
         } else {
             extension_settings.twt.menuOrder.push('menuOptFullEdit');
         }
+    }
+
+    if (!extension_settings.twt.menuOrder.includes('menuOptRandomInspect')) {
+        extension_settings.twt.menuOrder.push('menuOptRandomInspect');
     }
 
     const labels = {
@@ -2312,7 +2326,8 @@ function renderMenuOrderList() {
         menuOptApi: 'API',
         menuOptPurifier: '净化词汇映射',
         menuOptPurifierDiff: '净化前文透视',
-        menuOptPromptViewer: '提示词'
+        menuOptPromptViewer: '提示词',
+        menuOptRandomInspect: '注入透视'
     };
 
     order.forEach((key, index) => {

@@ -281,7 +281,8 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
         'menuOptApi',
         'menuOptPurifier',
         'menuOptPurifierDiff',
-        'menuOptPromptViewer'
+        'menuOptPromptViewer',
+        'menuOptRandomInspect'
     ];
 
     if (!order.includes('menuOptFullEdit')) {
@@ -291,6 +292,10 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
         } else {
             order = [...order, 'menuOptFullEdit'];
         }
+    }
+
+    if (!order.includes('menuOptRandomInspect')) {
+        order = [...order, 'menuOptRandomInspect'];
     }
 
     for (const key of order) {
@@ -529,6 +534,33 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
                         console.warn('未找到酒馆助手(JS-Slash-Runner)提示词查看器接口');
                         if (typeof toastr !== 'undefined') {
                             toastr.warning('未找到酒馆助手(JS-Slash-Runner)提示词查看器接口', '提示');
+                        }
+                    }
+                }
+            });
+        }
+
+        if (key === 'menuOptRandomInspect' && settings.menuOptRandomInspect) {
+            appendMenuItem({
+                label: '注入透视',
+                shortLabel: '透视',
+                icon: 'fa-solid fa-dice',
+                isGridItem: false,
+                onClick: async () => {
+                    const randomMacro = window.RandomMacro || window.parent?.RandomMacro || window.top?.RandomMacro;
+                    if (randomMacro && typeof randomMacro.openInspect === 'function') {
+                        try {
+                            await randomMacro.openInspect();
+                        } catch (err) {
+                            console.error('[TwT] 打开随机宏注入透视弹窗失败:', err);
+                            if (typeof toastr !== 'undefined') {
+                                toastr.error('打开注入透视弹窗失败', '错误');
+                            }
+                        }
+                    } else {
+                        console.warn('[TwT] 未找到随机宏引擎(RandomMacro)扩展或未启用');
+                        if (typeof toastr !== 'undefined') {
+                            toastr.warning('未找到随机宏引擎扩展或未启用', '提示');
                         }
                     }
                 }
