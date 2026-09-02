@@ -612,12 +612,17 @@ function closeOptimizeEditor() {
     renderOptimizePatchList();
 }
 
-export function updateInjectedStyles() {
+export function updateInjectedStyles(notify = false) {
     const docs = getAllDocs();
     let css = '';
     const patches = extension_settings?.twt?.optimizePatches || {};
+    let activeCount = 0;
+    const activeNames = [];
+
     for (const [name, patch] of Object.entries(patches)) {
         if (patch && patch.active && patch.code && typeof patch.code === 'string') {
+            activeCount++;
+            activeNames.push(name);
             css += `\n/* === TwT Patch: ${name} === */\n${patch.code}\n`;
         }
     }
@@ -647,6 +652,11 @@ export function updateInjectedStyles() {
             console.warn('[TwT] Failed to inject styles into document:', e);
         }
     });
+
+    if (notify && typeof toastr !== 'undefined') {
+        toastr.success(`已重新应用 ${activeCount} 个已启用 CSS 补丁`, 'CSS 优化');
+    }
+    return { count: activeCount, names: activeNames };
 }
 
 const BUILTIN_FONTS = {
@@ -1537,6 +1547,13 @@ function bindUI() {
     });
 
     // 优化补丁事件绑定
+    $('#twt_optimize_reapply').on('click', function(e) {
+        e.preventDefault();
+        const res = updateInjectedStyles(true);
+        renderOptimizePatchList();
+        logWork(`手动刷新 CSS 优化补丁，已重新应用 ${res.count} 个补丁: ${res.names.join(', ') || '无'}`);
+    });
+
     $('#twt_optimize_add').on('click', function() {
         const name = prompt('请输入新补丁名称：');
         if (name && name.trim().length > 0) {
