@@ -258,81 +258,87 @@ const defaultPatches = {
     }
 };
 
-if (!extension_settings.twt) {
-    extension_settings.twt = Object.assign({}, defaultSettings);
-    extension_settings.twt.optimizePatches = Object.assign({}, defaultPatches);
-} else {
-    for (const key in defaultSettings) {
-        if (extension_settings.twt[key] === undefined) {
-            extension_settings.twt[key] = defaultSettings[key];
-        }
-    }
-    if (!extension_settings.twt.visualPresets) {
-        extension_settings.twt.visualPresets = {};
-    }
-    if (!extension_settings.twt.muluRegexPresets) {
-        extension_settings.twt.muluRegexPresets = Object.assign({}, defaultSettings.muluRegexPresets);
-    }
-    if (!extension_settings.twt.optimizePatches) {
-        extension_settings.twt.optimizePatches = {};
-    }
-    // 注入默认预设的补丁
-    for (const [key, val] of Object.entries(defaultPatches)) {
-        if (extension_settings.twt.optimizePatches[key] === undefined) {
-            extension_settings.twt.optimizePatches[key] = Object.assign({}, val);
-        } else if (extension_settings.twt.optimizePatches[key].folder === undefined && val.folder) {
-            extension_settings.twt.optimizePatches[key].folder = val.folder;
-        }
-    }
-    if (!extension_settings.twt.commentsApis) {
-        extension_settings.twt.commentsApis = [];
-    }
-    if (extension_settings.twt.commentsSelectedApiId === undefined) {
-        extension_settings.twt.commentsSelectedApiId = 'main';
-    }
-    if (!extension_settings.twt.commentsPromptPresets || typeof extension_settings.twt.commentsPromptPresets !== 'object' || Object.keys(extension_settings.twt.commentsPromptPresets).length === 0) {
-        extension_settings.twt.commentsPromptPresets = JSON.parse(JSON.stringify(defaultSettings.commentsPromptPresets));
-    }
-    
-    // 迁移旧版字符串提示词为新版结构化数组提示词
-    for (const key in extension_settings.twt.commentsPromptPresets) {
-        const val = extension_settings.twt.commentsPromptPresets[key];
-        if (typeof val === 'string') {
-            if (key === '网络读者弹幕吐槽' && defaultSettings.commentsPromptPresets['网络读者弹幕吐槽']) {
-                extension_settings.twt.commentsPromptPresets[key] = JSON.parse(JSON.stringify(defaultSettings.commentsPromptPresets['网络读者弹幕吐槽']));
-            } else if (key === '理性剧情分析' && defaultSettings.commentsPromptPresets['理性剧情分析']) {
-                extension_settings.twt.commentsPromptPresets[key] = JSON.parse(JSON.stringify(defaultSettings.commentsPromptPresets['理性剧情分析']));
-            } else {
-                extension_settings.twt.commentsPromptPresets[key] = [
-                    { role: 'user', content: val, enabled: true }
-                ];
-            }
-        }
-    }
-    
-    if (!extension_settings.twt.commentsCurrentPreset || !extension_settings.twt.commentsPromptPresets[extension_settings.twt.commentsCurrentPreset]) {
-        extension_settings.twt.commentsCurrentPreset = Object.keys(extension_settings.twt.commentsPromptPresets)[0] || '网络读者弹幕吐槽';
-    }
-    if (!extension_settings.twt.commentsRegexFilters) {
-        extension_settings.twt.commentsRegexFilters = JSON.parse(JSON.stringify(defaultSettings.commentsRegexFilters));
-    }
-    if (extension_settings.twt.commentsDrawerPosition === undefined) {
-        extension_settings.twt.commentsDrawerPosition = defaultSettings.commentsDrawerPosition;
-    }
-    if (extension_settings.twt.commentsDrawerWidth === undefined) {
-        extension_settings.twt.commentsDrawerWidth = defaultSettings.commentsDrawerWidth;
-    }
-
-    if (!extension_settings.twt.menuOrder) {
-        extension_settings.twt.menuOrder = [...defaultSettings.menuOrder];
+function ensureSettingsInitialized() {
+    if (!extension_settings.twt) {
+        extension_settings.twt = Object.assign({}, defaultSettings);
+        extension_settings.twt.optimizePatches = Object.assign({}, defaultPatches);
     } else {
-        defaultSettings.menuOrder.forEach(key => {
-            if (!extension_settings.twt.menuOrder.includes(key)) {
-                extension_settings.twt.menuOrder.push(key);
+        for (const key in defaultSettings) {
+            if (extension_settings.twt[key] === undefined) {
+                extension_settings.twt[key] = defaultSettings[key];
             }
-        });
+        }
+        if (!extension_settings.twt.visualPresets) {
+            extension_settings.twt.visualPresets = {};
+        }
+        if (!extension_settings.twt.muluRegexPresets) {
+            extension_settings.twt.muluRegexPresets = Object.assign({}, defaultSettings.muluRegexPresets);
+        }
+        if (!extension_settings.twt.optimizePatches || typeof extension_settings.twt.optimizePatches !== 'object') {
+            extension_settings.twt.optimizePatches = {};
+        }
+        // 注入默认预设的补丁
+        for (const [key, val] of Object.entries(defaultPatches)) {
+            if (extension_settings.twt.optimizePatches[key] === undefined) {
+                extension_settings.twt.optimizePatches[key] = Object.assign({}, val);
+            } else if (extension_settings.twt.optimizePatches[key].folder === undefined && val.folder) {
+                extension_settings.twt.optimizePatches[key].folder = val.folder;
+            }
+        }
+        if (!extension_settings.twt.commentsApis) {
+            extension_settings.twt.commentsApis = [];
+        }
+        if (extension_settings.twt.commentsSelectedApiId === undefined) {
+            extension_settings.twt.commentsSelectedApiId = 'main';
+        }
+        if (!extension_settings.twt.commentsPromptPresets || typeof extension_settings.twt.commentsPromptPresets !== 'object' || Object.keys(extension_settings.twt.commentsPromptPresets).length === 0) {
+            extension_settings.twt.commentsPromptPresets = JSON.parse(JSON.stringify(defaultSettings.commentsPromptPresets));
+        }
+        
+        // 迁移旧版字符串提示词为新版结构化数组提示词
+        for (const key in extension_settings.twt.commentsPromptPresets) {
+            const val = extension_settings.twt.commentsPromptPresets[key];
+            if (typeof val === 'string') {
+                if (key === '网络读者弹幕吐槽' && defaultSettings.commentsPromptPresets['网络读者弹幕吐槽']) {
+                    extension_settings.twt.commentsPromptPresets[key] = JSON.parse(JSON.stringify(defaultSettings.commentsPromptPresets['网络读者弹幕吐槽']));
+                } else if (key === '理性剧情分析' && defaultSettings.commentsPromptPresets['理性剧情分析']) {
+                    extension_settings.twt.commentsPromptPresets[key] = JSON.parse(JSON.stringify(defaultSettings.commentsPromptPresets['理性剧情分析']));
+                } else {
+                    extension_settings.twt.commentsPromptPresets[key] = [
+                        { role: 'user', content: val, enabled: true }
+                    ];
+                }
+            }
+        }
+        
+        if (!extension_settings.twt.commentsCurrentPreset || !extension_settings.twt.commentsPromptPresets[extension_settings.twt.commentsCurrentPreset]) {
+            extension_settings.twt.commentsCurrentPreset = Object.keys(extension_settings.twt.commentsPromptPresets)[0] || '网络读者弹幕吐槽';
+        }
+        if (!extension_settings.twt.commentsRegexFilters) {
+            extension_settings.twt.commentsRegexFilters = JSON.parse(JSON.stringify(defaultSettings.commentsRegexFilters));
+        }
+        if (extension_settings.twt.commentsDrawerPosition === undefined) {
+            extension_settings.twt.commentsDrawerPosition = defaultSettings.commentsDrawerPosition;
+        }
+        if (extension_settings.twt.commentsDrawerWidth === undefined) {
+            extension_settings.twt.commentsDrawerWidth = defaultSettings.commentsDrawerWidth;
+        }
+
+        if (!extension_settings.twt.menuOrder) {
+            extension_settings.twt.menuOrder = [...defaultSettings.menuOrder];
+        } else {
+            defaultSettings.menuOrder.forEach(key => {
+                if (!extension_settings.twt.menuOrder.includes(key)) {
+                    extension_settings.twt.menuOrder.push(key);
+                }
+            });
+        }
     }
-}
+ensureSettingsInitialized();
+try {
+    updateInjectedStyles();
+    updateCustomFontsStyle();
+} catch (e) {}
 
 
 function updateTabVisibility(btnId, contentId, isEnabled) {
@@ -609,21 +615,21 @@ function closeOptimizeEditor() {
 export function updateInjectedStyles() {
     const docs = getAllDocs();
     let css = '';
-    if (extension_settings.twt.visualEnabled) {
-        const patches = extension_settings.twt.optimizePatches || {};
-        for (const [name, patch] of Object.entries(patches)) {
-            if (patch && patch.active && patch.code) {
-                css += `/* Patch: ${name} */\n${patch.code}\n\n`;
-            }
+    const patches = extension_settings?.twt?.optimizePatches || {};
+    for (const [name, patch] of Object.entries(patches)) {
+        if (patch && patch.active && patch.code && typeof patch.code === 'string') {
+            css += `\n/* === TwT Patch: ${name} === */\n${patch.code}\n`;
         }
     }
 
     docs.forEach(doc => {
         try {
+            if (!doc) return;
             let style = doc.getElementById('twt-optimize-styles');
             if (!style) {
                 style = doc.createElement('style');
                 style.id = 'twt-optimize-styles';
+                style.setAttribute('type', 'text/css');
                 const target = doc.head || doc.body || doc.documentElement;
                 if (target) {
                     target.appendChild(style);
@@ -3269,46 +3275,58 @@ jQuery(async () => {
         }
         updateInjectedStyles();
     });
-    parentDoc.addEventListener('contextmenu', (e) => {
-        const patches = extension_settings.twt.optimizePatches || {};
-        const isEnabled = extension_settings.twt.visualEnabled && patches['禁用聊天区域长按菜单']?.active;
+    const handleContextMenuBlock = (e) => {
+        const patches = extension_settings?.twt?.optimizePatches || {};
+        const isEnabled = patches['禁用聊天区域长按菜单']?.active;
         if (!isEnabled) return;
 
-        const chat = parentDoc.getElementById('chat');
-        if (chat && chat.contains(e.target)) {
-            const tagName = e.target.tagName.toLowerCase();
-            if (tagName !== 'input' && tagName !== 'textarea') {
-                e.preventDefault();
+        const docs = getAllDocs();
+        for (const d of docs) {
+            const chat = d.getElementById('chat');
+            if (chat && chat.contains(e.target)) {
+                const tagName = e.target.tagName ? e.target.tagName.toLowerCase() : '';
+                if (tagName !== 'input' && tagName !== 'textarea') {
+                    e.preventDefault();
+                    return;
+                }
             }
         }
-    }, true);
+    };
+    getAllDocs().forEach(d => {
+        d.removeEventListener('contextmenu', handleContextMenuBlock, true);
+        d.addEventListener('contextmenu', handleContextMenuBlock, true);
+    });
 
     // 聊天切换与应用就绪时重新应用视觉美化与自定义CSS，并重绑翻页事件
     try {
         const ctx = getContext();
         if (ctx && ctx.eventSource && ctx.eventTypes) {
             const reapplyVisualAndStyles = () => {
-                applyVisualMode(extension_settings.twt.visualEnabled, extension_settings.twt);
+                ensureSettingsInitialized();
+                applyVisualMode(extension_settings.twt?.visualEnabled, extension_settings.twt);
                 updateInjectedStyles();
                 updateCustomFontsStyle();
             };
 
             ctx.eventSource.on(ctx.eventTypes.CHAT_CHANGED, () => {
-                if (extension_settings.twt.enabled) {
+                if (extension_settings.twt?.enabled) {
                     resetPaginationBinding(() => extension_settings.twt);
                 }
                 reapplyVisualAndStyles();
             });
 
-            if (ctx.eventTypes.APP_READY) {
-                ctx.eventSource.on(ctx.eventTypes.APP_READY, reapplyVisualAndStyles);
-            }
-            if (ctx.eventTypes.CHARACTER_PAGE_LOADED) {
-                ctx.eventSource.on(ctx.eventTypes.CHARACTER_PAGE_LOADED, reapplyVisualAndStyles);
-            }
-            if (ctx.eventTypes.SETTINGS_LOADED) {
-                ctx.eventSource.on(ctx.eventTypes.SETTINGS_LOADED, reapplyVisualAndStyles);
-            }
+            const lifecycleEvents = [
+                ctx.eventTypes.APP_READY,
+                ctx.eventTypes.CHARACTER_PAGE_LOADED,
+                ctx.eventTypes.SETTINGS_LOADED,
+                ctx.eventTypes.SETTINGS_UPDATED,
+                ctx.eventTypes.EXTENSION_SETTINGS_LOADED,
+                ctx.eventTypes.EXTENSIONS_FIRST_LOAD
+            ].filter(Boolean);
+
+            lifecycleEvents.forEach(evt => {
+                ctx.eventSource.on(evt, reapplyVisualAndStyles);
+            });
         }
     } catch (e) {
         console.warn('[TwT] Failed to register lifecycle listeners for visual styles:', e);
