@@ -95,7 +95,13 @@ try { if (window.top && window.top !== window) hookFetch(window.top); } catch(e)
 
 
 function getEl(selector) {
-    return $(parentDoc).find(selector);
+    for (const doc of getAllDocs()) {
+        try {
+            const $found = $(doc).find(selector);
+            if ($found.length) return $found;
+        } catch (e) {}
+    }
+    return $(selector);
 }
 
 const escapeHtml = (str) => (str || '')
@@ -611,42 +617,60 @@ function closeOptimizeEditor() {
 
 export function updateInjectedStyles(notify = false) {
     const docs = getAllDocs();
-    let css = '';
     const patches = extension_settings?.twt?.optimizePatches || {};
     let activeCount = 0;
     const activeNames = [];
+    const activePatchesMap = {};
 
     for (const [name, patch] of Object.entries(patches)) {
-        if (patch && patch.active && patch.code && typeof patch.code === 'string') {
+        if (patch && patch.active && patch.code && typeof patch.code === 'string' && patch.code.trim().length > 0) {
             activeCount++;
             activeNames.push(name);
-            css += `\n/* === TwT Patch: ${name} === */\n${patch.code}\n`;
+            activePatchesMap[name] = patch.code;
         }
     }
 
     docs.forEach(doc => {
         try {
             if (!doc) return;
-            let style = doc.getElementById('twt-optimize-styles');
-            if (!style) {
-                style = doc.createElement('style');
-                style.id = 'twt-optimize-styles';
-                style.setAttribute('type', 'text/css');
-                const target = doc.head || doc.body || doc.documentElement;
-                if (target) {
-                    target.appendChild(style);
-                }
-            } else {
-                const parent = style.parentNode;
-                if (parent && parent.lastElementChild !== style) {
-                    parent.appendChild(style);
-                }
+            const target = doc.head || doc.body || doc.documentElement;
+            if (!target) return;
+
+            // Remove legacy single style element if present
+            const legacyStyle = doc.getElementById('twt-optimize-styles');
+            if (legacyStyle) {
+                legacyStyle.remove();
             }
-            if (style) {
-                style.textContent = css;
+
+            // Find all existing patch style elements in this document
+            const existingElements = Array.from(doc.querySelectorAll('style[data-twt-patch]'));
+            existingElements.forEach(el => {
+                const patchName = el.getAttribute('data-twt-patch');
+                if (!activePatchesMap[patchName]) {
+                    el.remove();
+                }
+            });
+
+            // Insert or update each active patch in its own isolated <style> tag
+            for (const [name, code] of Object.entries(activePatchesMap)) {
+                let styleEl = Array.from(doc.querySelectorAll('style[data-twt-patch]')).find(el => el.getAttribute('data-twt-patch') === name);
+                if (!styleEl) {
+                    styleEl = doc.createElement('style');
+                    styleEl.setAttribute('type', 'text/css');
+                    styleEl.setAttribute('data-twt-patch', name);
+                    target.appendChild(styleEl);
+                } else {
+                    const parent = styleEl.parentNode;
+                    if (parent && parent.lastElementChild !== styleEl) {
+                        parent.appendChild(styleEl);
+                    }
+                }
+                if (styleEl.textContent !== code) {
+                    styleEl.textContent = code;
+                }
             }
         } catch (e) {
-            console.warn('[TwT] Failed to inject styles into document:', e);
+            console.warn('[TwT] Failed to inject isolated patch styles into document:', e);
         }
     });
 
