@@ -14,6 +14,22 @@ try {
 } catch (e) {
     console.warn("TwT: Cannot access window.parent.document", e);
 }
+
+function getAllDocs() {
+    const docs = [document];
+    try {
+        if (window.parent && window.parent.document && !docs.includes(window.parent.document)) {
+            docs.push(window.parent.document);
+        }
+    } catch (e) {}
+    try {
+        if (window.top && window.top.document && !docs.includes(window.top.document)) {
+            docs.push(window.top.document);
+        }
+    } catch (e) {}
+    return docs;
+}
+
 let isExcerptModeActive = false;
 
 // ============================================================
@@ -591,35 +607,40 @@ function closeOptimizeEditor() {
 }
 
 export function updateInjectedStyles() {
-    let doc = document;
-    try {
-        if (window.parent && window.parent.document) {
-            doc = window.parent.document;
-        }
-    } catch (e) {
-        console.warn("TwT: Cannot access window.parent.document in updateInjectedStyles.", e);
-    }
-    let style = doc.getElementById('twt-optimize-styles');
-    if (!style) {
-        style = doc.createElement('style');
-        style.id = 'twt-optimize-styles';
-        doc.head.appendChild(style);
-    }
-
-    if (!extension_settings.twt.visualEnabled) {
-        style.innerHTML = '';
-        return;
-    }
-
+    const docs = getAllDocs();
     let css = '';
-    const patches = extension_settings.twt.optimizePatches || {};
-    for (const [name, patch] of Object.entries(patches)) {
-        if (patch && patch.active && patch.code) {
-            css += `/* Patch: ${name} */\n${patch.code}\n\n`;
+    if (extension_settings.twt.visualEnabled) {
+        const patches = extension_settings.twt.optimizePatches || {};
+        for (const [name, patch] of Object.entries(patches)) {
+            if (patch && patch.active && patch.code) {
+                css += `/* Patch: ${name} */\n${patch.code}\n\n`;
+            }
         }
     }
 
-    style.innerHTML = css;
+    docs.forEach(doc => {
+        try {
+            let style = doc.getElementById('twt-optimize-styles');
+            if (!style) {
+                style = doc.createElement('style');
+                style.id = 'twt-optimize-styles';
+                const target = doc.head || doc.body || doc.documentElement;
+                if (target) {
+                    target.appendChild(style);
+                }
+            } else {
+                const parent = style.parentNode;
+                if (parent && parent.lastElementChild !== style) {
+                    parent.appendChild(style);
+                }
+            }
+            if (style) {
+                style.textContent = css;
+            }
+        } catch (e) {
+            console.warn('[TwT] Failed to inject styles into document:', e);
+        }
+    });
 }
 
 const BUILTIN_FONTS = {
@@ -649,10 +670,6 @@ function getValidCustomFonts() {
 }
 
 function updateCustomFontsStyle() {
-    let $style = $('#twt-custom-fonts-style');
-    if (!$style.length) {
-        $style = $('<style id="twt-custom-fonts-style"></style>').appendTo('head');
-    }
     let importsCss = '';
     let fontFaceCss = '';
 
@@ -675,7 +692,27 @@ function updateCustomFontsStyle() {
             }
         }
     }
-    $style.text(`${importsCss}\n${fontFaceCss}`);
+
+    const fullCss = `${importsCss}\n${fontFaceCss}`;
+    const docs = getAllDocs();
+    docs.forEach(doc => {
+        try {
+            let style = doc.getElementById('twt-custom-fonts-style');
+            if (!style) {
+                style = doc.createElement('style');
+                style.id = 'twt-custom-fonts-style';
+                const target = doc.head || doc.body || doc.documentElement;
+                if (target) {
+                    target.appendChild(style);
+                }
+            }
+            if (style) {
+                style.textContent = fullCss;
+            }
+        } catch (e) {
+            console.warn('[TwT] Failed to inject custom font style into document:', e);
+        }
+    });
 }
 
 function renderFontFamilyOptions() {
@@ -753,28 +790,13 @@ function applyPreset(presetName) {
         $('#twt_letter_spacing').val(extension_settings.twt.letterSpacing);
         $('#twt_font_weight').val(extension_settings.twt.fontWeight || 'normal');
         
-        // CSS Optimization Patches with new-patch detection and deleted-patch removal
+        // CSS Optimization Patches: apply saved patch active states if defined in preset
         const patches = extension_settings.twt.optimizePatches || {};
-        if (preset.optimizePatches) {
-            // Clean up preset.optimizePatches: remove any key that is not in the system's patches
-            for (const key of Object.keys(preset.optimizePatches)) {
-                if (!(key in patches)) {
-                    delete preset.optimizePatches[key];
+        if (preset.optimizePatches && typeof preset.optimizePatches === 'object') {
+            for (const [key, val] of Object.entries(preset.optimizePatches)) {
+                if (patches[key]) {
+                    patches[key].active = !!val;
                 }
-            }
-            // Apply states. If system patch is not in preset.optimizePatches (it's new), turn it off.
-            for (const key of Object.keys(patches)) {
-                if (key in preset.optimizePatches) {
-                    patches[key].active = !!preset.optimizePatches[key];
-                } else {
-                    patches[key].active = false;
-                }
-            }
-        } else {
-            // If preset doesn't have optimizePatches, turn all patches off
-            preset.optimizePatches = {};
-            for (const key of Object.keys(patches)) {
-                patches[key].active = false;
             }
         }
         renderOptimizePatchList();
@@ -3261,19 +3283,35 @@ jQuery(async () => {
         }
     }, true);
 
-    // 聊天切换时重新绑定翻页事件到新的 #chat 元素
-    // 解决：旧 #chat 被销毁后事件监听器失效导致翻页失控的竞态问题
+    // 聊天切换与应用就绪时重新应用视觉美化与自定义CSS，并重绑翻页事件
     try {
         const ctx = getContext();
         if (ctx && ctx.eventSource && ctx.eventTypes) {
+            const reapplyVisualAndStyles = () => {
+                applyVisualMode(extension_settings.twt.visualEnabled, extension_settings.twt);
+                updateInjectedStyles();
+                updateCustomFontsStyle();
+            };
+
             ctx.eventSource.on(ctx.eventTypes.CHAT_CHANGED, () => {
                 if (extension_settings.twt.enabled) {
                     resetPaginationBinding(() => extension_settings.twt);
                 }
+                reapplyVisualAndStyles();
             });
+
+            if (ctx.eventTypes.APP_READY) {
+                ctx.eventSource.on(ctx.eventTypes.APP_READY, reapplyVisualAndStyles);
+            }
+            if (ctx.eventTypes.CHARACTER_PAGE_LOADED) {
+                ctx.eventSource.on(ctx.eventTypes.CHARACTER_PAGE_LOADED, reapplyVisualAndStyles);
+            }
+            if (ctx.eventTypes.SETTINGS_LOADED) {
+                ctx.eventSource.on(ctx.eventTypes.SETTINGS_LOADED, reapplyVisualAndStyles);
+            }
         }
     } catch (e) {
-        console.warn('[TwT] Failed to register CHAT_CHANGED listener for pagination reset:', e);
+        console.warn('[TwT] Failed to register lifecycle listeners for visual styles:', e);
     }
 
     // ============================================================
