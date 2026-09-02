@@ -334,11 +334,8 @@ function ensureSettingsInitialized() {
             });
         }
     }
+}
 ensureSettingsInitialized();
-try {
-    updateInjectedStyles();
-    updateCustomFontsStyle();
-} catch (e) {}
 
 
 function updateTabVisibility(btnId, contentId, isEnabled) {
