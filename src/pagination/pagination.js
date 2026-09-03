@@ -207,6 +207,9 @@ function containOversizedElements() {
         // 1. 跳过思维链
         if (el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')) continue;
 
+        // 1.1 跳过 Tool Call 内部容器（避免对其内部折叠块或代码块误加 .twt-html-needs-break 导致意外断页）
+        if (el.closest('.toolCall, .twt-toolcall-mes')) continue;
+
         const isContainer = (
             el.tagName === 'DIV' || el.tagName === 'TABLE' ||
             el.tagName === 'SECTION' || el.tagName === 'FORM' ||
@@ -547,6 +550,7 @@ function initMutationObserver() {
             mutationObserver.disconnect();
             try {
                 containOversizedElements();
+                tagToolCallMessages();
                 // Streaming detection: a scrollWidth change means AI is appending to a new column.
                 const currentSW = chat.scrollWidth;
                 if (currentSW !== lastKnownScrollWidth) {
@@ -705,6 +709,26 @@ function initVirtualKeyboardGuard() {
     });
 }
 
+/**
+ * 为 Tool Call 楼层打上标记类名，以便 CSS 规则匹配
+ */
+export function tagToolCallMessages(settings = extension_settings?.twt) {
+    const chat = getChat();
+    if (!chat) return;
+    const selector = settings?.toolCallSelector?.trim() || '.mes.toolCall, .mes[is_system="true"].toolCall';
+    try {
+        const matches = chat.querySelectorAll(selector);
+        matches.forEach(el => {
+            const mes = el.closest('.mes') || el;
+            if (!mes.classList.contains('twt-toolcall-mes')) {
+                mes.classList.add('twt-toolcall-mes');
+            }
+        });
+    } catch (e) {
+        console.warn('[TwT] Invalid toolCallSelector:', e);
+    }
+}
+
 // ============================================================
 // 公开 API
 // ============================================================
@@ -716,6 +740,10 @@ export function applyPaginationMode(enabled, settings) {
             document.body.classList.toggle('twt-swipe-disabled',      !settings.swipeEnabled);
             document.body.classList.toggle('twt-message-page',        !!settings.messagePageEnabled);
             document.body.classList.toggle('twt-avatar-theme-layout', settings.avatarLayoutMode === 'theme');
+            document.body.classList.toggle('twt-toolcall-hide',       settings.toolCallMode === 'hide');
+            document.body.classList.toggle('twt-toolcall-compact',    (settings.toolCallMode || 'compact') === 'compact');
+            document.body.classList.toggle('twt-toolcall-no-break',   settings.toolCallNoPageBreak !== false);
+            tagToolCallMessages(settings);
         }
         updateColWidthWhenReady();
         window.addEventListener('resize', onWindowResize);
@@ -726,7 +754,8 @@ export function applyPaginationMode(enabled, settings) {
     } else {
         document.body.classList.remove(
             'twt-reading-mode', 'twt-swipe-disabled',
-            'twt-message-page', 'twt-avatar-theme-layout'
+            'twt-message-page', 'twt-avatar-theme-layout',
+            'twt-toolcall-hide', 'twt-toolcall-compact', 'twt-toolcall-no-break'
         );
         window.removeEventListener('resize', onWindowResize);
 
@@ -1004,6 +1033,16 @@ export function initPaginationEvent(getSettings) {
         } catch { /* ignore */ }
 
         if (!skipInteractiveCheck) {
+            // Tool Call 区域防误触
+            if (settings?.toolCallPreventFlip !== false) {
+                const tcSel = settings?.toolCallSelector?.trim() || '.mes.toolCall, .mes[is_system="true"].toolCall';
+                try {
+                    if (e.target.closest(tcSel) || e.target.closest('.twt-toolcall-mes')) return;
+                } catch {
+                    if (e.target.closest('.mes.toolCall') || e.target.closest('.twt-toolcall-mes')) return;
+                }
+            }
+
             // 交互元素判断
             const baseSelector = 'button, a, input, textarea, select, label, summary, [onclick], [role="button"], [tabindex], .mes_button, .swipe-button, .ch_name, .avatar, img, .svg-icon';
             let interactive = false;

@@ -127,7 +127,49 @@
                     * 提示：匹配白名单中的选择器（如类名、ID、属性）或 HTML/代码块包含的关键字的 Iframe/应用，将保留在文本流中直接渲染，不抽离至 QR 弹窗。
                 </div>
 
-                
+                <div style="border-top: 1px dashed var(--SmartThemeBorderColor); padding-top: 10px; margin-top: 10px;">
+                    <div style="font-weight: bold; margin-bottom: 8px; font-size: 0.95em;">Tool Call 楼层设置</div>
+                    <div class="twt-setting-row"
+                        style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
+                        <label for="twt_tool_call_mode">Tool Call 显示模式</label>
+                        <select id="twt_tool_call_mode"
+                            style="background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 4px;">
+                            <option value="compact">紧凑胶囊 (推荐)</option>
+                            <option value="normal">保持默认</option>
+                            <option value="hide">完全隐藏</option>
+                        </select>
+                    </div>
+                    <div style="font-size: 0.85em; opacity: 0.6; margin-bottom: 12px; margin-top: -2px; padding-left: 2px;">
+                        紧凑胶囊：优化为极简半透明折叠条，不占大篇幅；完全隐藏：翻页流中彻底隐去工具调用楼层。
+                    </div>
+
+                    <div class="twt-setting-row"
+                        style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
+                        <label for="twt_tool_call_no_page_break">消息分页时不单独成页</label>
+                        <input type="checkbox" id="twt_tool_call_no_page_break" />
+                    </div>
+                    <div style="font-size: 0.85em; opacity: 0.6; margin-bottom: 12px; margin-top: -2px; padding-left: 2px;">
+                        开启消息分页时，Tool Call 楼层不会被强制换页独占一整页，保持与上下文紧凑跟随。
+                    </div>
+
+                    <div class="twt-setting-row"
+                        style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
+                        <label for="twt_tool_call_prevent_flip">点击 Tool Call 区域防误触翻页</label>
+                        <input type="checkbox" id="twt_tool_call_prevent_flip" />
+                    </div>
+                    <div style="font-size: 0.85em; opacity: 0.6; margin-bottom: 12px; margin-top: -2px; padding-left: 2px;">
+                        点击 Tool Call 展开/折叠或选中文本时，不触发点击翻页。
+                    </div>
+
+                    <div class="twt-setting-row" style="display: flex; flex-direction: column; margin-bottom: 5px;">
+                        <label for="twt_tool_call_selector" style="margin-bottom: 5px; font-size: 0.95em;">Tool Call 识别选择器 (支持逗号分隔)</label>
+                        <input type="text" id="twt_tool_call_selector" placeholder=".mes.toolCall, .mes[is_system=&quot;true&quot;].toolCall" style="width: 100%; box-sizing: border-box; padding: 6px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px;" />
+                    </div>
+                    <div style="font-size: 0.85em; opacity: 0.6; margin-bottom: 15px; padding-left: 2px;">
+                        * 提示：匹配该选择器的楼层将被应用上述 Tool Call 特殊设置。
+                    </div>
+                </div>
+
                 <div style="border-top: 1px dashed var(--SmartThemeBorderColor); padding-top: 10px; margin-top: 10px;">
                     <div class="twt-setting-row" style="display: flex; flex-direction: column; margin-bottom: 5px;">
                         <label for="twt_custom_whitelist" style="margin-bottom: 5px; font-size: 0.95em;">防误触类名/选择器白名单 (用逗号分隔)</label>

@@ -125,6 +125,10 @@ const defaultSettings = {
     htmlPopupWhitelist: '',
     avatarLayoutMode: 'float',
     customWhitelist: '.mes_reasoning_details, .thought-block',
+    toolCallMode: 'compact',
+    toolCallNoPageBreak: true,
+    toolCallPreventFlip: true,
+    toolCallSelector: '.mes.toolCall, .mes[is_system="true"].toolCall',
     menuEnabled: false,
     menuOptRegenerate: true,
     menuOptSwipe: true,
@@ -1091,6 +1095,10 @@ function bindUI() {
     const $htmlPopupWhitelist = $('#twt_html_popup_whitelist');
     const $avatarLayoutMode = $('#twt_avatar_layout_mode');
     const $customWhitelist = $('#twt_custom_whitelist');
+    const $toolCallMode = $('#twt_tool_call_mode');
+    const $toolCallNoPageBreak = $('#twt_tool_call_no_page_break');
+    const $toolCallPreventFlip = $('#twt_tool_call_prevent_flip');
+    const $toolCallSelector = $('#twt_tool_call_selector');
     const $menuEnabled = $('#twt_menu_enabled');
     const $menuInvokeMethod = $('#twt_menu_invoke_method');
     const $menuLongpressDelay = $('#twt_menu_longpress_delay');
@@ -1151,6 +1159,10 @@ function bindUI() {
     $htmlPopupWhitelist.val(extension_settings.twt.htmlPopupWhitelist || '');
     $avatarLayoutMode.val(extension_settings.twt.avatarLayoutMode || 'float');
     $customWhitelist.val(extension_settings.twt.customWhitelist || '');
+    $toolCallMode.val(extension_settings.twt.toolCallMode || 'compact');
+    $toolCallNoPageBreak.prop('checked', extension_settings.twt.toolCallNoPageBreak !== false);
+    $toolCallPreventFlip.prop('checked', extension_settings.twt.toolCallPreventFlip !== false);
+    $toolCallSelector.val(extension_settings.twt.toolCallSelector !== undefined ? extension_settings.twt.toolCallSelector : '.mes.toolCall, .mes[is_system="true"].toolCall');
     $menuEnabled.prop('checked', extension_settings.twt.menuEnabled);
     $menuInvokeMethod.val(extension_settings.twt.menuInvokeMethod || 'longpress');
     $menuLongpressDelay.val(extension_settings.twt.menuLongpressDelay || 500);
@@ -1876,6 +1888,29 @@ function bindUI() {
     $customWhitelist.on('input', function () {
         extension_settings.twt.customWhitelist = $(this).val();
         getContext().saveSettingsDebounced();
+    });
+
+    $toolCallMode.on('change', function () {
+        extension_settings.twt.toolCallMode = $(this).val();
+        getContext().saveSettingsDebounced();
+        applyPaginationMode(extension_settings.twt.enabled, extension_settings.twt);
+    });
+
+    $toolCallNoPageBreak.on('change', function () {
+        extension_settings.twt.toolCallNoPageBreak = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+        applyPaginationMode(extension_settings.twt.enabled, extension_settings.twt);
+    });
+
+    $toolCallPreventFlip.on('change', function () {
+        extension_settings.twt.toolCallPreventFlip = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+    });
+
+    $toolCallSelector.on('input', function () {
+        extension_settings.twt.toolCallSelector = $(this).val();
+        getContext().saveSettingsDebounced();
+        applyPaginationMode(extension_settings.twt.enabled, extension_settings.twt);
     });
 
     $menuEnabled.on('change', function () {

@@ -196,6 +196,103 @@ body.twt-reading-mode.twt-message-page #chat .mes {
     -webkit-column-break-before: always !important;
 }
 
+/* Tool Call 豁免独立分页：开启消息分页时，Tool Call 楼层不强制另起一列/一页 */
+body.twt-reading-mode.twt-message-page.twt-toolcall-no-break #chat .mes.toolCall,
+body.twt-reading-mode.twt-message-page.twt-toolcall-no-break #chat .mes[is_system="true"].toolCall,
+body.twt-reading-mode.twt-message-page.twt-toolcall-no-break #chat .mes.twt-toolcall-mes {
+    break-before: auto !important;
+    page-break-before: auto !important;
+    -webkit-column-break-before: auto !important;
+}
+
+/* Tool Call 完全隐藏模式 */
+body.twt-reading-mode.twt-toolcall-hide #chat .mes.toolCall,
+body.twt-reading-mode.twt-toolcall-hide #chat .mes[is_system="true"].toolCall,
+body.twt-reading-mode.twt-toolcall-hide #chat .mes.twt-toolcall-mes {
+    display: none !important;
+}
+
+/* ============================================================
+ * Tool Call 楼层特殊排版：紧凑胶囊模式
+ * ============================================================ */
+body.twt-reading-mode.twt-toolcall-compact #chat .mes.toolCall,
+body.twt-reading-mode.twt-toolcall-compact #chat .mes[is_system="true"].toolCall,
+body.twt-reading-mode.twt-toolcall-compact #chat .mes.twt-toolcall-mes {
+    margin: 6px 0 !important;
+    padding: 6px 12px !important;
+    min-height: unset !important;
+    border-radius: 8px !important;
+    background: color-mix(in srgb, var(--SmartThemeDarkColor, #1a1a1a) 60%, transparent) !important;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #888) 35%, transparent) !important;
+    box-shadow: none !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    -webkit-column-break-inside: avoid !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+body.twt-reading-mode.twt-toolcall-compact #chat .mes.toolCall .avatar,
+body.twt-reading-mode.twt-toolcall-compact #chat .mes[is_system="true"].toolCall .avatar,
+body.twt-reading-mode.twt-toolcall-compact #chat .mes.twt-toolcall-mes .avatar {
+    display: none !important;
+}
+
+body.twt-reading-mode.twt-toolcall-compact #chat .mes.toolCall .mes_block,
+body.twt-reading-mode.twt-toolcall-compact #chat .mes[is_system="true"].toolCall .mes_block,
+body.twt-reading-mode.twt-toolcall-compact #chat .mes.twt-toolcall-mes .mes_block {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+}
+
+body.twt-reading-mode.twt-toolcall-compact #chat .mes.toolCall .mes_text,
+body.twt-reading-mode.twt-toolcall-compact #chat .mes[is_system="true"].toolCall .mes_text,
+body.twt-reading-mode.twt-toolcall-compact #chat .mes.twt-toolcall-mes .mes_text {
+    font-size: 0.85em !important;
+    line-height: 1.4 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+body.twt-reading-mode.twt-toolcall-compact #chat .mes.toolCall details,
+body.twt-reading-mode.twt-toolcall-compact #chat .mes[is_system="true"].toolCall details,
+body.twt-reading-mode.twt-toolcall-compact #chat .mes.twt-toolcall-mes details {
+    margin: 0 !important;
+}
+
+body.twt-reading-mode.twt-toolcall-compact #chat .mes.toolCall summary,
+body.twt-reading-mode.twt-toolcall-compact #chat .mes[is_system="true"].toolCall summary,
+body.twt-reading-mode.twt-toolcall-compact #chat .mes.twt-toolcall-mes summary {
+    cursor: pointer !important;
+    font-weight: 500 !important;
+    opacity: 0.85 !important;
+    user-select: none !important;
+    padding: 2px 4px !important;
+    outline: none !important;
+    color: var(--SmartThemeBodyColor, inherit) !important;
+}
+
+body.twt-reading-mode.twt-toolcall-compact #chat .mes.toolCall summary:hover,
+body.twt-reading-mode.twt-toolcall-compact #chat .mes[is_system="true"].toolCall summary:hover,
+body.twt-reading-mode.twt-toolcall-compact #chat .mes.twt-toolcall-mes summary:hover {
+    opacity: 1 !important;
+}
+
+body.twt-reading-mode.twt-toolcall-compact #chat .mes.toolCall pre,
+body.twt-reading-mode.twt-toolcall-compact #chat .mes[is_system="true"].toolCall pre,
+body.twt-reading-mode.twt-toolcall-compact #chat .mes.twt-toolcall-mes pre {
+    max-height: 140px !important;
+    overflow-y: auto !important;
+    overflow-x: auto !important;
+    margin: 6px 0 2px 0 !important;
+    padding: 6px 8px !important;
+    font-size: 0.85em !important;
+    background: rgba(0, 0, 0, 0.25) !important;
+    border-radius: 4px !important;
+    break-inside: auto !important;
+}
+
 /* 超尺寸元素收容：内部可滚动 */
 body.twt-reading-mode .twt-pagination-scrollable {
     position: relative !important;
