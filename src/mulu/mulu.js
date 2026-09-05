@@ -378,6 +378,31 @@ const escapeHtml = (str) => (str || '')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 
+function isToolCallMessage(msg) {
+    if (!msg) return false;
+    if (msg.extra?.tool_invocations && msg.extra.tool_invocations.length > 0) return true;
+    if (msg.extra?.type === 'toolCall' || msg.extra?.isSmallSys === true) return true;
+    if (typeof msg.mes === 'string' && (msg.mes.includes('<details><summary>Tool calls:') || msg.mes.includes('Tool calls:'))) {
+        return true;
+    }
+    return false;
+}
+
+function getToolNames(msg) {
+    if (!msg) return '';
+    if (Array.isArray(msg.extra?.tool_invocations) && msg.extra.tool_invocations.length > 0) {
+        const names = msg.extra.tool_invocations.map(t => t.displayName || t.name || '').filter(Boolean);
+        if (names.length > 0) return names.join(', ');
+    }
+    if (typeof msg.mes === 'string') {
+        const match = msg.mes.match(/<summary>Tool calls:\s*([^<]+)<\/summary>/i);
+        if (match && match[1]) return match[1].trim();
+        const plainMatch = msg.mes.match(/Tool calls:\s*([^\r\n]+)/i);
+        if (plainMatch && plainMatch[1]) return plainMatch[1].trim();
+    }
+    return '';
+}
+
 // 模块级全局变量，保证目录模态框关闭后重新打开时日志和生成状态依然存在
 let globalBatchLogs = [];
 let globalGenerationStatus = 'idle'; // 'idle', 'generating', 'done'
@@ -884,10 +909,64 @@ async function showMuluModal() {
     }
 
     const tocItems = [];
+    const toolCallMode = settings.muluToolCallMode || 'hide';
 
     for (let i = 0; i < chatArray.length; i++) {
         const msg = chatArray[i];
-        if (msg.is_user || msg.system) continue;
+        if (!msg || msg.is_user || msg.system) continue;
+
+        // 工具调用楼层处理
+        if (isToolCallMessage(msg)) {
+            if (toolCallMode === 'hide') {
+                continue;
+            } else if (toolCallMode === 'merge') {
+                let j = i;
+                const toolNamesList = [];
+                while (j < chatArray.length && isToolCallMessage(chatArray[j])) {
+                    const names = getToolNames(chatArray[j]);
+                    if (names) toolNamesList.push(names);
+                    j++;
+                }
+                const count = j - i;
+                const startId = i;
+                const endId = j - 1;
+                const uniqueNames = Array.from(new Set(toolNamesList.flatMap(s => s.split(',').map(x => x.trim())))).filter(Boolean);
+                const namesSummary = uniqueNames.length > 0 ? `: ${uniqueNames.join(', ')}` : '';
+
+                const title = count > 1 
+                    ? `[工具调用 ×${count}]${namesSummary}` 
+                    : `[工具调用]${namesSummary}`;
+
+                const fullText = `工具调用 (共 ${count} 项, 楼层 #${startId}${count > 1 ? ` - #${endId}` : ''})${namesSummary}`;
+
+                tocItems.push({
+                    mesId: startId,
+                    endMesId: endId,
+                    title: title,
+                    fullText: fullText,
+                    isToolCall: true,
+                    toolCount: count
+                });
+
+                i = endId;
+                continue;
+            } else {
+                // 'show' 模式：独立成项
+                const names = getToolNames(msg);
+                const title = names ? `[工具调用] ${names}` : `[工具调用]`;
+                const rawText = msg.mes || '';
+                const cleanText = getCleanText(rawText);
+                tocItems.push({
+                    mesId: i,
+                    endMesId: i,
+                    title: title,
+                    fullText: cleanText || title,
+                    isToolCall: true,
+                    toolCount: 1
+                });
+                continue;
+            }
+        }
 
         const rawText = msg.mes || '';
         const cleanText = getCleanText(rawText);
@@ -1748,6 +1827,88 @@ async function showMuluModal() {
         });
         dropdown.appendChild(optDel);
 
+        // 3. 工具调用楼层显示模式子菜单
+        const optTc = doc.createElement('div');
+        const modeLabels = { hide: '完全隐藏', merge: '合并显示', show: '独立显示' };
+        const curTcMode = settings.muluToolCallMode || 'hide';
+        optTc.innerHTML = `<i class="fa-solid fa-wrench" style="margin-right:6px;"></i>工具调用: ${modeLabels[curTcMode] || '完全隐藏'}<i class="fa-solid fa-chevron-right" style="float:right;margin-top:3px;font-size:0.8em;opacity:0.6;"></i>`;
+        optTc.style.cssText = 'padding: 8px 12px; cursor: pointer; transition: background 0.15s; border-top: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.1)); color: var(--SmartThemeBodyColor, #fff);';
+        optTc.addEventListener('mouseenter', () => optTc.style.background = 'var(--SmartThemeBotMesBlurTintColor, rgba(255,255,255,0.08))');
+        optTc.addEventListener('mouseleave', () => optTc.style.background = 'transparent');
+        optTc.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            const existingTcSub = doc.getElementById('twt-mulu-tc-sub-dropdown');
+            if (existingTcSub) {
+                existingTcSub.remove();
+                return;
+            }
+
+            const tcSub = doc.createElement('div');
+            tcSub.id = 'twt-mulu-tc-sub-dropdown';
+            tcSub.style.cssText = `
+                position: absolute;
+                z-index: 1000002;
+                background: ${opaqueBgColor || 'var(--SmartThemeBlurTintColor, var(--SmartThemePanelColor, #1e1e1e))'};
+                border: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.15));
+                border-radius: 6px;
+                padding: 4px 0;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                font-size: 0.85em;
+                min-width: 140px;
+                color: var(--SmartThemeBodyColor, #fff);
+            `;
+
+            const bodyRect = parentDoc.body.getBoundingClientRect();
+            const viewportWidth = parentDoc.documentElement.clientWidth;
+            const subRect = optTc.getBoundingClientRect();
+
+            const subWidth = 140;
+            let subLeft = subRect.right - bodyRect.left + 4;
+            if (subLeft + subWidth > viewportWidth - 10) {
+                subLeft = subRect.left - bodyRect.left - subWidth - 4;
+            }
+            let subTop = subRect.top - bodyRect.top;
+            tcSub.style.left = `${subLeft}px`;
+            tcSub.style.top = `${subTop}px`;
+
+            const tcModes = [
+                { id: 'hide', label: '完全隐藏 (推荐)' },
+                { id: 'merge', label: '合并显示 (相邻合并)' },
+                { id: 'show', label: '独立显示' },
+            ];
+
+            tcModes.forEach(m => {
+                const subItem = doc.createElement('div');
+                subItem.style.cssText = 'padding: 6px 12px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--SmartThemeBodyColor, #fff); transition: background 0.15s;';
+                subItem.innerHTML = `<span>${m.label}</span>${curTcMode === m.id ? '<i class="fa-solid fa-check" style="font-size:10px;color:var(--SmartThemeUnderlineColor,#007aff);"></i>' : ''}`;
+                subItem.addEventListener('mouseenter', () => subItem.style.background = 'var(--SmartThemeBotMesBlurTintColor, rgba(255,255,255,0.08))');
+                subItem.addEventListener('mouseleave', () => subItem.style.background = 'transparent');
+                subItem.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    settings.muluToolCallMode = m.id;
+                    if (context && typeof context.saveSettingsDebounced === 'function') {
+                        context.saveSettingsDebounced();
+                    }
+                    closeAllMuluDropdowns();
+                    showMuluModal();
+                });
+                tcSub.appendChild(subItem);
+            });
+
+            parentDoc.body.appendChild(tcSub);
+
+            const closeTcSub = (event) => {
+                if (!tcSub.contains(event.target) && event.target !== optTc) {
+                    tcSub.remove();
+                    parentDoc.removeEventListener('click', closeTcSub);
+                }
+            };
+            setTimeout(() => {
+                parentDoc.addEventListener('click', closeTcSub);
+            }, 0);
+        });
+        dropdown.appendChild(optTc);
+
         parentDoc.body.appendChild(dropdown);
 
         const closeDropdown = (evt) => {
@@ -2022,7 +2183,18 @@ async function showMuluModal() {
         const msgObj = chatArray[item.mesId];
         const isHidden = msgObj ? (msgObj.is_system || msgObj.extra?.is_system) : false;
         
-        if (isHidden) {
+        if (item.isToolCall) {
+            leftSpan.innerHTML = `<i class="fa-solid fa-wrench" style="margin-right:6px;opacity:0.75;font-size:0.85em;color:var(--SmartThemeEmColor,var(--SmartThemeUnderlineColor,#00afff));"></i><span>${escapeHtml(item.title)}</span>`;
+            leftSpan.style.cssText = `
+                flex: 0 1 auto;
+                min-width: 0;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                text-align: left;
+                opacity: 0.85;
+            `;
+        } else if (isHidden) {
             leftSpan.innerText = item.title + ' [已隐藏]';
             leftSpan.style.cssText = `
                 flex: 0 1 auto;
@@ -2056,7 +2228,9 @@ async function showMuluModal() {
         `;
 
         const rightSpan = doc.createElement('span');
-        rightSpan.innerText = `#${item.mesId}`;
+        rightSpan.innerText = item.endMesId && item.endMesId !== item.mesId
+            ? `#${item.mesId}-${item.endMesId}`
+            : `#${item.mesId}`;
         rightSpan.style.cssText = `
             color: var(--SmartThemeEmColor, var(--SmartThemeUnderlineColor, #00afff));
             font-size: 0.85em;
@@ -2158,6 +2332,7 @@ function closeAllMuluDropdowns() {
     const dropdowns = [
         'twt-mulu-settings-dropdown',
         'twt-mulu-settings-sub-dropdown',
+        'twt-mulu-tc-sub-dropdown',
         'twt-mulu-tag-dropdown',
         'twt-mulu-batch-tag-dropdown'
     ];

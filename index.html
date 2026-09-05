@@ -651,6 +651,20 @@
                     <input type="checkbox" id="twt_mulu_btn_end" />
                 </div>
 
+                <div class="twt-setting-row"
+                    style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
+                    <label for="twt_mulu_tool_call_mode">工具调用楼层显示</label>
+                    <select id="twt_mulu_tool_call_mode"
+                        style="background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 4px;">
+                        <option value="hide">完全隐藏 (推荐)</option>
+                        <option value="merge">合并显示 (相邻合并)</option>
+                        <option value="show">独立显示</option>
+                    </select>
+                </div>
+                <div style="font-size: 0.85em; opacity: 0.6; margin-bottom: 15px; margin-top: -2px; padding-left: 2px;">
+                    完全隐藏：目录中不收录任何工具调用楼层；合并显示：将连续的工具调用合并为单条摘要；独立显示：保留各工具调用楼层独立展示。
+                </div>
+
                 <!-- 正则设置段落 -->
                 <div style="border-top: 1px dashed var(--SmartThemeBorderColor); padding-top: 15px; margin-top: 15px;">
                     <div style="font-weight: bold; margin-bottom: 10px;">目录正则设置 (自动提取章节)</div>

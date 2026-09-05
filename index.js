@@ -182,6 +182,7 @@ const defaultSettings = {
     muluBtnStart: true,
     muluBtnToc: true,
     muluBtnEnd: true,
+    muluToolCallMode: 'hide',
     paddingTop: 0,
     paddingBottom: 60,
     paddingLeft: 15,
@@ -1150,6 +1151,7 @@ function bindUI() {
     const $muluBtnStart = $('#twt_mulu_btn_start');
     const $muluBtnToc = $('#twt_mulu_btn_toc');
     const $muluBtnEnd = $('#twt_mulu_btn_end');
+    const $muluToolCallMode = $('#twt_mulu_tool_call_mode');
 
     // UI初始化
     $enabled.prop('checked', extension_settings.twt.enabled);
@@ -1231,6 +1233,7 @@ function bindUI() {
     $muluBtnStart.prop('checked', extension_settings.twt.muluBtnStart);
     $muluBtnToc.prop('checked', extension_settings.twt.muluBtnToc);
     $muluBtnEnd.prop('checked', extension_settings.twt.muluBtnEnd);
+    $muluToolCallMode.val(extension_settings.twt.muluToolCallMode || 'hide');
 
     updateCustomFontsStyle();
     renderFontFamilyOptions();
@@ -2146,6 +2149,11 @@ function bindUI() {
         extension_settings.twt.muluBtnEnd = $(this).prop('checked');
         getContext().saveSettingsDebounced();
         applyMuluSettings();
+    });
+
+    $muluToolCallMode.on('change', function () {
+        extension_settings.twt.muluToolCallMode = $(this).val();
+        getContext().saveSettingsDebounced();
     });
 
     // 视觉输入框
