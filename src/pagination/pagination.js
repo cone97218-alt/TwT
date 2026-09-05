@@ -850,6 +850,7 @@ function initMutationObserver() {
 
     let debounceTimer = null;
     let pendingDelay  = null;
+    let realignRafScheduled = false;
 
     mutationObserver = new MutationObserver((mutations) => {
         if (!document.body.classList.contains('twt-reading-mode')) return;
@@ -882,9 +883,15 @@ function initMutationObserver() {
             });
         }
 
-        // 若当前处于锁定阅读位置状态（关闭新消息自动翻页中），在任何 DOM 追加/变化时同步重对齐锁定
-        if (isReadingPositionLocked && !isTouching) {
-            realignToActiveAnchor();
+        // 若当前处于锁定阅读位置状态（关闭新消息自动翻页中），通过 RAF 帧同步节流对齐，确保手机端绝对不产生强制重排 (Zero Layout Thrashing)
+        if (isReadingPositionLocked && !isTouching && !realignRafScheduled) {
+            realignRafScheduled = true;
+            requestAnimationFrame(() => {
+                realignRafScheduled = false;
+                if (isReadingPositionLocked && !isTouching) {
+                    realignToActiveAnchor();
+                }
+            });
         }
 
         // 用户打字输入期间，跳过背景重排与收容，保证键盘打字极速响应
