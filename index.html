@@ -78,6 +78,24 @@
 
                 <div class="twt-setting-row"
                     style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
+                    <label for="twt_auto_scroll_new_message">新消息自动翻页</label>
+                    <input type="checkbox" id="twt_auto_scroll_new_message" />
+                </div>
+                <div style="font-size: 0.85em; opacity: 0.6; margin-bottom: 15px; margin-top: -2px; padding-left: 2px;">
+                    开启后，发送新消息或收到AI回复时自动翻至末页；关闭则保持当前阅读位置不变。
+                </div>
+
+                <div class="twt-setting-row"
+                    style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
+                    <label for="twt_auto_restore_reading_position">进入历史聊天自动跳转到最新阅读</label>
+                    <input type="checkbox" id="twt_auto_restore_reading_position" />
+                </div>
+                <div style="font-size: 0.85em; opacity: 0.6; margin-bottom: 15px; margin-top: -2px; padding-left: 2px;">
+                    开启后，进入历史聊天时自动跳转到上次阅读的位置；关闭则默认从第一页开始阅读。
+                </div>
+
+                <div class="twt-setting-row"
+                    style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
                     <label for="twt_html_page_break_enabled">大HTML元素强制断页</label>
                     <input type="checkbox" id="twt_html_page_break_enabled" />
                 </div>
@@ -134,13 +152,14 @@
                         <label for="twt_tool_call_mode">Tool Call 显示模式</label>
                         <select id="twt_tool_call_mode"
                             style="background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 4px;">
-                            <option value="compact">紧凑胶囊 (推荐)</option>
-                            <option value="normal">保持默认</option>
-                            <option value="hide">完全隐藏</option>
+                            <option value="minimal">极简纯净 (无顶部装饰，仅楼层与内容 - 推荐)</option>
+                            <option value="compact">紧凑胶囊 (隐藏头像与卡片精简)</option>
+                            <option value="normal">保持默认 (保留头像与完整角色顶栏)</option>
+                            <option value="hide">完全隐藏 (翻页流中彻底隐去)</option>
                         </select>
                     </div>
                     <div style="font-size: 0.85em; opacity: 0.6; margin-bottom: 12px; margin-top: -2px; padding-left: 2px;">
-                        紧凑胶囊：优化为极简半透明折叠条，不占大篇幅；完全隐藏：翻页流中彻底隐去工具调用楼层。
+                        极简纯净：彻底去除头像、角色顶栏及主题装饰，仅显示楼层编号徽章与工具调用折叠条；完全隐藏：翻页流中不显示工具调用。
                     </div>
 
                     <div class="twt-setting-row"

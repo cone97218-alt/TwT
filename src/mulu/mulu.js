@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { extension_settings, getContext } from '../../../../../extensions.js';
 import { showMoreMessages } from '../../../../../../script.js';
-import { setLastUserPage } from '../pagination/pagination.js';
+import { setLastUserPage, realignPagination, getColStep, setExplicitJumpLoading } from '../pagination/pagination.js';
 
 // ============================================================
 // P2 & P3：TauriTavern Store & Search API 接入层
@@ -271,8 +271,9 @@ async function jumpToMessagePosition(mesId, charIndex = 0, totalLength = 1) {
     if (!chatContainer) return;
 
     if (doc.body.classList.contains('twt-reading-mode')) {
+        chatContainer.scrollTop = 0;
         const chatRect = chatContainer.getBoundingClientRect();
-        const cw = chatContainer.getBoundingClientRect().width;
+        const step = (typeof getColStep === 'function' ? getColStep(chatContainer) : 0) || chatContainer.getBoundingClientRect().width;
         const currentScrollLeft = chatContainer.scrollLeft;
         const rect = mes.getBoundingClientRect();
         const absoluteLeft = rect.left - chatRect.left + currentScrollLeft;
@@ -280,9 +281,10 @@ async function jumpToMessagePosition(mesId, charIndex = 0, totalLength = 1) {
         const ratio = totalLength > 0 ? Math.min(1, Math.max(0, charIndex / totalLength)) : 0;
         const targetOffsetLeft = absoluteLeft + (rect.width * ratio);
         
-        const targetPage = Math.max(0, Math.floor(targetOffsetLeft / cw));
-        chatContainer.scrollTo({ left: targetPage * cw, behavior: 'auto' });
+        const targetPage = Math.max(0, Math.floor(targetOffsetLeft / step));
+        chatContainer.scrollTo({ left: targetPage * step, behavior: 'auto' });
         setLastUserPage(targetPage);
+        chatContainer.scrollTop = 0;
     } else {
         mes.scrollIntoView({ behavior: 'auto', block: 'start' });
     }
@@ -417,6 +419,7 @@ async function ensureMessageLoaded(mesId) {
     
     if (mesId < firstDisplayedMesId) {
         const needToLoadCount = firstDisplayedMesId - mesId;
+        if (typeof setExplicitJumpLoading === 'function') setExplicitJumpLoading(true);
         try {
             await showMoreMessages(needToLoadCount);
         } catch (e) {
@@ -427,6 +430,23 @@ async function ensureMessageLoaded(mesId) {
                 showMoreBtn.click();
                 // Wait a tiny bit and check
                 await new Promise(resolve => setTimeout(resolve, 100));
+            }
+        } finally {
+            if (typeof setExplicitJumpLoading === 'function') setExplicitJumpLoading(false);
+        }
+
+        const chat = doc.getElementById('chat');
+        if (chat) {
+            chat.scrollTop = 0;
+            const sheld = doc.getElementById('sheld');
+            if (sheld) sheld.scrollTop = 0;
+            try { window.scrollTo({ top: 0, left: 0, behavior: 'instant' }); } catch {}
+
+            // 等待双帧完成多列 DOM 实际排版与重绘
+            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+            if (doc.body.classList.contains('twt-reading-mode') && typeof realignPagination === 'function') {
+                realignPagination(false);
             }
         }
     }
@@ -573,10 +593,11 @@ async function scrollToMessageEdge(edge) {
     if (isNaN(currentId)) return;
     
     if (doc.body.classList.contains('twt-reading-mode')) {
+        chatContainer.scrollTop = 0;
         const chatRect = chatContainer.getBoundingClientRect();
-        const cw = chatContainer.getBoundingClientRect().width;
+        const step = (typeof getColStep === 'function' ? getColStep(chatContainer) : 0) || chatContainer.getBoundingClientRect().width;
         const currentScrollLeft = chatContainer.scrollLeft;
-        const currentPage = Math.round(currentScrollLeft / cw);
+        const currentPage = Math.round(currentScrollLeft / step);
         
         let targetPage = -1;
         let targetScrollLeft = 0;
@@ -589,11 +610,11 @@ async function scrollToMessageEdge(edge) {
             if (edge === 'start') {
                 targetScrollLeft = absoluteLeft;
             } else {
-                targetScrollLeft = Math.floor((absoluteRight - 1) / cw) * cw;
-                targetScrollLeft = Math.max(targetScrollLeft, Math.floor(absoluteLeft / cw) * cw);
+                targetScrollLeft = Math.floor((absoluteRight - 1) / step) * step;
+                targetScrollLeft = Math.max(targetScrollLeft, Math.floor(absoluteLeft / step) * step);
             }
             
-            targetPage = Math.round(targetScrollLeft / cw);
+            targetPage = Math.round(targetScrollLeft / step);
             
             if (targetPage === currentPage && attempts === 0) {
                 let siblingId = currentId;
@@ -624,14 +645,15 @@ async function scrollToMessageEdge(edge) {
                 chatContainer.scrollTo({ left: 0, behavior: 'smooth' });
                 setLastUserPage(0);
             } else {
-                const maxPage = Math.max(0, Math.ceil(chatContainer.scrollWidth / cw) - 1);
+                const maxPage = Math.max(0, Math.ceil(chatContainer.scrollWidth / step) - 1);
                 chatContainer.scrollTo({ left: chatContainer.scrollWidth, behavior: 'smooth' });
                 setLastUserPage(maxPage);
             }
         } else {
-            chatContainer.scrollTo({ left: targetPage * cw, behavior: 'smooth' });
+            chatContainer.scrollTo({ left: targetPage * step, behavior: 'smooth' });
             setLastUserPage(targetPage);
         }
+        chatContainer.scrollTop = 0;
     } else {
         // Vertical scroll mode chain scrolling
         const chatRect = chatContainer.getBoundingClientRect();
@@ -2186,14 +2208,16 @@ function scrollToMessage(mes) {
     if (!chatContainer) return;
     
     if (doc.body.classList.contains('twt-reading-mode')) {
+        chatContainer.scrollTop = 0;
         const chatRect = chatContainer.getBoundingClientRect();
-        const cw = chatContainer.getBoundingClientRect().width;
+        const step = (typeof getColStep === 'function' ? getColStep(chatContainer) : 0) || chatContainer.getBoundingClientRect().width;
         const currentScrollLeft = chatContainer.scrollLeft;
         const rect = mes.getBoundingClientRect();
         const absoluteLeft = rect.left - chatRect.left + currentScrollLeft;
-        const targetPage = Math.round(absoluteLeft / cw);
-        chatContainer.scrollTo({ left: targetPage * cw, behavior: 'smooth' });
+        const targetPage = Math.max(0, Math.floor(absoluteLeft / step));
+        chatContainer.scrollTo({ left: targetPage * step, behavior: 'smooth' });
         setLastUserPage(targetPage);
+        chatContainer.scrollTop = 0;
     } else {
         mes.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }

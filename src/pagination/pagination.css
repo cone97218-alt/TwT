@@ -20,9 +20,8 @@ body.twt-reading-mode #chat {
     /* 不使用 CSS scroll-snap-type：column 布局无 snap-align 锚点，会导致 touchmove 时跳多页 */
     /* 不使用 -webkit-overflow-scrolling: touch：对横向同样触发惯性，由 touchmove preventDefault 接管 */
 
-    /* GPU 合成层提升 */
+    /* GPU 合成与平滑滚动 */
     will-change: scroll-position;
-    transform: translateZ(0);
 
     /* 关键：横向手势完全由 JS 接管，浏览器不处理横向滚动和惯性 */
     /* 比 preventDefault 更底层，无 passive 冲突问题 */
@@ -33,8 +32,9 @@ body.twt-reading-mode #chat {
     contain: none !important;
 }
 
-/* 防护所有子元素与消息块的离屏隔离 */
-body.twt-reading-mode #chat *,
+/* 防护消息块的离屏隔离（避免使用通用选择器 * 以防止大规模 CSS 匹配降级） */
+body.twt-reading-mode #chat,
+body.twt-reading-mode #chat > *,
 body.twt-reading-mode #chat .mes,
 body.twt-reading-mode #chat .mes_text,
 body.twt-reading-mode #chat .mes_block {
@@ -61,6 +61,44 @@ body.twt-reading-mode #chat > :not(.mes) {
     margin: 0 !important;
     padding-top: 10px !important;
     padding-bottom: 10px !important;
+}
+
+/* 酒馆“要渲染 # 条消息”截断机制下的加载更多历史消息按钮适配 */
+body.twt-reading-mode #chat > #show_more_messages {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    -webkit-column-break-inside: avoid !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    margin: 0 0 10px 0 !important;
+    padding: 10px 16px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    cursor: pointer !important;
+    text-align: center !important;
+    font-size: 0.9em !important;
+    border-radius: 8px !important;
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 80%, transparent) !important;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #888) 40%, transparent) !important;
+    color: var(--SmartThemeBodyColor, inherit) !important;
+    transition: all 0.2s ease !important;
+    user-select: none !important;
+}
+
+/* 开启独立消息分页时，show_more_messages 独占第一列，不与第 1 条消息混列 */
+body.twt-reading-mode.twt-message-page #chat > #show_more_messages {
+    break-after: column !important;
+    page-break-after: always !important;
+    -webkit-column-break-after: always !important;
+}
+
+body.twt-reading-mode #chat > #show_more_messages:hover {
+    background: color-mix(in srgb, var(--SmartThemeUnderlineColor, #007aff) 25%, transparent) !important;
+    border-color: var(--SmartThemeUnderlineColor, #007aff) !important;
+    filter: brightness(1.1) !important;
 }
 
 /* 消息元素默认重置外边距和内边距，但使用 :where 降低特异性，允许用户自定义美化主题进行覆盖 */
@@ -213,6 +251,193 @@ body.twt-reading-mode.twt-toolcall-hide #chat .mes.twt-toolcall-mes {
 }
 
 /* ============================================================
+ * Tool Call 楼层徽章与通用折叠指示器
+ * ============================================================ */
+.twt-toolcall-floor-badge,
+.twt-toolcall-arrow {
+    display: none;
+}
+
+body.twt-reading-mode.twt-toolcall-minimal .twt-toolcall-floor-badge,
+body.twt-reading-mode.twt-toolcall-compact .twt-toolcall-floor-badge {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    padding: 1px 7px !important;
+    font-size: 0.85em !important;
+    font-weight: 600 !important;
+    line-height: 1.4 !important;
+    border-radius: 4px !important;
+    background: color-mix(in srgb, var(--SmartThemeBorderColor, #888) 22%, transparent) !important;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #888) 38%, transparent) !important;
+    color: var(--SmartThemeBodyColor, inherit) !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+    user-select: none !important;
+}
+
+body.twt-reading-mode.twt-toolcall-minimal .twt-toolcall-floor-badge i,
+body.twt-reading-mode.twt-toolcall-compact .twt-toolcall-floor-badge i {
+    font-size: 0.88em !important;
+    opacity: 0.85 !important;
+}
+
+body.twt-reading-mode.twt-toolcall-minimal .twt-toolcall-arrow,
+body.twt-reading-mode.twt-toolcall-compact .twt-toolcall-arrow {
+    display: inline-block !important;
+    margin-left: auto !important;
+    font-size: 0.75em !important;
+    opacity: 0.6 !important;
+    transition: transform 0.15s ease !important;
+    padding-left: 4px !important;
+}
+
+body.twt-reading-mode details[open] .twt-toolcall-arrow {
+    transform: rotate(90deg) !important;
+}
+
+/* ============================================================
+ * Tool Call 极简纯净模式：无顶部装饰，仅显示楼层信息与内容
+ * ============================================================ */
+
+/* 彻底隐去头像区、角色顶栏、操作按钮组、选择框与所有伪元素装饰 */
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.toolCall .mesAvatarWrapper,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes[is_system="true"].toolCall .mesAvatarWrapper,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.twt-toolcall-mes .mesAvatarWrapper,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.toolCall .avatar,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes[is_system="true"].toolCall .avatar,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.twt-toolcall-mes .avatar,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.toolCall .ch_name,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes[is_system="true"].toolCall .ch_name,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.twt-toolcall-mes .ch_name,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.toolCall .mes_buttons,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes[is_system="true"].toolCall .mes_buttons,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.twt-toolcall-mes .mes_buttons,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.toolCall .extraMesButtons,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes[is_system="true"].toolCall .extraMesButtons,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.twt-toolcall-mes .extraMesButtons,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.toolCall .swipe_left,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.toolCall .swipe_right,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.toolCall .del_checkbox,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.toolCall .for_checkbox,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.twt-toolcall-mes .swipe_left,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.twt-toolcall-mes .swipe_right,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.twt-toolcall-mes .del_checkbox,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.twt-toolcall-mes .for_checkbox {
+    display: none !important;
+}
+
+/* 清除主题可能在卡片或容器添加的装饰用伪元素 (::before, ::after) */
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.toolCall::before,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.toolCall::after,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes[is_system="true"].toolCall::before,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes[is_system="true"].toolCall::after,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.twt-toolcall-mes::before,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.twt-toolcall-mes::after,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.toolCall .mes_block::before,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.toolCall .mes_block::after,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes[is_system="true"].toolCall .mes_block::before,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes[is_system="true"].toolCall .mes_block::after,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.twt-toolcall-mes .mes_block::before,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.twt-toolcall-mes .mes_block::after,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.twt-toolcall-mes .mes_text::before,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.twt-toolcall-mes .mes_text::after {
+    display: none !important;
+    content: none !important;
+}
+
+/* 纯净胶囊主体样式 */
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.toolCall,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes[is_system="true"].toolCall,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.twt-toolcall-mes {
+    margin: 4px 0 !important;
+    padding: 4px 8px !important;
+    min-height: unset !important;
+    border-radius: 6px !important;
+    background: color-mix(in srgb, var(--SmartThemeDarkColor, #1a1a1a) 65%, transparent) !important;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #888) 30%, transparent) !important;
+    box-shadow: none !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    -webkit-column-break-inside: avoid !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    display: block !important;
+}
+
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.toolCall .mes_block,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes[is_system="true"].toolCall .mes_block,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.twt-toolcall-mes .mes_block {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.toolCall .mes_text,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes[is_system="true"].toolCall .mes_text,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.twt-toolcall-mes .mes_text {
+    font-size: 0.85em !important;
+    line-height: 1.4 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    color: var(--SmartThemeBodyColor, inherit) !important;
+}
+
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.toolCall details,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes[is_system="true"].toolCall details,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.twt-toolcall-mes details {
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.toolCall summary,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes[is_system="true"].toolCall summary,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.twt-toolcall-mes summary {
+    cursor: pointer !important;
+    display: flex !important;
+    align-items: center !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    font-weight: 500 !important;
+    opacity: 0.9 !important;
+    user-select: none !important;
+    padding: 2px 4px !important;
+    outline: none !important;
+    color: var(--SmartThemeBodyColor, inherit) !important;
+    list-style: none !important;
+}
+
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.toolCall summary::-webkit-details-marker,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes[is_system="true"].toolCall summary::-webkit-details-marker,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.twt-toolcall-mes summary::-webkit-details-marker {
+    display: none !important;
+}
+
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.toolCall summary:hover,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes[is_system="true"].toolCall summary:hover,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.twt-toolcall-mes summary:hover {
+    opacity: 1 !important;
+}
+
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.toolCall pre,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes[is_system="true"].toolCall pre,
+body.twt-reading-mode.twt-toolcall-minimal #chat .mes.twt-toolcall-mes pre {
+    max-height: 160px !important;
+    overflow-y: auto !important;
+    overflow-x: auto !important;
+    margin: 6px 0 2px 0 !important;
+    padding: 6px 8px !important;
+    font-size: 0.85em !important;
+    background: rgba(0, 0, 0, 0.3) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 4px !important;
+    break-inside: auto !important;
+}
+
+/* ============================================================
  * Tool Call 楼层特殊排版：紧凑胶囊模式
  * ============================================================ */
 body.twt-reading-mode.twt-toolcall-compact #chat .mes.toolCall,
@@ -232,9 +457,15 @@ body.twt-reading-mode.twt-toolcall-compact #chat .mes.twt-toolcall-mes {
     box-sizing: border-box !important;
 }
 
+body.twt-reading-mode.twt-toolcall-compact #chat .mes.toolCall .mesAvatarWrapper,
+body.twt-reading-mode.twt-toolcall-compact #chat .mes[is_system="true"].toolCall .mesAvatarWrapper,
+body.twt-reading-mode.twt-toolcall-compact #chat .mes.twt-toolcall-mes .mesAvatarWrapper,
 body.twt-reading-mode.twt-toolcall-compact #chat .mes.toolCall .avatar,
 body.twt-reading-mode.twt-toolcall-compact #chat .mes[is_system="true"].toolCall .avatar,
-body.twt-reading-mode.twt-toolcall-compact #chat .mes.twt-toolcall-mes .avatar {
+body.twt-reading-mode.twt-toolcall-compact #chat .mes.twt-toolcall-mes .avatar,
+body.twt-reading-mode.twt-toolcall-compact #chat .mes.toolCall .ch_name,
+body.twt-reading-mode.twt-toolcall-compact #chat .mes[is_system="true"].toolCall .ch_name,
+body.twt-reading-mode.twt-toolcall-compact #chat .mes.twt-toolcall-mes .ch_name {
     display: none !important;
 }
 
@@ -265,6 +496,10 @@ body.twt-reading-mode.twt-toolcall-compact #chat .mes.toolCall summary,
 body.twt-reading-mode.twt-toolcall-compact #chat .mes[is_system="true"].toolCall summary,
 body.twt-reading-mode.twt-toolcall-compact #chat .mes.twt-toolcall-mes summary {
     cursor: pointer !important;
+    display: flex !important;
+    align-items: center !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
     font-weight: 500 !important;
     opacity: 0.85 !important;
     user-select: none !important;

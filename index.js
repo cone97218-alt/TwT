@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
-import { applyPaginationMode, initPaginationEvent, resetPaginationBinding, realignPagination } from './src/pagination/pagination.js';
+import { applyPaginationMode, initPaginationEvent, resetPaginationBinding, realignPagination, handleMoreMessagesLoaded, handleNewMessageRendered, markAutoScrollingToNewMessage, updateActiveReadingAnchor } from './src/pagination/pagination.js';
 import { applyVisualMode } from './src/visual/visual.js';
 import { initMulu, applyMuluSettings } from './src/mulu/mulu.js';
 import { initMenu, applyMenuMode, applyFullscreenMode } from './src/menu/menu.js';
@@ -117,6 +117,8 @@ const defaultSettings = {
     enabled: true,
     swipeEnabled: true,
     messagePageEnabled: false,
+    autoScrollNewMessage: true,
+    autoRestoreReadingPosition: true,
     htmlPageBreakEnabled: true,
     htmlPopupEnabled: true,
     htmlPopupFallbackEnabled: false,
@@ -125,7 +127,7 @@ const defaultSettings = {
     htmlPopupWhitelist: '',
     avatarLayoutMode: 'float',
     customWhitelist: '.mes_reasoning_details, .thought-block',
-    toolCallMode: 'compact',
+    toolCallMode: 'minimal',
     toolCallNoPageBreak: true,
     toolCallPreventFlip: true,
     toolCallSelector: '.mes.toolCall, .mes[is_system="true"].toolCall',
@@ -1087,6 +1089,8 @@ function bindUI() {
     const $enabled = $('#twt_enabled');
     const $swipeEnabled = $('#twt_swipe_enabled');
     const $messagePageEnabled = $('#twt_message_page_enabled');
+    const $autoScrollNewMessage = $('#twt_auto_scroll_new_message');
+    const $autoRestoreReadingPosition = $('#twt_auto_restore_reading_position');
     const $htmlPageBreakEnabled = $('#twt_html_page_break_enabled');
     const $htmlPopupEnabled = $('#twt_html_popup_enabled');
     const $htmlPopupFallbackEnabled = $('#twt_html_popup_fallback_enabled');
@@ -1151,6 +1155,8 @@ function bindUI() {
     $enabled.prop('checked', extension_settings.twt.enabled);
     $swipeEnabled.prop('checked', extension_settings.twt.swipeEnabled);
     $messagePageEnabled.prop('checked', extension_settings.twt.messagePageEnabled);
+    $autoScrollNewMessage.prop('checked', extension_settings.twt.autoScrollNewMessage !== false);
+    $autoRestoreReadingPosition.prop('checked', extension_settings.twt.autoRestoreReadingPosition !== false);
     $htmlPageBreakEnabled.prop('checked', extension_settings.twt.htmlPageBreakEnabled);
     $htmlPopupEnabled.prop('checked', extension_settings.twt.htmlPopupEnabled !== false);
     $htmlPopupFallbackEnabled.prop('checked', extension_settings.twt.htmlPopupFallbackEnabled === true);
@@ -1159,7 +1165,7 @@ function bindUI() {
     $htmlPopupWhitelist.val(extension_settings.twt.htmlPopupWhitelist || '');
     $avatarLayoutMode.val(extension_settings.twt.avatarLayoutMode || 'float');
     $customWhitelist.val(extension_settings.twt.customWhitelist || '');
-    $toolCallMode.val(extension_settings.twt.toolCallMode || 'compact');
+    $toolCallMode.val(extension_settings.twt.toolCallMode || 'minimal');
     $toolCallNoPageBreak.prop('checked', extension_settings.twt.toolCallNoPageBreak !== false);
     $toolCallPreventFlip.prop('checked', extension_settings.twt.toolCallPreventFlip !== false);
     $toolCallSelector.val(extension_settings.twt.toolCallSelector !== undefined ? extension_settings.twt.toolCallSelector : '.mes.toolCall, .mes[is_system="true"].toolCall');
@@ -1841,6 +1847,16 @@ function bindUI() {
         extension_settings.twt.messagePageEnabled = $(this).prop('checked');
         getContext().saveSettingsDebounced();
         applyPaginationMode(extension_settings.twt.enabled, extension_settings.twt);
+    });
+
+    $autoScrollNewMessage.on('change', function () {
+        extension_settings.twt.autoScrollNewMessage = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+    });
+
+    $autoRestoreReadingPosition.on('change', function () {
+        extension_settings.twt.autoRestoreReadingPosition = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
     });
 
     $htmlPageBreakEnabled.on('change', function () {
@@ -3387,6 +3403,37 @@ jQuery(async () => {
                 }
                 reapplyVisualAndStyles();
             });
+
+            if (ctx.eventTypes.MORE_MESSAGES_LOADED) {
+                ctx.eventSource.on(ctx.eventTypes.MORE_MESSAGES_LOADED, () => {
+                    if (extension_settings.twt?.enabled) {
+                        handleMoreMessagesLoaded();
+                    }
+                    reapplyVisualAndStyles();
+                });
+            }
+
+            const onNewMessage = (messageId) => {
+                if (extension_settings.twt?.enabled) {
+                    handleNewMessageRendered(messageId, extension_settings.twt);
+                }
+            };
+            if (ctx.eventTypes.MESSAGE_SENT) {
+                ctx.eventSource.on(ctx.eventTypes.MESSAGE_SENT, () => {
+                    if (extension_settings.twt?.enabled) {
+                        updateActiveReadingAnchor();
+                        if (extension_settings.twt.autoScrollNewMessage !== false) {
+                            markAutoScrollingToNewMessage();
+                        }
+                    }
+                });
+            }
+            if (ctx.eventTypes.USER_MESSAGE_RENDERED) {
+                ctx.eventSource.on(ctx.eventTypes.USER_MESSAGE_RENDERED, onNewMessage);
+            }
+            if (ctx.eventTypes.CHARACTER_MESSAGE_RENDERED) {
+                ctx.eventSource.on(ctx.eventTypes.CHARACTER_MESSAGE_RENDERED, onNewMessage);
+            }
 
             const lifecycleEvents = [
                 ctx.eventTypes.APP_READY,

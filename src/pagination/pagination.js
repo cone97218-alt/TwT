@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { extension_settings } from '../../../../../extensions.js';
+import { showMoreMessages } from '../../../../../../script.js';
 
 // ============================================================
 // P1：TauriTavern API 接入层 — 阅读位置记忆
@@ -36,11 +37,17 @@ export async function savePaginationPosition(targetPage = lastUserPage) {
     if (targetPage < 0) return;
     try {
         const handle = await getTTHandle();
-        if (!handle) return;
-        await handle.metadata.setExtension({
-            namespace: TT_NS,
-            value: { lastPage: targetPage, savedAt: Date.now() },
-        });
+        if (handle) {
+            await handle.metadata.setExtension({
+                namespace: TT_NS,
+                value: { lastPage: targetPage, savedAt: Date.now() },
+            });
+        }
+        if (typeof chat_metadata !== 'undefined' && chat_metadata) {
+            chat_metadata[TT_NS] = chat_metadata[TT_NS] || {};
+            chat_metadata[TT_NS].lastPage = targetPage;
+            chat_metadata[TT_NS].savedAt = Date.now();
+        }
     } catch (e) {
         console.warn('[TwT] Failed to save reading position:', e);
     }
@@ -54,17 +61,21 @@ export function debouncedSavePaginationPosition() {
 }
 
 /**
- * 从 TauriTavern metadata 恢复阅读位置
+ * 从 TauriTavern / chat_metadata 恢复阅读位置
  * 在新聊天的列宽稳定后调用，返回恢复的页码（无数据时返回 0）
  */
 async function restorePaginationPosition() {
     try {
         const handle = await getTTHandle();
-        if (!handle) return 0;
-        const meta = await handle.metadata.get();
-        const saved = meta?.extensions?.[TT_NS];
-        if (!saved || typeof saved.lastPage !== 'number') return 0;
-        return Math.max(0, saved.lastPage);
+        if (handle) {
+            const meta = await handle.metadata.get();
+            const saved = meta?.extensions?.[TT_NS];
+            if (saved && typeof saved.lastPage === 'number') return Math.max(0, saved.lastPage);
+        }
+        if (typeof chat_metadata !== 'undefined' && chat_metadata?.[TT_NS]?.lastPage !== undefined) {
+            return Math.max(0, Number(chat_metadata[TT_NS].lastPage) || 0);
+        }
+        return 0;
     } catch (e) {
         console.warn('[TwT] Failed to restore reading position:', e);
         return 0;
@@ -77,8 +88,14 @@ async function restorePaginationPosition() {
 let lastUserPage = 0;           // 用户当前所在页（唯一权威来源）
 let isScrolling = false;        // 正在执行程序化 scrollTo，屏蔽 snap 校正
 let isTouching = false;         // 手指正在触摸屏幕
-let isKeyboardOpen = false;     // 虚拟键盘已弹出
-let isFocusGuarding = false;    // 焦点保护窗口（键盘弹出前的短暂保护期）
+
+/** 判断用户当前是否在输入框打字（此时应全面暂停后台排版与重试计算，避免打字卡顿） */
+export function isInputFocused() {
+    const el = document.activeElement;
+    if (!el) return false;
+    const tag = el.tagName;
+    return (tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable) && !el.classList.contains('twt-p-textarea');
+}
 
 // ============================================================
 // Observer / Timer 句柄
@@ -87,60 +104,332 @@ let resizeObserver = null;
 let mutationObserver = null;
 let scrollEventsAbortController = null;
 let snapTimer = null;
-let focusGuardTimer = null;
-let keyboardRestoreTimer = null;
-let positionLockRaf = null;
 let colWidthRetryTimer = null;
 let stableColWidth = 0;         // Precise step cache after layout stabilizes; 0 = not established
 let lastKnownScrollWidth = 0;   // Last scrollWidth seen by MutationObserver, for streaming detection
 let stableColWidthTimer = null; // Timer to rebuild stableColWidth after streaming ends
 
 // ============================================================
-// 键盘保护：冻结 #chat 高度
+// 纵向滚动阻断锁：彻底杜绝多列横向布局下的 scrollTop 顶出位移
+// 拦截外部脚本（如酒馆原生 showMoreMessages / scrollChatToBottom）
+// 向 #chat.scrollTop 写入非 0 值的操作
 // ============================================================
-let frozenHeight = 0;
+let isScrollTopLocked = false;
+let origScrollTopDescriptor = null;
 
-function freezeHeight(chat) {
-    const h = getComputedStyle(chat).height;
-    const n = parseFloat(h);
-    if (n > 0) {
-        frozenHeight = n;
-        chat.style.setProperty('height',     h, 'important');
-        chat.style.setProperty('max-height', h, 'important');
-        chat.style.setProperty('min-height', h, 'important');
+export function lockChatScrollTop(chat) {
+    if (!chat || isScrollTopLocked) return;
+    try {
+        const desc = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop');
+        if (!desc) return;
+        origScrollTopDescriptor = desc;
+        Object.defineProperty(chat, 'scrollTop', {
+            get() {
+                return 0;
+            },
+            set(val) {
+                if (document.body.classList.contains('twt-reading-mode')) {
+                    // 仅在真实 scrollTop 不为 0 时才写 0，避免重复写 DOM 属性触发重绘与脏标记
+                    if (desc.get.call(chat) !== 0) {
+                        desc.set.call(chat, 0);
+                    }
+                    return;
+                }
+                desc.set.call(chat, val);
+            },
+            configurable: true
+        });
+        isScrollTopLocked = true;
+        if (chat.scrollTop !== 0) chat.scrollTop = 0;
+    } catch (e) {
+        console.warn('[TwT] Failed to lock chat.scrollTop:', e);
     }
 }
 
-function unfreezeHeight(chat) {
-    frozenHeight = 0;
-    if (!chat) return;
-    chat.style.removeProperty('height');
-    chat.style.removeProperty('max-height');
-    chat.style.removeProperty('min-height');
+export function unlockChatScrollTop(chat) {
+    if (!chat || !isScrollTopLocked) return;
+    try {
+        delete chat.scrollTop;
+        isScrollTopLocked = false;
+    } catch (e) {
+        console.warn('[TwT] Failed to unlock chat.scrollTop:', e);
+    }
 }
 
 // ============================================================
-// rAF 滚动位置锁（键盘弹出期间持续修正 scrollLeft）
+// 消息截断机制（“要渲染 # 条消息”）历史消息加载与锚点定位
 // ============================================================
-function startPositionLock(chat) {
-    stopPositionLock();
-    const cw = chat.getBoundingClientRect().width;
-    if (cw <= 0) return;
-    const expected = lastUserPage * cw;
-    function lock() {
-        if (!isKeyboardOpen && !isFocusGuarding) { positionLockRaf = null; return; }
-        if (Math.abs(chat.scrollLeft - expected) > 2) {
-            chat.scrollLeft = expected;
+let isExplicitJumpLoading = false;
+let isLoadingMoreMessages = false;
+let pendingMessageLoadAnchor = null;
+let pendingFlipBackwards = false;
+
+export function setExplicitJumpLoading(val) {
+    isExplicitJumpLoading = !!val;
+}
+
+export function captureReadingAnchor() {
+    const chat = getChat();
+    if (!chat || !document.body.classList.contains('twt-reading-mode')) return null;
+    const currentScrollLeft = chat.scrollLeft;
+    const cw = stableColWidth > 0 ? stableColWidth : getColWidth(chat);
+    if (cw <= 0) return null;
+    const pageCenter = currentScrollLeft + (cw / 2);
+    const chatRect = chat.getBoundingClientRect();
+    const messages = Array.from(chat.querySelectorAll('.mes'));
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const mes = messages[i];
+        const rect = mes.getBoundingClientRect();
+        const absLeft = rect.left - chatRect.left + currentScrollLeft;
+        const absRight = rect.right - chatRect.left + currentScrollLeft;
+        if (pageCenter >= absLeft && pageCenter <= absRight) {
+            const mesId = mes.getAttribute('mesid');
+            const offsetInMes = pageCenter - absLeft;
+            return { mesId, offsetInMes, rectWidth: rect.width };
         }
-        positionLockRaf = requestAnimationFrame(lock);
     }
-    positionLockRaf = requestAnimationFrame(lock);
+    const firstMes = chat.querySelector('.mes');
+    if (firstMes) {
+        return { mesId: firstMes.getAttribute('mesid'), offsetInMes: 0, rectWidth: firstMes.getBoundingClientRect().width };
+    }
+    return null;
 }
 
-function stopPositionLock() {
-    if (positionLockRaf !== null) {
-        cancelAnimationFrame(positionLockRaf);
-        positionLockRaf = null;
+let activeReadingAnchor = null;
+let isAutoScrollingToNewMessage = false;
+let autoScrollTimeout = null;
+
+export function markAutoScrollingToNewMessage() {
+    isAutoScrollingToNewMessage = true;
+    clearTimeout(autoScrollTimeout);
+    autoScrollTimeout = setTimeout(() => {
+        isAutoScrollingToNewMessage = false;
+    }, 2000);
+}
+
+export function updateActiveReadingAnchor() {
+    if (isTouching || isScrolling || isAutoScrollingToNewMessage) return;
+    const anchor = captureReadingAnchor();
+    if (anchor && anchor.mesId) {
+        activeReadingAnchor = anchor;
+    }
+}
+
+export function realignToActiveAnchor() {
+    if (!activeReadingAnchor || !activeReadingAnchor.mesId) return false;
+    if (isAutoScrollingToNewMessage || isTouching || isScrolling) return false;
+
+    const chat = getChat();
+    if (!chat || !document.body.classList.contains('twt-reading-mode')) return false;
+
+    let anchorEl = chat.querySelector(`.mes[mesid="${activeReadingAnchor.mesId}"]`);
+    if (!anchorEl) {
+        // 若当前锚点消息已被移除（如被淘汰的最旧楼层），降级对齐当前剩下的第一条消息
+        anchorEl = chat.querySelector('.mes');
+        if (!anchorEl) return false;
+    }
+
+    const rw = chat.getBoundingClientRect().width || chat.clientWidth;
+    const sw = chat.scrollWidth;
+    if (sw > 0 && rw > 0) {
+        const n = Math.max(1, Math.round(sw / rw));
+        stableColWidth = sw / n;
+        lastKnownScrollWidth = sw;
+    }
+    const step = stableColWidth > 0 ? stableColWidth : getColStep(chat);
+    if (step <= 0) return false;
+
+    const chatRect = chat.getBoundingClientRect();
+    const rect = anchorEl.getBoundingClientRect();
+    const currentScrollLeft = chat.scrollLeft;
+    const absoluteLeft = rect.left - chatRect.left + currentScrollLeft;
+    const targetPos = absoluteLeft + (activeReadingAnchor.offsetInMes ?? (step / 2));
+    const targetPage = Math.max(0, Math.floor(targetPos / step));
+    const expectedScrollLeft = targetPage * step;
+
+    if (Math.abs(chat.scrollLeft - expectedScrollLeft) > 1 || lastUserPage !== targetPage) {
+        lastUserPage = targetPage;
+        chat.scrollLeft = expectedScrollLeft;
+        chat.scrollTop = 0;
+    }
+    return true;
+}
+
+export async function triggerLoadMoreMessages(isFlippingBackwards = false) {
+    if (isLoadingMoreMessages) return;
+    const chat = getChat();
+    if (!chat || !document.body.classList.contains('twt-reading-mode')) return;
+    const showMoreBtn = document.getElementById('show_more_messages');
+    if (!showMoreBtn) return;
+
+    isLoadingMoreMessages = true;
+    pendingFlipBackwards = isFlippingBackwards;
+    pendingMessageLoadAnchor = captureReadingAnchor();
+    try {
+        if (typeof showMoreMessages === 'function') {
+            await showMoreMessages();
+        } else {
+            showMoreBtn.click();
+        }
+    } catch (e) {
+        console.warn('[TwT] Failed to load more messages via showMoreMessages:', e);
+        try {
+            showMoreBtn.click();
+        } catch {}
+    } finally {
+        isLoadingMoreMessages = false;
+    }
+}
+
+export async function handleMoreMessagesLoaded(isExplicitJump = isExplicitJumpLoading) {
+    const chat = getChat();
+    if (!chat || !document.body.classList.contains('twt-reading-mode')) return;
+
+    // 1. 深度清零纵向滚动
+    chat.scrollTop = 0;
+    const sheld = document.getElementById('sheld');
+    if (sheld) sheld.scrollTop = 0;
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+
+    // 2. 等待浏览器完成多列排版计算 (双帧等待)
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    // 3. 强制重排与列宽步长重算
+    stableColWidth = 0;
+    lastKnownScrollWidth = 0;
+    clearTimeout(stableColWidthTimer);
+
+    updateColWidth();
+    containOversizedElements();
+    tagToolCallMessages();
+    void chat.offsetHeight;
+
+    const rawW = chat.getBoundingClientRect().width || chat.clientWidth;
+    const newSw = chat.scrollWidth;
+    if (newSw > 0 && rawW > 0) {
+        const n = Math.max(1, Math.round(newSw / rawW));
+        stableColWidth = newSw / n;
+        lastKnownScrollWidth = newSw;
+    }
+    const step = stableColWidth > 0 ? stableColWidth : getColStep(chat);
+
+    // 4. 目录专属跳转：交由 Mulu 自行定向定位
+    if (isExplicitJump) {
+        pendingMessageLoadAnchor = null;
+        pendingFlipBackwards = false;
+        chat.scrollTop = 0;
+        return;
+    }
+
+    // 5. 若有预先捕获的阅读锚点
+    if (pendingMessageLoadAnchor && pendingMessageLoadAnchor.mesId) {
+        const anchorEl = chat.querySelector(`.mes[mesid="${pendingMessageLoadAnchor.mesId}"]`);
+        if (anchorEl && step > 0) {
+            const chatRect = chat.getBoundingClientRect();
+            const rect = anchorEl.getBoundingClientRect();
+            const currentScrollLeft = chat.scrollLeft;
+            const absoluteLeft = rect.left - chatRect.left + currentScrollLeft;
+            const targetPos = absoluteLeft + (pendingMessageLoadAnchor.offsetInMes || 0);
+            let targetPage = Math.max(0, Math.floor(targetPos / step));
+
+            // 如果读者是在第 0 页向前翻页（左翻）触发的加载，自然滑向新加载批次的最后一页
+            if (pendingFlipBackwards && targetPage > 0) {
+                targetPage = targetPage - 1;
+            }
+
+            lastUserPage = targetPage;
+            chat.scrollLeft = targetPage * step;
+            pendingMessageLoadAnchor = null;
+            pendingFlipBackwards = false;
+            chat.scrollTop = 0;
+            setTimeout(updateActiveReadingAnchor, 50);
+            return;
+        }
+    }
+    pendingMessageLoadAnchor = null;
+    pendingFlipBackwards = false;
+
+    // 6. 无锚点情况：确保页码安全在范围内且无纵向位移
+    if (step > 0) {
+        const total = Math.round(chat.scrollWidth / step);
+        const page = Math.min(lastUserPage, Math.max(0, total - 1));
+        chat.scrollLeft = page * step;
+    }
+    chat.scrollTop = 0;
+    setTimeout(updateActiveReadingAnchor, 50);
+}
+
+/**
+ * 处理用户发送新消息或 AI 回复渲染完成（USER_MESSAGE_RENDERED / CHARACTER_MESSAGE_RENDERED）
+ * 根据 autoScrollNewMessage 配置决定是否自动翻到最新一页，或者严格保持在当前阅读位置
+ */
+export function handleNewMessageRendered(messageId, settings = extension_settings?.twt) {
+    const chat = getChat();
+    if (!chat || !document.body.classList.contains('twt-reading-mode')) return;
+
+    const shouldAutoScroll = settings?.autoScrollNewMessage !== false;
+
+    // 清零外部可能写入的纵向位移
+    chat.scrollTop = 0;
+
+    if (shouldAutoScroll) {
+        markAutoScrollingToNewMessage();
+        // 双帧等待，确保插入新消息及可能发生的历史截断（如 JSR cancelChatMessages）完全执行完毕
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                if (!document.body.classList.contains('twt-reading-mode')) {
+                    isAutoScrollingToNewMessage = false;
+                    return;
+                }
+
+                // 重新对齐并刷新列宽步长
+                const rw = chat.getBoundingClientRect().width || chat.clientWidth;
+                const sw = chat.scrollWidth;
+                if (sw > 0 && rw > 0) {
+                    const n = Math.max(1, Math.round(sw / rw));
+                    stableColWidth = sw / n;
+                    lastKnownScrollWidth = sw;
+                }
+                const step = stableColWidth > 0 ? stableColWidth : getColStep(chat);
+                if (step <= 0) {
+                    isAutoScrollingToNewMessage = false;
+                    return;
+                }
+
+                const total = Math.max(1, Math.round(chat.scrollWidth / step));
+                let targetPage = total - 1;
+
+                // 若传入了目标消息 ID，优先定位到该消息的起始页（方便读者从头阅读新消息）
+                if (messageId !== undefined && messageId !== null) {
+                    const targetMes = chat.querySelector(`.mes[mesid="${messageId}"]`);
+                    if (targetMes) {
+                        const chatRect = chat.getBoundingClientRect();
+                        const rect = targetMes.getBoundingClientRect();
+                        const absLeft = rect.left - chatRect.left + chat.scrollLeft;
+                        targetPage = Math.max(0, Math.min(total - 1, Math.floor(absLeft / step)));
+                    }
+                }
+
+                // 平滑翻页到最新楼层所在页
+                scrollToPage(chat, targetPage, step);
+                setTimeout(() => {
+                    isAutoScrollingToNewMessage = false;
+                    updateActiveReadingAnchor();
+                }, 400);
+            });
+        });
+    } else {
+        // 关闭自动翻页：双帧等待后严格按活跃阅读锚点定位，抵消最旧楼层被移出导致的向左漂移
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                if (!document.body.classList.contains('twt-reading-mode')) return;
+                realignToActiveAnchor();
+                setTimeout(() => {
+                    realignToActiveAnchor();
+                }, 100);
+            });
+        });
     }
 }
 
@@ -171,19 +460,6 @@ function containOversizedElements() {
 
     // 如果启用了 HTML 弹窗召出功能，则跳过在翻页文本流中的断页与强制收容逻辑
     if (extension_settings?.twt?.htmlPopupEnabled !== false) {
-        // 清理之前可能残留的收容标记，防止 htmlPopup 开关切换时样式不一致
-        const existingScrollable = chat.querySelectorAll('.twt-pagination-scrollable');
-        if (existingScrollable.length > 0) {
-            existingScrollable.forEach(el => {
-                el.style.removeProperty('max-height');
-                el.style.removeProperty('overflow-y');
-                el.classList.remove('twt-pagination-scrollable');
-            });
-        }
-        const existingBreaks = chat.querySelectorAll('.twt-html-needs-break');
-        if (existingBreaks.length > 0) {
-            existingBreaks.forEach(el => el.classList.remove('twt-html-needs-break'));
-        }
         return;
     }
 
@@ -365,28 +641,15 @@ function getChat() { return document.getElementById('chat'); }
  * 任何一页 page 的精确 scrollLeft 均为 page * S。
  * 彻底抹平因 Math.round() 整数化与亚像素 (subpixel) 渲染不匹配导致的“逐页累积偏移/左移”Bug！
  */
-function getColStep(chat) {
+export function getColStep(chat) {
     if (!chat) return 0;
+    if (stableColWidth > 0) return stableColWidth;
     const rawWidth = chat.getBoundingClientRect().width || chat.clientWidth;
     if (rawWidth <= 0) return 0;
     const scrollW = chat.scrollWidth;
     if (scrollW <= 0) return rawWidth;
     const n = Math.max(1, Math.round(scrollW / rawWidth));
-    const calculatedS = scrollW / n;
-
-    // Streaming intermediate-state detection (replaces the old 1.5px fixed threshold).
-    // Compute what fraction of the last column is filled. In a stable layout the last
-    // column is either ~0% (content ends exactly on a page boundary) or ~100% (about to
-    // overflow into a new column); in both cases calculatedS is the correct exact step.
-    // If the fill ratio falls in the 5%-95% "true middle" range the column is being
-    // streamed into: scrollWidth is a transient value, calculatedS undershoots rawWidth,
-    // so lock onto rawWidth to prevent pages from drifting while AI generates text.
-    const exactColCount = scrollW / rawWidth;
-    const lastColFillRatio = exactColCount - Math.floor(exactColCount);
-    if (lastColFillRatio > 0.05 && lastColFillRatio < 0.95) {
-        return rawWidth;
-    }
-    return calculatedS;
+    return scrollW / n;
 }
 
 function getColWidth(chat) {
@@ -409,6 +672,7 @@ function scrollToPage(chat, page, cw) {
     // 350ms timeout force-unlock, prevents isScrolling deadlock if scrollend never fires
     scrollUnlockTimer = setTimeout(() => {
         isScrolling = false;
+        updateActiveReadingAnchor();
     }, 350);
 
     chat.scrollTo({ left: page * step, behavior: 'smooth' });
@@ -418,7 +682,7 @@ function scrollToPage(chat, page, cw) {
 // snap 校正（scroll 结束后对齐到最近整页）
 // ============================================================
 function doSnap(chat) {
-    if (isTouching || isKeyboardOpen || isFocusGuarding) return;
+    if (isTouching || isInputFocused()) return;
     if (!document.body.classList.contains('twt-reading-mode')) return;
     if (document.body.classList.contains('twt-paragraph-editing')) return;
 
@@ -442,6 +706,7 @@ function doSnap(chat) {
     lastUserPage = Math.round(chat.scrollLeft / cw);
     isScrolling = false;
     clearTimeout(scrollUnlockTimer);
+    updateActiveReadingAnchor();
 }
 
 // ============================================================
@@ -498,22 +763,33 @@ function updateColWidthWhenReady(retries = 20, interval = 150) {
             }
         }
         // ③ layout stable: restore reading position (P1 core)
-        // Read metadata async, then jump to saved page in next frame
-        restorePaginationPosition().then(savedPage => {
+        const shouldRestore = extension_settings?.twt?.autoRestoreReadingPosition !== false;
+        if (shouldRestore) {
+            // Read metadata async, then jump to saved page in next frame
+            restorePaginationPosition().then(savedPage => {
+                requestAnimationFrame(() => {
+                    if (!document.body.classList.contains('twt-reading-mode')) return;
+                    const restoredPage = savedPage > 0 ? savedPage : lastUserPage;
+                    if (restoredPage > 0) {
+                        const cw = stableColWidth > 0 ? stableColWidth : getColWidth(chat);
+                        const total = Math.round(chat.scrollWidth / cw);
+                        const page = Math.min(restoredPage, total - 1);
+                        lastUserPage = page;
+                        chat.scrollLeft = page * cw;
+                    } else {
+                        chat.scrollLeft = 0;
+                    }
+                    setTimeout(updateActiveReadingAnchor, 100);
+                });
+            });
+        } else {
             requestAnimationFrame(() => {
                 if (!document.body.classList.contains('twt-reading-mode')) return;
-                const restoredPage = savedPage > 0 ? savedPage : lastUserPage;
-                if (restoredPage > 0) {
-                    const cw = stableColWidth > 0 ? stableColWidth : getColWidth(chat);
-                    const total = Math.round(chat.scrollWidth / cw);
-                    const page = Math.min(restoredPage, total - 1);
-                    lastUserPage = page;
-                    chat.scrollLeft = page * cw;
-                } else {
-                    chat.scrollLeft = 0;
-                }
+                lastUserPage = 0;
+                chat.scrollLeft = 0;
+                setTimeout(updateActiveReadingAnchor, 100);
             });
-        });
+        }
     });
 }
 
@@ -527,35 +803,57 @@ function initMutationObserver() {
     let debounceTimer = null;
     let pendingDelay  = null;
 
-    mutationObserver = new MutationObserver(() => {
+    mutationObserver = new MutationObserver((mutations) => {
         if (!document.body.classList.contains('twt-reading-mode')) return;
         if (document.body.classList.contains('twt-paragraph-editing')) return;
         if (isFocusGuarding) return;
 
+        // 检查是否有消息元素从 #chat 中被移除（如历史截断移出最旧楼层）
+        let mesRemoved = false;
+        if (mutations && mutations.length > 0) {
+            for (let i = 0; i < mutations.length; i++) {
+                const m = mutations[i];
+                if (m.type === 'childList' && m.removedNodes && m.removedNodes.length > 0) {
+                    for (let j = 0; j < m.removedNodes.length; j++) {
+                        const node = m.removedNodes[j];
+                        if (node.nodeType === 1 && (node.classList?.contains('mes') || node.id === 'show_more_messages')) {
+                            mesRemoved = true;
+                            break;
+                        }
+                    }
+                }
+                if (mesRemoved) break;
+            }
+        }
+
+        // 若最旧楼层在前面被截断移除，立即微任务级重定位锚点，彻底消除内容整体向前跳跃
+        if (mesRemoved && !isAutoScrollingToNewMessage && !isTouching && !isScrolling) {
+            realignToActiveAnchor();
+            requestAnimationFrame(() => {
+                realignToActiveAnchor();
+            });
+        }
+
+        // 用户打字输入期间，跳过背景重排与收容，保证键盘打字极速响应
+        if (isInputFocused()) return;
+
         clearTimeout(debounceTimer);
         clearTimeout(pendingDelay);
         debounceTimer = setTimeout(() => {
-            if (isTouching) {
-                // 滑动中推迟，重新安排而非递归赋值 debounceTimer（防止闭包引用混乱）
-                pendingDelay = setTimeout(() => {
-                    if (!mutationObserver) return;
-                    mutationObserver.disconnect();
-                    try { containOversizedElements(); } finally {
-                        mutationObserver.observe(chat, MUT_OPTS);
-                    }
-                }, 200);
-                return;
-            }
-            // Pause observer, process, resume. try/finally ensures observe() always runs.
+            if (isTouching || isInputFocused()) return;
             mutationObserver.disconnect();
             try {
                 containOversizedElements();
                 tagToolCallMessages();
-                // Streaming detection: a scrollWidth change means AI is appending to a new column.
+                // Streaming & content addition detection: a scrollWidth change means content appended
                 const currentSW = chat.scrollWidth;
                 if (currentSW !== lastKnownScrollWidth) {
-                    stableColWidth = 0; // Content still growing — invalidate cache
                     lastKnownScrollWidth = currentSW;
+                    const rw = chat.getBoundingClientRect().width || chat.clientWidth;
+                    if (rw > 0) {
+                        const n = Math.max(1, Math.round(currentSW / rw));
+                        stableColWidth = currentSW / n;
+                    }
                     // Schedule a rebuild check: if scrollWidth has not changed again after
                     // 600 ms (streaming ended), re-establish the stable step cache.
                     clearTimeout(stableColWidthTimer);
@@ -563,10 +861,10 @@ function initMutationObserver() {
                         const c = getChat();
                         if (!c || !document.body.classList.contains('twt-reading-mode')) return;
                         if (c.scrollWidth === lastKnownScrollWidth) {
-                            const rw = c.getBoundingClientRect().width || c.clientWidth;
-                            if (rw > 0) {
+                            const rw2 = c.getBoundingClientRect().width || c.clientWidth;
+                            if (rw2 > 0) {
                                 const sw2 = c.scrollWidth;
-                                const n2 = Math.max(1, Math.round(sw2 / rw));
+                                const n2 = Math.max(1, Math.round(sw2 / rw2));
                                 stableColWidth = sw2 / n2;
                             }
                         }
@@ -575,7 +873,7 @@ function initMutationObserver() {
             } finally {
                 mutationObserver.observe(chat, MUT_OPTS);
             }
-        }, 150);
+        }, 200);
     });
 
     mutationObserver.observe(chat, MUT_OPTS);
@@ -585,7 +883,7 @@ const MUT_OPTS = {
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ['open', 'style', 'class'],
+    attributeFilter: ['open'],
 };
 
 function disconnectMutationObserver() {
@@ -596,14 +894,26 @@ function disconnectMutationObserver() {
 }
 
 // ============================================================
-// ResizeObserver
+// ResizeObserver（带防抖与打字期静默）
 // ============================================================
+let resizeDebounceTimer = null;
 function initResizeObserver() {
     const chat = getChat();
     if (!chat || resizeObserver) return;
     resizeObserver = new ResizeObserver(() => {
-        if (isKeyboardOpen || isFocusGuarding) return;
-        updateColWidth();
+        if (isInputFocused()) return;
+        clearTimeout(resizeDebounceTimer);
+        resizeDebounceTimer = setTimeout(() => {
+            if (!document.body.classList.contains('twt-reading-mode')) return;
+            if (isInputFocused()) return;
+            const rawW = chat.getBoundingClientRect().width || chat.clientWidth;
+            if (rawW <= 0) return;
+            const currentVar = chat.style.getPropertyValue('--twt-col-width');
+            if (currentVar !== `${rawW}px`) {
+                updateColWidth();
+                realignToActiveAnchor();
+            }
+        }, 120);
     });
     resizeObserver.observe(chat);
 }
@@ -631,82 +941,88 @@ function initVirtualKeyboardGuard() {
     if (keyboardGuardInit) return;
     keyboardGuardInit = true;
 
-    // focusin：立即冻结高度 + 启动位置锁
-    document.addEventListener('focusin', e => {
+    // 当输入框失焦（键盘收起）时，平滑轻量校准一次阅读锚点
+    document.addEventListener('focusout', e => {
         if (!document.body.classList.contains('twt-reading-mode')) return;
         const t = e.target;
-        if (!t) return;
-        const inputLike = t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable;
-        if (!inputLike) return;
-        // 跳过段落编辑器自身的输入框
-        if (t.classList.contains('twt-p-textarea') || t.closest('.twt-p-editor')) return;
-
-        const chat = getChat();
-        if (!chat) return;
-
-        isFocusGuarding = true;
-        clearTimeout(focusGuardTimer);
-        if (!isKeyboardOpen) freezeHeight(chat);
-        startPositionLock(chat);
-
-        // 800ms 内键盘没确认弹出，解除保护
-        focusGuardTimer = setTimeout(() => {
-            isFocusGuarding = false;
-            if (!isKeyboardOpen) {
-                unfreezeHeight(chat);
-                stopPositionLock();
-            }
-        }, 800);
-    });
-
-    if (!window.visualViewport) return;
-
-    const vv = window.visualViewport;
-    let lastVVH = vv.height;
-
-    vv.addEventListener('resize', () => {
-        if (!document.body.classList.contains('twt-reading-mode')) return;
-        const curVVH = vv.height;
-        const diff = lastVVH - curVVH;
-
-        if (diff > 100 && !isKeyboardOpen) {
-            // 键盘弹出
-            isKeyboardOpen = true;
-            clearTimeout(keyboardRestoreTimer);
-            isFocusGuarding = false;
-            clearTimeout(focusGuardTimer);
-
-            const chat = getChat();
-            if (chat) {
-                if (frozenHeight <= 0) freezeHeight(chat);
-                chat.scrollLeft = lastUserPage * chat.getBoundingClientRect().width;
-                startPositionLock(chat);
-            }
-        } else if (diff < -100 && isKeyboardOpen) {
-            // 键盘收起
-            clearTimeout(keyboardRestoreTimer);
-            keyboardRestoreTimer = setTimeout(() => {
-                const chat = getChat();
-                const active = document.activeElement;
-                // 先 blur 阻止原生焦点滚动
-                if (chat?.contains(active) && (
-                    active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable
-                )) active.blur();
-
-                unfreezeHeight(chat);
-                updateColWidth();
-
-                requestAnimationFrame(() => {
-                    const cw = chat?.getBoundingClientRect().width;
-                    if (cw > 0) chat.scrollLeft = lastUserPage * cw;
-                    isKeyboardOpen = false;
-                    stopPositionLock();
-                });
-            }, 300);
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) {
+            setTimeout(() => {
+                if (!isInputFocused()) {
+                    const chat = getChat();
+                    if (!chat) return;
+                    const rawW = chat.getBoundingClientRect().width || chat.clientWidth;
+                    if (rawW > 0 && chat.style.getPropertyValue('--twt-col-width') !== `${rawW}px`) {
+                        updateColWidth();
+                    }
+                    realignToActiveAnchor();
+                }
+            }, 250);
         }
-
-        lastVVH = curVVH;
     });
+}
+
+/**
+ * 获取消息楼层编号文本（如 "#15"）
+ */
+function getMessageFloorText(mes) {
+    const idDisplay = mes.querySelector('.mesIDDisplay');
+    const text = idDisplay?.textContent?.trim();
+    if (text) {
+        return text.startsWith('#') ? text : `#${text}`;
+    }
+    const mesId = mes.getAttribute('mesid');
+    if (mesId !== null && mesId !== undefined && mesId !== '') {
+        return `#${mesId}`;
+    }
+    const chat = mes.parentElement;
+    if (chat) {
+        const allMes = Array.from(chat.querySelectorAll('.mes'));
+        const idx = allMes.indexOf(mes);
+        if (idx >= 0) return `#${idx}`;
+    }
+    return '';
+}
+
+/**
+ * 注入或更新 Tool Call 楼层的专属楼层徽章
+ */
+function updateToolCallFloorBadge(mes) {
+    const floorText = getMessageFloorText(mes);
+    if (!floorText) return;
+
+    const summary = mes.querySelector('.mes_text details summary');
+    if (summary) {
+        let badge = summary.querySelector('.twt-toolcall-floor-badge');
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'twt-toolcall-floor-badge';
+            summary.prepend(badge);
+        }
+        const badgeContent = `<i class="fa-solid fa-wrench"></i><span>${floorText} 工具调用</span>`;
+        if (badge.innerHTML !== badgeContent) {
+            badge.innerHTML = badgeContent;
+        }
+        if (!summary.querySelector('.twt-toolcall-arrow')) {
+            const arrow = document.createElement('i');
+            arrow.className = 'fa-solid fa-chevron-right twt-toolcall-arrow';
+            summary.appendChild(arrow);
+        }
+    } else {
+        const mesText = mes.querySelector('.mes_text');
+        if (mesText) {
+            let badge = mesText.querySelector(':scope > .twt-toolcall-floor-badge');
+            if (!badge) {
+                badge = document.createElement('div');
+                badge.className = 'twt-toolcall-floor-badge';
+                badge.style.marginBottom = '4px';
+                mesText.prepend(badge);
+            }
+            const badgeContent = `<i class="fa-solid fa-wrench"></i><span>${floorText} 工具调用</span>`;
+            if (badge.innerHTML !== badgeContent) {
+                badge.innerHTML = badgeContent;
+            }
+        }
+    }
 }
 
 /**
@@ -723,6 +1039,7 @@ export function tagToolCallMessages(settings = extension_settings?.twt) {
             if (!mes.classList.contains('twt-toolcall-mes')) {
                 mes.classList.add('twt-toolcall-mes');
             }
+            updateToolCallFloorBadge(mes);
         });
     } catch (e) {
         console.warn('[TwT] Invalid toolCallSelector:', e);
@@ -736,12 +1053,15 @@ export function tagToolCallMessages(settings = extension_settings?.twt) {
 export function applyPaginationMode(enabled, settings) {
     if (enabled) {
         document.body.classList.add('twt-reading-mode');
+        const chat = getChat();
+        if (chat) lockChatScrollTop(chat);
         if (settings) {
             document.body.classList.toggle('twt-swipe-disabled',      !settings.swipeEnabled);
             document.body.classList.toggle('twt-message-page',        !!settings.messagePageEnabled);
             document.body.classList.toggle('twt-avatar-theme-layout', settings.avatarLayoutMode === 'theme');
             document.body.classList.toggle('twt-toolcall-hide',       settings.toolCallMode === 'hide');
-            document.body.classList.toggle('twt-toolcall-compact',    (settings.toolCallMode || 'compact') === 'compact');
+            document.body.classList.toggle('twt-toolcall-compact',    settings.toolCallMode === 'compact');
+            document.body.classList.toggle('twt-toolcall-minimal',    (settings.toolCallMode || 'minimal') === 'minimal');
             document.body.classList.toggle('twt-toolcall-no-break',   settings.toolCallNoPageBreak !== false);
             tagToolCallMessages(settings);
         }
@@ -755,21 +1075,15 @@ export function applyPaginationMode(enabled, settings) {
         document.body.classList.remove(
             'twt-reading-mode', 'twt-swipe-disabled',
             'twt-message-page', 'twt-avatar-theme-layout',
-            'twt-toolcall-hide', 'twt-toolcall-compact', 'twt-toolcall-no-break'
+            'twt-toolcall-hide', 'twt-toolcall-compact', 'twt-toolcall-minimal', 'twt-toolcall-no-break'
         );
         window.removeEventListener('resize', onWindowResize);
 
         if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null; }
         disconnectMutationObserver();
 
-        isKeyboardOpen = false;
-        isFocusGuarding = false;
-        clearTimeout(keyboardRestoreTimer);
-        clearTimeout(focusGuardTimer);
-        stopPositionLock();
-
         const chat = getChat();
-        unfreezeHeight(chat);
+        if (chat) unlockChatScrollTop(chat);
         if (chat) {
             chat.querySelectorAll('.twt-pagination-scrollable').forEach(el => {
                 el.style.removeProperty('max-height');
@@ -784,7 +1098,7 @@ export function applyPaginationMode(enabled, settings) {
 }
 
 function onWindowResize() {
-    if (isKeyboardOpen || isFocusGuarding) return;
+    if (isInputFocused()) return;
     updateColWidth();
 }
 
@@ -802,17 +1116,23 @@ export function refreshPagination(targetPage = null) {
 }
 
 export function scrollPageLeft() {
+    if (isInputFocused()) return;
     const chat = getChat();
     if (!chat) return;
-    const cw = getColWidth(chat);
+    const cw = stableColWidth > 0 ? stableColWidth : getColWidth(chat);
     if (cw <= 0) return;
+    if (lastUserPage <= 0 && document.getElementById('show_more_messages')) {
+        triggerLoadMoreMessages(true);
+        return;
+    }
     scrollToPage(chat, lastUserPage - 1, cw);
 }
 
 export function scrollPageRight() {
+    if (isInputFocused()) return;
     const chat = getChat();
     if (!chat) return;
-    const cw = getColWidth(chat);
+    const cw = stableColWidth > 0 ? stableColWidth : getColWidth(chat);
     if (cw <= 0) return;
     scrollToPage(chat, lastUserPage + 1, cw);
 }
@@ -853,15 +1173,7 @@ export function realignPagination(verbose = true) {
         node = node.parentElement;
     }
 
-    // 2. 解除输入框键盘高度冻结状态与位置锁
-    isFocusGuarding = false;
-    isKeyboardOpen = false;
-    clearTimeout(focusGuardTimer);
-    clearTimeout(keyboardRestoreTimer);
-    stopPositionLock();
-    unfreezeHeight(chat);
-
-    // 3. 强制清零所有层级的纵向滚动
+    // 2. 强制清零所有层级的纵向滚动
     chat.scrollTop = 0;
     document.documentElement.scrollTop = 0;
     document.body.scrollTop = 0;
@@ -991,6 +1303,7 @@ export function resetPaginationBinding(getSettings) {
     function tryBind(retries) {
         const chat = getChat();
         if (chat) {
+            lockChatScrollTop(chat);
             initResizeObserver();
             bindScrollEvents(getSettings);
             // ② 切换后：列宽稳定时会触发位置恢复（见 updateColWidthWhenReady）
@@ -1022,6 +1335,15 @@ export function initPaginationEvent(getSettings) {
 
         const chat = getChat();
         if (!chat?.contains(e.target)) return;
+
+        // 专门处理点击加载更多历史消息按钮
+        const showMoreClicked = e.target.closest('#show_more_messages');
+        if (showMoreClicked) {
+            e.preventDefault();
+            e.stopPropagation();
+            triggerLoadMoreMessages(false);
+            return;
+        }
 
         // 装饰层穿透修复：若 e.target 的 pointer-events 计算值为 none，
         // 说明它是美化主题中的装饰性容器（如 .mesAvatarWrapper），
@@ -1065,6 +1387,10 @@ export function initPaginationEvent(getSettings) {
 
         const ratio = e.clientX / window.innerWidth;
         if (ratio < 0.3) {
+            if (lastUserPage <= 0 && document.getElementById('show_more_messages')) {
+                triggerLoadMoreMessages(true);
+                return;
+            }
             scrollToPage(chat, lastUserPage - 1, cw);
         } else if (ratio > 0.7) {
             scrollToPage(chat, lastUserPage + 1, cw);
@@ -1099,7 +1425,7 @@ function bindScrollEvents(getSettings) {
 
     chat.addEventListener('scroll', () => {
         if (document.body.classList.contains('twt-paragraph-editing')) return;
-        if (isFocusGuarding || isKeyboardOpen) return;
+        if (isInputFocused()) return;
 
         // Update lastUserPage whenever scrollLeft changes (prevents page-number deadlock).
         // Prefer the stable step cache to avoid wrong rounding during streaming.
@@ -1124,6 +1450,7 @@ function bindScrollEvents(getSettings) {
     let touchStartTime = 0;
     let touchIsHorizontal = null; // null=未判定, true=横, false=纵
     let touchStartPage = 0;
+    let touchMaxScroll = 0;
 
     chat.addEventListener('touchstart', e => {
         if (!document.body.classList.contains('twt-reading-mode')) return;
@@ -1142,8 +1469,9 @@ function bindScrollEvents(getSettings) {
         touchStartTime = Date.now();
         touchIsHorizontal = null;
 
-        const cw = getColWidth(chat);
+        const cw = stableColWidth > 0 ? stableColWidth : getColWidth(chat);
         touchStartPage = cw > 0 ? Math.round(touchStartLeft / cw) : 0;
+        touchMaxScroll = Math.max(0, chat.scrollWidth - (cw > 0 ? cw : (chat.clientWidth || 100)));
     }, { passive: true, signal });
 
     chat.addEventListener('touchmove', e => {
@@ -1163,10 +1491,8 @@ function bindScrollEvents(getSettings) {
         }
         if (!touchIsHorizontal) return;
 
-        const dx  = e.touches[0].clientX - touchStartX;
-        // Use the stable step (or fallback) to compute the max scroll boundary
-        const max = chat.scrollWidth - (stableColWidth > 0 ? stableColWidth : getColWidth(chat));
-        chat.scrollLeft = Math.max(0, Math.min(max, touchStartLeft - dx));
+        const dx = e.touches[0].clientX - touchStartX;
+        chat.scrollLeft = Math.max(0, Math.min(touchMaxScroll, touchStartLeft - dx));
     }, { passive: true, signal });
 
     chat.addEventListener('touchend', e => {
@@ -1211,6 +1537,15 @@ function bindScrollEvents(getSettings) {
             targetPage = Math.max(touchStartPage - 1, Math.min(touchStartPage + 1, nearest));
         }
 
+        if (targetPage < 0) {
+            if (document.getElementById('show_more_messages')) {
+                isTouching = false;
+                isScrolling = false;
+                triggerLoadMoreMessages(true);
+                return;
+            }
+        }
+
         scrollToPage(chat, targetPage, cw);
 
         // 双重保险解除 isTouching：scrollend 事件（优先）+ 600ms 超时兜底（唯一，不重复）
@@ -1218,6 +1553,7 @@ function bindScrollEvents(getSettings) {
             isTouching  = false;
             isScrolling = false;
             clearTimeout(fallback);
+            updateActiveReadingAnchor();
         };
         const fallback = setTimeout(cleanup, 600);
         // 无论是否支持 scrollend，fallback 始终兜底；支持时 scrollend 可提前触发
