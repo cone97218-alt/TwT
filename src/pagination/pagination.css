@@ -268,12 +268,22 @@ body.twt-reading-mode.twt-toolcall-compact .twt-toolcall-floor-badge {
     font-weight: 600 !important;
     line-height: 1.4 !important;
     border-radius: 4px !important;
-    background: color-mix(in srgb, var(--SmartThemeBorderColor, #888) 22%, transparent) !important;
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #888) 38%, transparent) !important;
     color: var(--SmartThemeBodyColor, inherit) !important;
     white-space: nowrap !important;
     flex-shrink: 0 !important;
     user-select: none !important;
+    box-shadow: none !important;
+}
+
+body.twt-reading-mode.twt-toolcall-compact .twt-toolcall-floor-badge {
+    background: color-mix(in srgb, var(--SmartThemeBorderColor, #888) 22%, transparent) !important;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #888) 38%, transparent) !important;
+}
+
+body.twt-reading-mode.twt-toolcall-minimal .twt-toolcall-floor-badge {
+    background: transparent !important;
+    background-color: transparent !important;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #888) 35%, transparent) !important;
 }
 
 body.twt-reading-mode.twt-toolcall-minimal .twt-toolcall-floor-badge i,
@@ -346,17 +356,21 @@ body.twt-reading-mode.twt-toolcall-minimal #chat .mes.twt-toolcall-mes .mes_text
     content: none !important;
 }
 
-/* 纯净胶囊主体样式 */
+/* 纯净极简主体样式：完全透明背景、无阴影、无外边框 */
 body.twt-reading-mode.twt-toolcall-minimal #chat .mes.toolCall,
 body.twt-reading-mode.twt-toolcall-minimal #chat .mes[is_system="true"].toolCall,
 body.twt-reading-mode.twt-toolcall-minimal #chat .mes.twt-toolcall-mes {
-    margin: 4px 0 !important;
-    padding: 4px 8px !important;
+    margin: 2px 0 !important;
+    padding: 2px 4px !important;
     min-height: unset !important;
-    border-radius: 6px !important;
-    background: color-mix(in srgb, var(--SmartThemeDarkColor, #1a1a1a) 65%, transparent) !important;
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #888) 30%, transparent) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    background-image: none !important;
+    border: none !important;
     box-shadow: none !important;
+    filter: none !important;
+    backdrop-filter: none !important;
     break-inside: avoid !important;
     page-break-inside: avoid !important;
     -webkit-column-break-inside: avoid !important;
@@ -373,7 +387,10 @@ body.twt-reading-mode.twt-toolcall-minimal #chat .mes.twt-toolcall-mes .mes_bloc
     width: 100% !important;
     border: none !important;
     background: transparent !important;
+    background-color: transparent !important;
+    background-image: none !important;
     box-shadow: none !important;
+    filter: none !important;
 }
 
 body.twt-reading-mode.twt-toolcall-minimal #chat .mes.toolCall .mes_text,
@@ -391,6 +408,10 @@ body.twt-reading-mode.twt-toolcall-minimal #chat .mes[is_system="true"].toolCall
 body.twt-reading-mode.twt-toolcall-minimal #chat .mes.twt-toolcall-mes details {
     margin: 0 !important;
     padding: 0 !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
 }
 
 body.twt-reading-mode.twt-toolcall-minimal #chat .mes.toolCall summary,
@@ -408,6 +429,10 @@ body.twt-reading-mode.twt-toolcall-minimal #chat .mes.twt-toolcall-mes summary {
     outline: none !important;
     color: var(--SmartThemeBodyColor, inherit) !important;
     list-style: none !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
 }
 
 body.twt-reading-mode.twt-toolcall-minimal #chat .mes.toolCall summary::-webkit-details-marker,
