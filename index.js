@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
-import { applyPaginationMode, initPaginationEvent, resetPaginationBinding, realignPagination, handleMoreMessagesLoaded, handleNewMessageRendered, markAutoScrollingToNewMessage, updateActiveReadingAnchor } from './src/pagination/pagination.js';
+import { applyPaginationMode, initPaginationEvent, resetPaginationBinding, realignPagination, handleMoreMessagesLoaded, handleNewMessageRendered, markAutoScrollingToNewMessage, updateActiveReadingAnchor, lockReadingPosition, unlockReadingPosition, realignToActiveAnchor } from './src/pagination/pagination.js';
 import { applyVisualMode } from './src/visual/visual.js';
 import { initMulu, applyMuluSettings } from './src/mulu/mulu.js';
 import { initMenu, applyMenuMode, applyFullscreenMode } from './src/menu/menu.js';
@@ -1854,6 +1854,9 @@ function bindUI() {
 
     $autoScrollNewMessage.on('change', function () {
         extension_settings.twt.autoScrollNewMessage = $(this).prop('checked');
+        if (!extension_settings.twt.autoScrollNewMessage) {
+            updateActiveReadingAnchor();
+        }
         getContext().saveSettingsDebounced();
     });
 
@@ -3429,12 +3432,36 @@ jQuery(async () => {
             if (ctx.eventTypes.MESSAGE_SENT) {
                 ctx.eventSource.on(ctx.eventTypes.MESSAGE_SENT, () => {
                     if (extension_settings.twt?.enabled) {
-                        updateActiveReadingAnchor();
                         if (extension_settings.twt.autoScrollNewMessage !== false) {
+                            updateActiveReadingAnchor();
                             markAutoScrollingToNewMessage();
+                        } else {
+                            lockReadingPosition();
                         }
                     }
                 });
+            }
+            if (ctx.eventTypes.GENERATION_STARTED) {
+                ctx.eventSource.on(ctx.eventTypes.GENERATION_STARTED, () => {
+                    if (extension_settings.twt?.enabled && extension_settings.twt.autoScrollNewMessage === false) {
+                        lockReadingPosition();
+                    }
+                });
+            }
+            const onGenerationDone = () => {
+                if (extension_settings.twt?.enabled && extension_settings.twt.autoScrollNewMessage === false) {
+                    realignToActiveAnchor();
+                    setTimeout(() => {
+                        realignToActiveAnchor();
+                        unlockReadingPosition();
+                    }, 120);
+                }
+            };
+            if (ctx.eventTypes.GENERATION_STOPPED) {
+                ctx.eventSource.on(ctx.eventTypes.GENERATION_STOPPED, onGenerationDone);
+            }
+            if (ctx.eventTypes.GENERATION_ENDED) {
+                ctx.eventSource.on(ctx.eventTypes.GENERATION_ENDED, onGenerationDone);
             }
             if (ctx.eventTypes.USER_MESSAGE_RENDERED) {
                 ctx.eventSource.on(ctx.eventTypes.USER_MESSAGE_RENDERED, onNewMessage);

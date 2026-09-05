@@ -177,6 +177,8 @@ export function captureReadingAnchor() {
     const pageCenter = currentScrollLeft + (cw / 2);
     const chatRect = chat.getBoundingClientRect();
     const messages = Array.from(chat.querySelectorAll('.mes'));
+    let closestMes = null;
+    let minDistance = Infinity;
     for (let i = messages.length - 1; i >= 0; i--) {
         const mes = messages[i];
         const rect = mes.getBoundingClientRect();
@@ -187,6 +189,16 @@ export function captureReadingAnchor() {
             const offsetInMes = pageCenter - absLeft;
             return { mesId, offsetInMes, rectWidth: rect.width };
         }
+        const dist = Math.min(Math.abs(pageCenter - absLeft), Math.abs(pageCenter - absRight));
+        if (dist < minDistance) {
+            minDistance = dist;
+            closestMes = { mes, absLeft, rectWidth: rect.width };
+        }
+    }
+    if (closestMes && closestMes.mes) {
+        const mesId = closestMes.mes.getAttribute('mesid');
+        const offsetInMes = Math.max(0, pageCenter - closestMes.absLeft);
+        return { mesId, offsetInMes, rectWidth: closestMes.rectWidth };
     }
     const firstMes = chat.querySelector('.mes');
     if (firstMes) {
@@ -199,6 +211,27 @@ let activeReadingAnchor = null;
 let isAutoScrollingToNewMessage = false;
 let autoScrollTimeout = null;
 
+let isReadingPositionLocked = false;
+let lockedReadingAnchor = null;
+
+export function lockReadingPosition() {
+    const chat = getChat();
+    if (!chat || !document.body.classList.contains('twt-reading-mode')) return;
+    updateActiveReadingAnchor();
+    if (!activeReadingAnchor || !activeReadingAnchor.mesId) {
+        activeReadingAnchor = captureReadingAnchor();
+    }
+    if (activeReadingAnchor) {
+        lockedReadingAnchor = { ...activeReadingAnchor };
+    }
+    isReadingPositionLocked = true;
+}
+
+export function unlockReadingPosition() {
+    isReadingPositionLocked = false;
+    lockedReadingAnchor = null;
+}
+
 export function markAutoScrollingToNewMessage() {
     isAutoScrollingToNewMessage = true;
     clearTimeout(autoScrollTimeout);
@@ -208,7 +241,7 @@ export function markAutoScrollingToNewMessage() {
 }
 
 export function updateActiveReadingAnchor() {
-    if (isTouching || isScrolling || isAutoScrollingToNewMessage) return;
+    if (isTouching || isScrolling || isAutoScrollingToNewMessage || isReadingPositionLocked) return;
     const anchor = captureReadingAnchor();
     if (anchor && anchor.mesId) {
         activeReadingAnchor = anchor;
@@ -216,13 +249,20 @@ export function updateActiveReadingAnchor() {
 }
 
 export function realignToActiveAnchor() {
-    if (!activeReadingAnchor || !activeReadingAnchor.mesId) return false;
-    if (isAutoScrollingToNewMessage || isTouching || isScrolling) return false;
+    const anchor = (isReadingPositionLocked && lockedReadingAnchor) ? lockedReadingAnchor : activeReadingAnchor;
+    if (!anchor || !anchor.mesId) return false;
+    if (isTouching) return false;
+    if (isAutoScrollingToNewMessage) return false;
+    if (isReadingPositionLocked) {
+        isScrolling = false;
+    } else if (isScrolling) {
+        return false;
+    }
 
     const chat = getChat();
     if (!chat || !document.body.classList.contains('twt-reading-mode')) return false;
 
-    let anchorEl = chat.querySelector(`.mes[mesid="${activeReadingAnchor.mesId}"]`);
+    let anchorEl = chat.querySelector(`.mes[mesid="${anchor.mesId}"]`);
     if (!anchorEl) {
         // 若当前锚点消息已被移除（如被淘汰的最旧楼层），降级对齐当前剩下的第一条消息
         anchorEl = chat.querySelector('.mes');
@@ -243,7 +283,7 @@ export function realignToActiveAnchor() {
     const rect = anchorEl.getBoundingClientRect();
     const currentScrollLeft = chat.scrollLeft;
     const absoluteLeft = rect.left - chatRect.left + currentScrollLeft;
-    const targetPos = absoluteLeft + (activeReadingAnchor.offsetInMes ?? (step / 2));
+    const targetPos = absoluteLeft + (anchor.offsetInMes ?? (step / 2));
     const targetPage = Math.max(0, Math.floor(targetPos / step));
     const expectedScrollLeft = targetPage * step;
 
@@ -374,6 +414,7 @@ export function handleNewMessageRendered(messageId, settings = extension_setting
     chat.scrollTop = 0;
 
     if (shouldAutoScroll) {
+        unlockReadingPosition();
         markAutoScrollingToNewMessage();
         // 双帧等待，确保插入新消息及可能发生的历史截断（如 JSR cancelChatMessages）完全执行完毕
         requestAnimationFrame(() => {
@@ -420,7 +461,8 @@ export function handleNewMessageRendered(messageId, settings = extension_setting
             });
         });
     } else {
-        // 关闭自动翻页：双帧等待后严格按活跃阅读锚点定位，抵消最旧楼层被移出导致的向左漂移
+        // 关闭自动翻页：立即同步锁定并重定位锚点，随后双帧等待与延时再次对齐，抵消最旧楼层被移出导致的向左漂移或新消息导致的任何位移
+        realignToActiveAnchor();
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
                 if (!document.body.classList.contains('twt-reading-mode')) return;
@@ -617,7 +659,7 @@ function containOversizedElements() {
     }
 
     // 越界校正（优先使用稳定步长缓存）
-    if (!isTouching) {
+    if (!isTouching && !isReadingPositionLocked) {
         const cw = stableColWidth > 0 ? stableColWidth : getColWidth(chat);
         if (cw > 0) {
             const total = Math.round(chat.scrollWidth / cw);
@@ -660,6 +702,7 @@ let scrollUnlockTimer = null;
 
 function scrollToPage(chat, page, cw) {
     if (!chat) return;
+    unlockReadingPosition();
     // Prefer the verified stable step cache to avoid streamed-layout drift
     const step = stableColWidth > 0 ? stableColWidth : cw;
     const total = Math.round(chat.scrollWidth / step);
@@ -685,6 +728,11 @@ function doSnap(chat) {
     if (isTouching || isInputFocused()) return;
     if (!document.body.classList.contains('twt-reading-mode')) return;
     if (document.body.classList.contains('twt-paragraph-editing')) return;
+
+    if (isReadingPositionLocked) {
+        realignToActiveAnchor();
+        return;
+    }
 
     // Prefer the stable step cache. When the cache is absent (stableColWidth === 0,
     // i.e. during streaming) only update lastUserPage; do NOT force-write scrollLeft,
@@ -832,6 +880,11 @@ function initMutationObserver() {
             requestAnimationFrame(() => {
                 realignToActiveAnchor();
             });
+        }
+
+        // 若当前处于锁定阅读位置状态（关闭新消息自动翻页中），在任何 DOM 追加/变化时同步重对齐锁定
+        if (isReadingPositionLocked && !isTouching) {
+            realignToActiveAnchor();
         }
 
         // 用户打字输入期间，跳过背景重排与收容，保证键盘打字极速响应
@@ -1387,12 +1440,14 @@ export function initPaginationEvent(getSettings) {
 
         const ratio = e.clientX / window.innerWidth;
         if (ratio < 0.3) {
+            unlockReadingPosition();
             if (lastUserPage <= 0 && document.getElementById('show_more_messages')) {
                 triggerLoadMoreMessages(true);
                 return;
             }
             scrollToPage(chat, lastUserPage - 1, cw);
         } else if (ratio > 0.7) {
+            unlockReadingPosition();
             scrollToPage(chat, lastUserPage + 1, cw);
         }
     });
@@ -1426,6 +1481,7 @@ function bindScrollEvents(getSettings) {
     chat.addEventListener('scroll', () => {
         if (document.body.classList.contains('twt-paragraph-editing')) return;
         if (isInputFocused()) return;
+        if (isReadingPositionLocked) return;
 
         // Update lastUserPage whenever scrollLeft changes (prevents page-number deadlock).
         // Prefer the stable step cache to avoid wrong rounding during streaming.
@@ -1460,6 +1516,7 @@ function bindScrollEvents(getSettings) {
         if (!settings?.enabled || !settings.swipeEnabled) return;
 
         clearTimeout(snapTimer);
+        unlockReadingPosition();
         isTouching = true;
         isScrolling = false;
 

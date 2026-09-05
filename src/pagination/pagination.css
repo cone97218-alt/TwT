@@ -27,6 +27,9 @@ body.twt-reading-mode #chat {
     /* 比 preventDefault 更底层，无 passive 冲突问题 */
     touch-action: pan-y;
 
+    /* 彻底杜绝浏览器原生自动滚动锚定（Scroll Anchoring）在新消息追加或多列重排时擅自移动横向位移 */
+    overflow-anchor: none !important;
+
     /* 防护 TauriTavern 2.2.0+ 离屏渲染优化：强行关闭 content-visibility 与 contain，避免多列布局离屏高度坍缩 */
     content-visibility: visible !important;
     contain: none !important;
@@ -41,6 +44,7 @@ body.twt-reading-mode #chat .mes_block {
     content-visibility: visible !important;
     contain: none !important;
     contain-intrinsic-size: none !important;
+    overflow-anchor: none !important;
 }
 
 body.twt-reading-mode #chat::-webkit-scrollbar {
