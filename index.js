@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
-import { applyPaginationMode, initPaginationEvent, resetPaginationBinding, realignPagination, handleMoreMessagesLoaded, handleNewMessageRendered, markAutoScrollingToNewMessage, updateActiveReadingAnchor, lockReadingPosition, unlockReadingPosition, realignToActiveAnchor } from './src/pagination/pagination.js';
+import { applyPaginationMode, initPaginationEvent, resetPaginationBinding, realignPagination, handleMoreMessagesLoaded, handleNewMessageRendered, markAutoScrollingToNewMessage, updateActiveReadingAnchor, lockReadingPosition, unlockReadingPosition, realignToActiveAnchor, realignToMessageStart, handleMessageSwiped, handleGenerationStarted } from './src/pagination/pagination.js';
 import { applyVisualMode } from './src/visual/visual.js';
 import { initMulu, applyMuluSettings } from './src/mulu/mulu.js';
 import { initMenu, applyMenuMode, applyFullscreenMode } from './src/menu/menu.js';
@@ -3429,6 +3429,7 @@ jQuery(async () => {
                     handleNewMessageRendered(messageId, extension_settings.twt);
                 }
             };
+            let currentGenType = 'normal';
             if (ctx.eventTypes.MESSAGE_SENT) {
                 ctx.eventSource.on(ctx.eventTypes.MESSAGE_SENT, () => {
                     if (extension_settings.twt?.enabled) {
@@ -3441,10 +3442,18 @@ jQuery(async () => {
                     }
                 });
             }
+            if (ctx.eventTypes.MESSAGE_SWIPED) {
+                ctx.eventSource.on(ctx.eventTypes.MESSAGE_SWIPED, (mesId) => {
+                    if (extension_settings.twt?.enabled) {
+                        handleMessageSwiped(mesId);
+                    }
+                });
+            }
             if (ctx.eventTypes.GENERATION_STARTED) {
-                ctx.eventSource.on(ctx.eventTypes.GENERATION_STARTED, () => {
-                    if (extension_settings.twt?.enabled && extension_settings.twt.autoScrollNewMessage === false) {
-                        lockReadingPosition();
+                ctx.eventSource.on(ctx.eventTypes.GENERATION_STARTED, (type) => {
+                    currentGenType = type || 'normal';
+                    if (extension_settings.twt?.enabled) {
+                        handleGenerationStarted(type, extension_settings.twt);
                     }
                 });
             }
@@ -3454,7 +3463,10 @@ jQuery(async () => {
                     setTimeout(() => {
                         realignToActiveAnchor();
                         unlockReadingPosition();
+                        currentGenType = 'normal';
                     }, 120);
+                } else {
+                    currentGenType = 'normal';
                 }
             };
             if (ctx.eventTypes.GENERATION_STOPPED) {
@@ -3467,7 +3479,11 @@ jQuery(async () => {
                 ctx.eventSource.on(ctx.eventTypes.USER_MESSAGE_RENDERED, onNewMessage);
             }
             if (ctx.eventTypes.CHARACTER_MESSAGE_RENDERED) {
-                ctx.eventSource.on(ctx.eventTypes.CHARACTER_MESSAGE_RENDERED, onNewMessage);
+                ctx.eventSource.on(ctx.eventTypes.CHARACTER_MESSAGE_RENDERED, (messageId, type) => {
+                    if (extension_settings.twt?.enabled) {
+                        handleNewMessageRendered(messageId, extension_settings.twt, type || currentGenType);
+                    }
+                });
             }
 
             const lifecycleEvents = [

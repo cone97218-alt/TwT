@@ -264,9 +264,16 @@ export function realignToActiveAnchor() {
 
     let anchorEl = chat.querySelector(`.mes[mesid="${anchor.mesId}"]`);
     if (!anchorEl) {
-        // 若当前锚点消息已被移除（如被淘汰的最旧楼层），降级对齐当前剩下的第一条消息
-        anchorEl = chat.querySelector('.mes');
-        if (!anchorEl) return false;
+        // 若当前锚点消息暂未在 DOM 中（如正在重roll被短暂移除，或历史截断淘汰）：
+        const allMes = chat.querySelectorAll('.mes');
+        if (!allMes.length) return false;
+        const lastMes = allMes[allMes.length - 1];
+        const lastMesId = Number(lastMes.getAttribute('mesid') || 0);
+        if (Number(anchor.mesId) >= lastMesId) {
+            anchorEl = lastMes;
+        } else {
+            anchorEl = allMes[0];
+        }
     }
 
     const rw = chat.getBoundingClientRect().width || chat.clientWidth;
@@ -293,6 +300,104 @@ export function realignToActiveAnchor() {
         chat.scrollTop = 0;
     }
     return true;
+}
+
+/**
+ * 强制将视口对齐到指定消息的起始第一页 (offsetInMes = 0)
+ */
+export function realignToMessageStart(mesId) {
+    const chat = getChat();
+    if (!chat || !document.body.classList.contains('twt-reading-mode')) return false;
+
+    let targetMes = chat.querySelector(`.mes[mesid="${mesId}"]`);
+    if (!targetMes) {
+        targetMes = chat.querySelector('.mes:last-child');
+        if (!targetMes) return false;
+    }
+
+    const rw = chat.getBoundingClientRect().width || chat.clientWidth;
+    const sw = chat.scrollWidth;
+    if (sw > 0 && rw > 0) {
+        const n = Math.max(1, Math.round(sw / rw));
+        stableColWidth = sw / n;
+        lastKnownScrollWidth = sw;
+    }
+    const step = stableColWidth > 0 ? stableColWidth : getColStep(chat);
+    if (step <= 0) return false;
+
+    const chatRect = chat.getBoundingClientRect();
+    const rect = targetMes.getBoundingClientRect();
+    const currentScrollLeft = chat.scrollLeft;
+    const absLeft = rect.left - chatRect.left + currentScrollLeft;
+    const targetPage = Math.max(0, Math.floor(absLeft / step));
+    const expectedScrollLeft = targetPage * step;
+
+    lastUserPage = targetPage;
+    chat.scrollLeft = expectedScrollLeft;
+    chat.scrollTop = 0;
+    activeReadingAnchor = { mesId: String(mesId), offsetInMes: 0, rectWidth: rect.width };
+    if (isReadingPositionLocked) {
+        lockedReadingAnchor = { mesId: String(mesId), offsetInMes: 0, rectWidth: rect.width };
+    }
+    return true;
+}
+
+/**
+ * 当某楼层发生 swipe（切换候选项或触发重roll）时调用：
+ * 若读者正在阅读该楼层，将阅读视口与锚点重置到该消息第一页，避免继承上一个回答末尾的偏移量
+ */
+export function handleMessageSwiped(mesId) {
+    const chat = getChat();
+    if (!chat || !document.body.classList.contains('twt-reading-mode')) return;
+
+    const strId = String(mesId);
+    const currentAnchor = captureReadingAnchor();
+    const isCurrentMes = !currentAnchor || String(currentAnchor.mesId) === strId;
+
+    if (isCurrentMes) {
+        activeReadingAnchor = { mesId: strId, offsetInMes: 0, rectWidth: 0 };
+        if (isReadingPositionLocked) {
+            lockedReadingAnchor = { mesId: strId, offsetInMes: 0, rectWidth: 0 };
+        }
+        realignToMessageStart(strId);
+    }
+}
+
+/**
+ * 当开始生成（GENERATION_STARTED）时调用：
+ * 针对重roll/swipe场景，将视口锁定在被重roll楼层的第一页，并防止流式生成期间漂移到末尾
+ */
+export function handleGenerationStarted(type, settings = extension_settings?.twt) {
+    const chat = getChat();
+    if (!chat || !document.body.classList.contains('twt-reading-mode')) return;
+
+    const shouldAutoScroll = settings?.autoScrollNewMessage !== false;
+    const isReroll = (type === 'swipe' || type === 'regenerate');
+
+    if (isReroll) {
+        const currentAnchor = captureReadingAnchor();
+        const lastMes = chat.querySelector('.mes:last-child');
+        const lastMesId = lastMes ? lastMes.getAttribute('mesid') : null;
+
+        // 如果读者当前正在看最后一楼（即被重roll的AI消息），或者当前锚点就是被重roll的消息
+        if (currentAnchor && lastMesId && (String(currentAnchor.mesId) === String(lastMesId) || Number(currentAnchor.mesId) >= Number(lastMesId) || !currentAnchor.mesId)) {
+            activeReadingAnchor = { mesId: String(lastMesId), offsetInMes: 0, rectWidth: 0 };
+            lockedReadingAnchor = { mesId: String(lastMesId), offsetInMes: 0, rectWidth: 0 };
+            isReadingPositionLocked = true;
+            realignToMessageStart(lastMesId);
+            return;
+        }
+
+        // 如果读者在看前面的楼层（例如在第 10 楼，后台重roll了第 30 楼），且关闭了自动翻页：
+        if (!shouldAutoScroll) {
+            lockReadingPosition();
+        }
+    } else {
+        // 普通发送新消息场景：
+        if (!shouldAutoScroll) {
+            lockReadingPosition();
+        }
+    }
 }
 
 export async function triggerLoadMoreMessages(isFlippingBackwards = false) {
@@ -404,7 +509,7 @@ export async function handleMoreMessagesLoaded(isExplicitJump = isExplicitJumpLo
  * 处理用户发送新消息或 AI 回复渲染完成（USER_MESSAGE_RENDERED / CHARACTER_MESSAGE_RENDERED）
  * 根据 autoScrollNewMessage 配置决定是否自动翻到最新一页，或者严格保持在当前阅读位置
  */
-export function handleNewMessageRendered(messageId, settings = extension_settings?.twt) {
+export function handleNewMessageRendered(messageId, settings = extension_settings?.twt, genType = null) {
     const chat = getChat();
     if (!chat || !document.body.classList.contains('twt-reading-mode')) return;
 
@@ -461,7 +566,16 @@ export function handleNewMessageRendered(messageId, settings = extension_setting
             });
         });
     } else {
-        // 关闭自动翻页：立即同步锁定并重定位锚点，随后双帧等待与延时再次对齐，抵消最旧楼层被移出导致的向左漂移或新消息导致的任何位移
+        // 关闭自动翻页分支：
+        const isReroll = (genType === 'swipe' || genType === 'regenerate');
+        if (isReroll && messageId !== undefined && messageId !== null) {
+            const anchorMesId = lockedReadingAnchor?.mesId || activeReadingAnchor?.mesId;
+            if (!anchorMesId || String(anchorMesId) === String(messageId)) {
+                // 若正在重roll这楼，将锚点严格锁定在这楼第一页 (offsetInMes: 0)
+                activeReadingAnchor = { mesId: String(messageId), offsetInMes: 0, rectWidth: 0 };
+                lockedReadingAnchor = { mesId: String(messageId), offsetInMes: 0, rectWidth: 0 };
+            }
+        }
         realignToActiveAnchor();
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
