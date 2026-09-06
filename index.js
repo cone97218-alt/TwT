@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
-import { applyPaginationMode, initPaginationEvent, resetPaginationBinding, realignPagination, handleMoreMessagesLoaded, handleNewMessageRendered, markAutoScrollingToNewMessage, updateActiveReadingAnchor, lockReadingPosition, unlockReadingPosition, realignToActiveAnchor, realignToMessageStart, handleMessageSwiped, handleGenerationStarted } from './src/pagination/pagination.js';
+import { applyPaginationMode, initPaginationEvent, resetPaginationBinding, realignPagination, handleMoreMessagesLoaded, handleNewMessageRendered, updateActiveReadingAnchor, handleUserMessageSent, handleMessageSwiped, handleGenerationStarted, handleGenerationEnded } from './src/pagination/pagination.js';
 import { applyVisualMode } from './src/visual/visual.js';
 import { initMulu, applyMuluSettings } from './src/mulu/mulu.js';
 import { initMenu, applyMenuMode, applyFullscreenMode } from './src/menu/menu.js';
@@ -3424,65 +3424,37 @@ jQuery(async () => {
                 });
             }
 
-            const onNewMessage = (messageId) => {
-                if (extension_settings.twt?.enabled) {
-                    handleNewMessageRendered(messageId, extension_settings.twt);
-                }
-            };
             let currentGenType = 'normal';
             if (ctx.eventTypes.MESSAGE_SENT) {
                 ctx.eventSource.on(ctx.eventTypes.MESSAGE_SENT, () => {
-                    if (extension_settings.twt?.enabled) {
-                        if (extension_settings.twt.autoScrollNewMessage !== false) {
-                            updateActiveReadingAnchor();
-                            markAutoScrollingToNewMessage();
-                        } else {
-                            lockReadingPosition();
-                        }
-                    }
+                    if (extension_settings.twt?.enabled) handleUserMessageSent(extension_settings.twt);
                 });
             }
             if (ctx.eventTypes.MESSAGE_SWIPED) {
                 ctx.eventSource.on(ctx.eventTypes.MESSAGE_SWIPED, (mesId) => {
-                    if (extension_settings.twt?.enabled) {
-                        handleMessageSwiped(mesId);
-                    }
+                    if (extension_settings.twt?.enabled) handleMessageSwiped(mesId);
                 });
             }
             if (ctx.eventTypes.GENERATION_STARTED) {
                 ctx.eventSource.on(ctx.eventTypes.GENERATION_STARTED, (type) => {
                     currentGenType = type || 'normal';
-                    if (extension_settings.twt?.enabled) {
-                        handleGenerationStarted(type, extension_settings.twt);
-                    }
+                    if (extension_settings.twt?.enabled) handleGenerationStarted(type, extension_settings.twt);
                 });
             }
-            const onGenerationDone = () => {
-                if (extension_settings.twt?.enabled && extension_settings.twt.autoScrollNewMessage === false) {
-                    realignToActiveAnchor();
-                    setTimeout(() => {
-                        realignToActiveAnchor();
-                        unlockReadingPosition();
-                        currentGenType = 'normal';
-                    }, 120);
-                } else {
-                    currentGenType = 'normal';
-                }
+            const onGenDone = () => {
+                if (extension_settings.twt?.enabled) handleGenerationEnded(extension_settings.twt);
+                currentGenType = 'normal';
             };
-            if (ctx.eventTypes.GENERATION_STOPPED) {
-                ctx.eventSource.on(ctx.eventTypes.GENERATION_STOPPED, onGenerationDone);
-            }
-            if (ctx.eventTypes.GENERATION_ENDED) {
-                ctx.eventSource.on(ctx.eventTypes.GENERATION_ENDED, onGenerationDone);
-            }
+            if (ctx.eventTypes.GENERATION_STOPPED) ctx.eventSource.on(ctx.eventTypes.GENERATION_STOPPED, onGenDone);
+            if (ctx.eventTypes.GENERATION_ENDED) ctx.eventSource.on(ctx.eventTypes.GENERATION_ENDED, onGenDone);
             if (ctx.eventTypes.USER_MESSAGE_RENDERED) {
-                ctx.eventSource.on(ctx.eventTypes.USER_MESSAGE_RENDERED, onNewMessage);
+                ctx.eventSource.on(ctx.eventTypes.USER_MESSAGE_RENDERED, (mesId) => {
+                    if (extension_settings.twt?.enabled) handleNewMessageRendered(mesId, extension_settings.twt, 'normal');
+                });
             }
             if (ctx.eventTypes.CHARACTER_MESSAGE_RENDERED) {
-                ctx.eventSource.on(ctx.eventTypes.CHARACTER_MESSAGE_RENDERED, (messageId, type) => {
-                    if (extension_settings.twt?.enabled) {
-                        handleNewMessageRendered(messageId, extension_settings.twt, type || currentGenType);
-                    }
+                ctx.eventSource.on(ctx.eventTypes.CHARACTER_MESSAGE_RENDERED, (mesId, type) => {
+                    if (extension_settings.twt?.enabled) handleNewMessageRendered(mesId, extension_settings.twt, type || currentGenType);
                 });
             }
 

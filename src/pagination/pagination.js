@@ -303,43 +303,15 @@ export function realignToActiveAnchor() {
 }
 
 /**
- * 强制将视口对齐到指定消息的起始第一页 (offsetInMes = 0)
+ * 将视口对齐到指定消息的起始第一页 (offsetInMes = 0)
  */
 export function realignToMessageStart(mesId) {
-    const chat = getChat();
-    if (!chat || !document.body.classList.contains('twt-reading-mode')) return false;
-
-    let targetMes = chat.querySelector(`.mes[mesid="${mesId}"]`);
-    if (!targetMes) {
-        targetMes = chat.querySelector('.mes:last-child');
-        if (!targetMes) return false;
-    }
-
-    const rw = chat.getBoundingClientRect().width || chat.clientWidth;
-    const sw = chat.scrollWidth;
-    if (sw > 0 && rw > 0) {
-        const n = Math.max(1, Math.round(sw / rw));
-        stableColWidth = sw / n;
-        lastKnownScrollWidth = sw;
-    }
-    const step = stableColWidth > 0 ? stableColWidth : getColStep(chat);
-    if (step <= 0) return false;
-
-    const chatRect = chat.getBoundingClientRect();
-    const rect = targetMes.getBoundingClientRect();
-    const currentScrollLeft = chat.scrollLeft;
-    const absLeft = rect.left - chatRect.left + currentScrollLeft;
-    const targetPage = Math.max(0, Math.floor(absLeft / step));
-    const expectedScrollLeft = targetPage * step;
-
-    lastUserPage = targetPage;
-    chat.scrollLeft = expectedScrollLeft;
-    chat.scrollTop = 0;
-    activeReadingAnchor = { mesId: String(mesId), offsetInMes: 0, rectWidth: rect.width };
+    if (mesId === undefined || mesId === null) return false;
+    activeReadingAnchor = { mesId: String(mesId), offsetInMes: 0, rectWidth: 0 };
     if (isReadingPositionLocked) {
-        lockedReadingAnchor = { mesId: String(mesId), offsetInMes: 0, rectWidth: rect.width };
+        lockedReadingAnchor = { mesId: String(mesId), offsetInMes: 0, rectWidth: 0 };
     }
-    return true;
+    return realignToActiveAnchor();
 }
 
 /**
@@ -347,19 +319,9 @@ export function realignToMessageStart(mesId) {
  * 若读者正在阅读该楼层，将阅读视口与锚点重置到该消息第一页，避免继承上一个回答末尾的偏移量
  */
 export function handleMessageSwiped(mesId) {
-    const chat = getChat();
-    if (!chat || !document.body.classList.contains('twt-reading-mode')) return;
-
-    const strId = String(mesId);
     const currentAnchor = captureReadingAnchor();
-    const isCurrentMes = !currentAnchor || String(currentAnchor.mesId) === strId;
-
-    if (isCurrentMes) {
-        activeReadingAnchor = { mesId: strId, offsetInMes: 0, rectWidth: 0 };
-        if (isReadingPositionLocked) {
-            lockedReadingAnchor = { mesId: strId, offsetInMes: 0, rectWidth: 0 };
-        }
-        realignToMessageStart(strId);
+    if (!currentAnchor || String(currentAnchor.mesId) === String(mesId)) {
+        realignToMessageStart(mesId);
     }
 }
 
@@ -371,32 +333,43 @@ export function handleGenerationStarted(type, settings = extension_settings?.twt
     const chat = getChat();
     if (!chat || !document.body.classList.contains('twt-reading-mode')) return;
 
-    const shouldAutoScroll = settings?.autoScrollNewMessage !== false;
     const isReroll = (type === 'swipe' || type === 'regenerate');
-
     if (isReroll) {
         const currentAnchor = captureReadingAnchor();
-        const lastMes = chat.querySelector('.mes:last-child');
-        const lastMesId = lastMes ? lastMes.getAttribute('mesid') : null;
-
-        // 如果读者当前正在看最后一楼（即被重roll的AI消息），或者当前锚点就是被重roll的消息
-        if (currentAnchor && lastMesId && (String(currentAnchor.mesId) === String(lastMesId) || Number(currentAnchor.mesId) >= Number(lastMesId) || !currentAnchor.mesId)) {
-            activeReadingAnchor = { mesId: String(lastMesId), offsetInMes: 0, rectWidth: 0 };
-            lockedReadingAnchor = { mesId: String(lastMesId), offsetInMes: 0, rectWidth: 0 };
+        const lastMesId = chat.querySelector('.mes:last-child')?.getAttribute('mesid');
+        if (!currentAnchor?.mesId || String(currentAnchor.mesId) === String(lastMesId) || Number(currentAnchor.mesId) >= Number(lastMesId)) {
             isReadingPositionLocked = true;
             realignToMessageStart(lastMesId);
             return;
         }
+    }
+    if (settings?.autoScrollNewMessage === false) {
+        lockReadingPosition();
+    }
+}
 
-        // 如果读者在看前面的楼层（例如在第 10 楼，后台重roll了第 30 楼），且关闭了自动翻页：
-        if (!shouldAutoScroll) {
-            lockReadingPosition();
-        }
+/**
+ * 用户发送新消息（MESSAGE_SENT）时的翻页/锁定调度
+ */
+export function handleUserMessageSent(settings = extension_settings?.twt) {
+    if (settings?.autoScrollNewMessage !== false) {
+        updateActiveReadingAnchor();
+        markAutoScrollingToNewMessage();
     } else {
-        // 普通发送新消息场景：
-        if (!shouldAutoScroll) {
-            lockReadingPosition();
-        }
+        lockReadingPosition();
+    }
+}
+
+/**
+ * 生成结束（GENERATION_STOPPED / GENERATION_ENDED）时的视口校准与解锁
+ */
+export function handleGenerationEnded(settings = extension_settings?.twt) {
+    if (settings?.autoScrollNewMessage === false) {
+        realignToActiveAnchor();
+        setTimeout(() => {
+            realignToActiveAnchor();
+            unlockReadingPosition();
+        }, 120);
     }
 }
 
@@ -571,9 +544,7 @@ export function handleNewMessageRendered(messageId, settings = extension_setting
         if (isReroll && messageId !== undefined && messageId !== null) {
             const anchorMesId = lockedReadingAnchor?.mesId || activeReadingAnchor?.mesId;
             if (!anchorMesId || String(anchorMesId) === String(messageId)) {
-                // 若正在重roll这楼，将锚点严格锁定在这楼第一页 (offsetInMes: 0)
-                activeReadingAnchor = { mesId: String(messageId), offsetInMes: 0, rectWidth: 0 };
-                lockedReadingAnchor = { mesId: String(messageId), offsetInMes: 0, rectWidth: 0 };
+                realignToMessageStart(messageId);
             }
         }
         realignToActiveAnchor();
