@@ -1311,6 +1311,13 @@ export function initPaginationEvent(getSettings) {
         const menu = document.getElementById('twt-custom-menu');
         if (menu && getComputedStyle(menu).display !== 'none') return;
 
+        // HTML / Iframe 浮窗弹窗召出中，或最近刚收起弹窗时，点按界面其余位置不触发翻页
+        if (document.body.classList.contains('twt-html-popup-active') ||
+            document.getElementById('twt-html-app-modal') ||
+            (Date.now() - (window.__twtLastHtmlModalCloseTime || 0) < 450)) {
+            return;
+        }
+
         const chat = getChat();
         if (!chat?.contains(e.target)) return;
 
@@ -1435,6 +1442,11 @@ function bindScrollEvents(getSettings) {
         if (!document.body.classList.contains('twt-reading-mode')) return;
         if (document.body.classList.contains('twt-paragraph-editing')) return;
         if (document.body.classList.contains('twt-excerpt-active')) return;
+        if (document.body.classList.contains('twt-html-popup-active') ||
+            document.getElementById('twt-html-app-modal') ||
+            (Date.now() - (window.__twtLastHtmlModalCloseTime || 0) < 450)) {
+            return;
+        }
         const settings = getSettings();
         if (!settings?.enabled || !settings.swipeEnabled) return;
 
@@ -1458,6 +1470,10 @@ function bindScrollEvents(getSettings) {
         if (!isTouching) return;
         if (!document.body.classList.contains('twt-reading-mode')) return;
         if (document.body.classList.contains('twt-excerpt-active')) return;
+        if (document.body.classList.contains('twt-html-popup-active') ||
+            document.getElementById('twt-html-app-modal')) {
+            return;
+        }
         const settings = getSettings();
         if (!settings?.enabled || !settings.swipeEnabled) return;
 

@@ -92,6 +92,7 @@ export function initMenu(getSettings, onToggleExcerpt) {
     // Handle PC right click (contextmenu) and block default context menu
     chatContainer.on('contextmenu', (e) => {
         if (isExcerptActive()) return;
+        if (document.body.classList.contains('twt-html-popup-active') || document.getElementById('twt-html-app-modal')) return;
         const settings = getSettings();
         if (!settings || !settings.menuEnabled) return;
 
@@ -121,6 +122,7 @@ export function initMenu(getSettings, onToggleExcerpt) {
 
     const handleStart = (e, clientX, clientY) => {
         if (isExcerptActive()) return;
+        if (document.body.classList.contains('twt-html-popup-active') || document.getElementById('twt-html-app-modal')) return;
         const settings = getSettings();
         if (!settings || !settings.menuEnabled || settings.menuInvokeMethod !== 'longpress') return;
 

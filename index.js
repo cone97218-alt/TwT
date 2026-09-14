@@ -121,6 +121,7 @@ const defaultSettings = {
     autoRestoreReadingPosition: true,
     htmlPageBreakEnabled: true,
     htmlPopupEnabled: true,
+    htmlPopupTriggerMode: 'qr',
     htmlPopupFallbackEnabled: false,
     htmlPopupSelector: 'iframe, .twt-custom-app, [data-app-container], .rendered-html-app',
     htmlPopupTitleMap: 'TH-message=剧情摘要\napp-stat=角色状态',
@@ -978,17 +979,93 @@ function findLinkedPreset(themeVal) {
         }
     }
 
-    // 3. 尝试 themeManager 标签关联
+    // 3. 尝试 themeManager 标签关联（支持多级标签、深度优先特化与祖先继承）
     if (window.themeManager) {
         try {
-            const tagIds = window.themeManager.getThemeTags(themeVal) || window.themeManager.getThemeTags(norm);
-            if (tagIds && tagIds.length > 0) {
-                const tagLinks = extension_settings.twt.presetTagLinks || {};
-                for (const tagId of tagIds) {
-                    if (tagLinks[tagId] && extension_settings.twt.visualPresets[tagLinks[tagId]]) {
-                        return tagLinks[tagId];
-                    }
+            const allTags = typeof window.themeManager.getTags === 'function' ? (window.themeManager.getTags() || []) : [];
+            const tagsById = new Map();
+            if (Array.isArray(allTags)) {
+                allTags.forEach(t => {
+                    if (t && t.id) tagsById.set(t.id, t);
+                });
+            }
+
+            // 获取主题直接关联的标签列表
+            const directTagIds = (typeof window.themeManager.getThemeTags === 'function'
+                ? (window.themeManager.getThemeTags(themeVal) || window.themeManager.getThemeTags(norm))
+                : []) || [];
+
+            // 计算指定标签在多级体系下的深度（根节点为 0，每深入一层 +1）
+            const getTagDepth = (tagId) => {
+                let depth = 0;
+                let curr = tagsById.get(tagId);
+                const visited = new Set([tagId]);
+                while (curr && curr.parentId && tagsById.has(curr.parentId) && !visited.has(curr.parentId)) {
+                    visited.add(curr.parentId);
+                    curr = tagsById.get(curr.parentId);
+                    if (curr) depth++;
                 }
+                return depth;
+            };
+
+            const tagLinks = extension_settings.twt.presetTagLinks || {};
+            const candidateMap = new Map(); // tagId -> { tagId, depth, isDirect, order }
+
+            // 收集所有候选标签：包括直接标签及其沿线所有祖先标签（实现子标签缺省时自动向上继承）
+            directTagIds.forEach((tagId, idx) => {
+                if (!candidateMap.has(tagId)) {
+                    candidateMap.set(tagId, {
+                        tagId,
+                        depth: getTagDepth(tagId),
+                        isDirect: true,
+                        order: idx
+                    });
+                }
+                // 递归回溯祖先链
+                let curr = tagsById.get(tagId);
+                const visited = new Set([tagId]);
+                while (curr && curr.parentId && tagsById.has(curr.parentId) && !visited.has(curr.parentId)) {
+                    visited.add(curr.parentId);
+                    const pId = curr.parentId;
+                    if (!candidateMap.has(pId)) {
+                        candidateMap.set(pId, {
+                            tagId: pId,
+                            depth: getTagDepth(pId),
+                            isDirect: false,
+                            order: idx + 1000 // 祖先节点在同深度下优先级次于直接关联标签
+                        });
+                    }
+                    curr = tagsById.get(pId);
+                }
+            });
+
+            const candidates = [];
+            for (const item of candidateMap.values()) {
+                const presetName = tagLinks[item.tagId];
+                if (presetName && extension_settings.twt.visualPresets && extension_settings.twt.visualPresets[presetName]) {
+                    candidates.push({
+                        ...item,
+                        presetName
+                    });
+                }
+            }
+
+            if (candidates.length > 0) {
+                // 排序规则：
+                // 1. depth 降序：层级越深（越特化）的子标签优先级越高
+                // 2. isDirect 优先：同深度下，直接挂载的标签优先于祖先继承
+                // 3. order 升序：保持原始检测顺序
+                candidates.sort((a, b) => {
+                    if (b.depth !== a.depth) {
+                        return b.depth - a.depth;
+                    }
+                    if (a.isDirect !== b.isDirect) {
+                        return a.isDirect ? -1 : 1;
+                    }
+                    return a.order - b.order;
+                });
+
+                return candidates[0].presetName;
             }
         } catch (err) {
             console.error('[TwT] 获取主题关联标签失败:', err);
@@ -1094,6 +1171,7 @@ function bindUI() {
     const $autoRestoreReadingPosition = $('#twt_auto_restore_reading_position');
     const $htmlPageBreakEnabled = $('#twt_html_page_break_enabled');
     const $htmlPopupEnabled = $('#twt_html_popup_enabled');
+    const $htmlPopupTriggerMode = $('#twt_html_popup_trigger_mode');
     const $htmlPopupFallbackEnabled = $('#twt_html_popup_fallback_enabled');
     const $htmlPopupSelector = $('#twt_html_popup_selector');
     const $htmlPopupTitleMap = $('#twt_html_popup_title_map');
@@ -1161,6 +1239,7 @@ function bindUI() {
     $autoRestoreReadingPosition.prop('checked', extension_settings.twt.autoRestoreReadingPosition !== false);
     $htmlPageBreakEnabled.prop('checked', extension_settings.twt.htmlPageBreakEnabled);
     $htmlPopupEnabled.prop('checked', extension_settings.twt.htmlPopupEnabled !== false);
+    $htmlPopupTriggerMode.val(extension_settings.twt.htmlPopupTriggerMode || 'qr');
     $htmlPopupFallbackEnabled.prop('checked', extension_settings.twt.htmlPopupFallbackEnabled === true);
     $htmlPopupSelector.val(extension_settings.twt.htmlPopupSelector || 'iframe, .twt-custom-app, [data-app-container], .rendered-html-app');
     $htmlPopupTitleMap.val(extension_settings.twt.htmlPopupTitleMap || '');
@@ -1204,6 +1283,13 @@ function bindUI() {
     updateParagraphSubOptionsVisibility();
     updateExcerptSubOptionsVisibility();
     updateFullscreenSubOptionsVisibility();
+    
+    const updateHtmlPopupSubOptionsVisibility = () => {
+        const isPopupOn = $htmlPopupEnabled.prop('checked');
+        $('#twt_html_popup_trigger_mode_row').toggle(isPopupOn);
+        $('#twt_html_popup_trigger_mode_hint').toggle(isPopupOn);
+    };
+    updateHtmlPopupSubOptionsVisibility();
     
     const updateLongpressDelayRow = () => {
         if ($menuInvokeMethod.val() === 'longpress') {
@@ -1323,7 +1409,7 @@ function bindUI() {
             });
         }
         
-        // 渲染标签列表 (如果 themeManager 可用)
+        // 渲染标签多级树状列表 (如果 themeManager 可用)
         const $tagContainer = getEl('#twt-tag-checkboxes-container');
         $tagContainer.empty();
         getEl('#twt-tag-search').val('');
@@ -1333,19 +1419,121 @@ function bindUI() {
             switchTab('themes'); // 默认展示主题页签
             
             try {
-                const tags = window.themeManager.getTags();
-                if (tags.length === 0) {
+                const tags = (typeof window.themeManager.getTags === 'function' ? window.themeManager.getTags() : []) || [];
+                if (!Array.isArray(tags) || tags.length === 0) {
                     $tagContainer.append(`<div style="font-size:0.9em; opacity:0.5; text-align:center; padding:10px;">未找到可用的主题标签。</div>`);
                 } else {
                     const tagLinks = extension_settings.twt.presetTagLinks || {};
-                    tags.forEach(tag => {
+                    const tagsById = new Map(tags.map(t => [t.id, t]));
+                    const childrenMap = new Map();
+
+                    // 构建父子级联映射
+                    tags.forEach(t => {
+                        if (t && t.parentId && tagsById.has(t.parentId)) {
+                            if (!childrenMap.has(t.parentId)) childrenMap.set(t.parentId, []);
+                            childrenMap.get(t.parentId).push(t);
+                        }
+                    });
+
+                    // 根节点（没有 parentId 或 parentId 不在当前列表的顶级标签）
+                    const rootTags = tags.filter(t => !t.parentId || !tagsById.has(t.parentId));
+
+                    // 获取面包屑完整路径（如：暗黑模式 / 极黑风格）
+                    const getTagFullPath = (tag) => {
+                        const parts = [tag.name];
+                        let curr = tag;
+                        const visited = new Set([tag.id]);
+                        while (curr && curr.parentId && tagsById.has(curr.parentId) && !visited.has(curr.parentId)) {
+                            visited.add(curr.parentId);
+                            curr = tagsById.get(curr.parentId);
+                            if (curr) parts.unshift(curr.name);
+                        }
+                        return parts.join(' / ');
+                    };
+
+                    // 递归渲染多级树节点
+                    const renderTagNode = (tag, depth = 0) => {
+                        const children = childrenMap.get(tag.id) || [];
+                        const hasChildren = children.length > 0;
+                        const fullPath = getTagFullPath(tag);
                         const isChecked = tagLinks[tag.id] === currentPresetName;
-                        $tagContainer.append(`
-                            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin:0; font-size:0.95em; padding:4px 0; user-select:none;">
-                                <input type="checkbox" class="twt-tag-link-cb" value="${tag.id}" ${isChecked ? 'checked' : ''} style="margin:0;" />
-                                <span class="tag-name-text">${tag.name}</span>
-                            </label>
-                        `);
+                        const otherPreset = (!isChecked && tagLinks[tag.id]) ? tagLinks[tag.id] : null;
+                        const themeCount = Array.isArray(tag.themes) ? tag.themes.length : 0;
+
+                        let badgeHtml = '';
+                        if (isChecked) {
+                            badgeHtml = `<span style="color: var(--SmartThemeUnderlineColor, #007aff); font-size: 0.75em; margin-left: auto; padding: 1px 5px; border-radius: 3px; background: rgba(0,122,255,0.15); flex-shrink: 0;">当前预设</span>`;
+                        } else if (otherPreset) {
+                            badgeHtml = `<span style="opacity: 0.55; font-size: 0.75em; margin-left: auto; padding: 1px 5px; border-radius: 3px; background: rgba(255,255,255,0.08); flex-shrink: 0;" title="当前已关联到预设: ${escapeHtml(otherPreset)}">已关联: ${escapeHtml(otherPreset)}</span>`;
+                        }
+
+                        let nodeHtml = `
+                            <div class="twt-tag-tree-node" data-tag-id="${tag.id}" data-parent-id="${tag.parentId || ''}" data-depth="${depth}" style="display: flex; flex-direction: column;">
+                                <div class="twt-tag-row" style="display: flex; align-items: center; gap: 4px; padding: 3px 6px 3px ${depth * 18 + 4}px; border-radius: 4px; user-select: none; font-size: 0.95em;">
+                                    ${hasChildren ? `
+                                        <span class="twt-tag-fold-btn" data-tag-id="${tag.id}" style="cursor: pointer; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.85em; opacity: 0.85; color: var(--SmartThemeQuoteColor, #007aff);" title="点击折叠/展开子标签">
+                                            <i class="fa-solid fa-caret-down"></i>
+                                        </span>
+                                    ` : `
+                                        <span style="width: 16px; flex-shrink: 0; display: inline-block;"></span>
+                                    `}
+                                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; margin: 0; flex: 1; min-width: 0;">
+                                        <input type="checkbox" class="twt-tag-link-cb" value="${tag.id}" ${isChecked ? 'checked' : ''} style="margin: 0; flex-shrink: 0;" />
+                                        <i class="${hasChildren ? 'fa-solid fa-folder-open' : 'fa-solid fa-tag'}" style="${hasChildren ? 'color: var(--SmartThemeQuoteColor, #007aff);' : 'opacity: 0.6; font-size: 0.85em;'} flex-shrink: 0;"></i>
+                                        <span class="tag-name-text" style="font-weight: ${depth === 0 ? '600' : 'normal'}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(fullPath)}">${escapeHtml(tag.name)}</span>
+                                        ${themeCount > 0 ? `<span style="opacity: 0.45; font-size: 0.8em; flex-shrink: 0;">(${themeCount})</span>` : ''}
+                                        ${badgeHtml}
+                                    </label>
+                                </div>
+                                ${hasChildren ? `
+                                    <div class="twt-tag-children-container" data-parent-id="${tag.id}" style="display: flex; flex-direction: column;">
+                                        ${children.map(child => renderTagNode(child, depth + 1)).join('')}
+                                    </div>
+                                ` : ''}
+                            </div>
+                        `;
+                        return nodeHtml;
+                    };
+
+                    const treeHtml = rootTags.map(rootTag => renderTagNode(rootTag, 0)).join('');
+                    $tagContainer.html(treeHtml);
+
+                    // 绑定折叠 / 展开单节点点击事件
+                    $tagContainer.find('.twt-tag-fold-btn').off('click').on('click', function(e) {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        const tagId = $(this).attr('data-tag-id');
+                        const $childContainer = $tagContainer.find(`.twt-tag-children-container[data-parent-id="${tagId}"]`);
+                        const $caretIcon = $(this).find('i');
+                        const $folderIcon = $(this).siblings('label').find('.fa-folder, .fa-folder-open');
+                        
+                        if ($childContainer.css('display') === 'none') {
+                            $childContainer.css('display', 'flex');
+                            $caretIcon.removeClass('fa-caret-right').addClass('fa-caret-down');
+                            $folderIcon.removeClass('fa-folder').addClass('fa-folder-open');
+                        } else {
+                            $childContainer.css('display', 'none');
+                            $caretIcon.removeClass('fa-caret-down').addClass('fa-caret-right');
+                            $folderIcon.removeClass('fa-folder-open').addClass('fa-folder');
+                        }
+                    });
+
+                    // 绑定顶部【全部展开 / 折叠】切换按钮事件
+                    getEl('#twt-tag-toggle-expand').off('click').on('click', function(e) {
+                        e.stopPropagation();
+                        const $allChildren = $tagContainer.find('.twt-tag-children-container');
+                        const hasHidden = $allChildren.filter(function() { return $(this).css('display') === 'none'; }).length > 0;
+                        if (hasHidden) {
+                            // 全部展开
+                            $allChildren.css('display', 'flex');
+                            $tagContainer.find('.twt-tag-fold-btn i').removeClass('fa-caret-right').addClass('fa-caret-down');
+                            $tagContainer.find('.twt-tag-row .fa-folder').removeClass('fa-folder').addClass('fa-folder-open');
+                        } else {
+                            // 全部折叠
+                            $allChildren.css('display', 'none');
+                            $tagContainer.find('.twt-tag-fold-btn i').removeClass('fa-caret-down').addClass('fa-caret-right');
+                            $tagContainer.find('.twt-tag-row .fa-folder-open').removeClass('fa-folder-open').addClass('fa-folder');
+                        }
                     });
                 }
             } catch (err) {
@@ -1361,7 +1549,7 @@ function bindUI() {
         getEl('#twt-link-theme-modal').css('display', 'flex');
     });
 
-    // 搜索过滤事件 (防抖延迟 1000ms 触发)
+    // 主题搜索过滤事件 (防抖延迟 250ms 触发)
     let themeSearchTimeout;
     getEl('#twt-theme-search').off('input').on('input', function() {
         clearTimeout(themeSearchTimeout);
@@ -1375,23 +1563,101 @@ function bindUI() {
                     $(this).css('display', 'none');
                 }
             });
-        }, 1000);
+        }, 250);
     });
 
+    // 标签多级搜索过滤事件 (支持名称与层级路径搜索，自动展开匹配路径)
     let tagSearchTimeout;
     getEl('#twt-tag-search').off('input').on('input', function() {
         clearTimeout(tagSearchTimeout);
-        const query = $(this).val().toLowerCase();
+        const query = $(this).val().trim().toLowerCase();
         tagSearchTimeout = setTimeout(() => {
-            getEl('#twt-tag-checkboxes-container label').each(function() {
-                const text = $(this).find('.tag-name-text').text().toLowerCase();
-                if (text.includes(query)) {
+            const $allNodes = getEl('#twt-tag-checkboxes-container .twt-tag-tree-node');
+            const $allContainers = getEl('#twt-tag-checkboxes-container .twt-tag-children-container');
+            
+            if (!query) {
+                $allNodes.css('display', 'flex');
+                $allContainers.css('display', 'flex');
+                getEl('#twt-tag-checkboxes-container .twt-tag-fold-btn i').removeClass('fa-caret-right').addClass('fa-caret-down');
+                getEl('#twt-tag-checkboxes-container .twt-tag-row .fa-folder').removeClass('fa-folder').addClass('fa-folder-open');
+                return;
+            }
+
+            if (!window.themeManager) return;
+            const tags = (typeof window.themeManager.getTags === 'function' ? window.themeManager.getTags() : []) || [];
+            const tagsById = new Map(tags.map(t => [t.id, t]));
+            const childrenMap = new Map();
+            tags.forEach(t => {
+                if (t && t.parentId && tagsById.has(t.parentId)) {
+                    if (!childrenMap.has(t.parentId)) childrenMap.set(t.parentId, []);
+                    childrenMap.get(t.parentId).push(t);
+                }
+            });
+
+            const getTagFullPath = (tag) => {
+                const parts = [tag.name];
+                let curr = tag;
+                const visited = new Set([tag.id]);
+                while (curr && curr.parentId && tagsById.has(curr.parentId) && !visited.has(curr.parentId)) {
+                    visited.add(curr.parentId);
+                    curr = tagsById.get(curr.parentId);
+                    if (curr) parts.unshift(curr.name);
+                }
+                return parts.join(' / ');
+            };
+
+            const visibleTagIds = new Set();
+            const expandParentIds = new Set();
+
+            tags.forEach(tag => {
+                const name = (tag.name || '').toLowerCase();
+                const fullPath = getTagFullPath(tag).toLowerCase();
+                if (name.includes(query) || fullPath.includes(query)) {
+                    visibleTagIds.add(tag.id);
+
+                    // 祖先链全部标记为可见并展开
+                    let curr = tag;
+                    const visited = new Set([tag.id]);
+                    while (curr && curr.parentId && tagsById.has(curr.parentId) && !visited.has(curr.parentId)) {
+                        visited.add(curr.parentId);
+                        visibleTagIds.add(curr.parentId);
+                        expandParentIds.add(curr.parentId);
+                        curr = tagsById.get(curr.parentId);
+                    }
+
+                    // 命中的父节点其所有子孙也一并展示
+                    const queue = [tag.id];
+                    while (queue.length > 0) {
+                        const currId = queue.shift();
+                        const cList = childrenMap.get(currId) || [];
+                        cList.forEach(c => {
+                            visibleTagIds.add(c.id);
+                            queue.push(c.id);
+                        });
+                    }
+                }
+            });
+
+            $allNodes.each(function() {
+                const tid = $(this).attr('data-tag-id');
+                if (visibleTagIds.has(tid)) {
                     $(this).css('display', 'flex');
                 } else {
                     $(this).css('display', 'none');
                 }
             });
-        }, 1000);
+
+            $allContainers.each(function() {
+                const pid = $(this).attr('data-parent-id');
+                if (expandParentIds.has(pid)) {
+                    $(this).css('display', 'flex');
+                    const $caret = $(this).siblings('.twt-tag-row').find('.twt-tag-fold-btn i');
+                    $caret.removeClass('fa-caret-right').addClass('fa-caret-down');
+                    const $folder = $(this).siblings('.twt-tag-row').find('.fa-folder');
+                    $folder.removeClass('fa-folder').addClass('fa-folder-open');
+                }
+            });
+        }, 250);
     });
 
     getEl('#twt_link_theme_cancel').off('click').on('click', function(e) {
@@ -1485,6 +1751,19 @@ function bindUI() {
                 const trimmedName = newName.trim();
                 extension_settings.twt.visualPresets[trimmedName] = extension_settings.twt.visualPresets[current];
                 delete extension_settings.twt.visualPresets[current];
+
+                // 同步更新关联映射中的预设名称引用
+                if (extension_settings.twt.presetTagLinks) {
+                    for (const [tId, pName] of Object.entries(extension_settings.twt.presetTagLinks)) {
+                        if (pName === current) extension_settings.twt.presetTagLinks[tId] = trimmedName;
+                    }
+                }
+                if (extension_settings.twt.presetThemeLinks) {
+                    for (const [thKey, pName] of Object.entries(extension_settings.twt.presetThemeLinks)) {
+                        if (pName === current) extension_settings.twt.presetThemeLinks[thKey] = trimmedName;
+                    }
+                }
+
                 extension_settings.twt.currentPreset = trimmedName;
                 getContext().saveSettingsDebounced();
                 renderPresetList();
@@ -1499,6 +1778,19 @@ function bindUI() {
         if (current !== 'custom') {
             if (confirm(`确定要删除预设 "${current}" 吗？`)) {
                 delete extension_settings.twt.visualPresets[current];
+
+                // 清理被删除预设的关联映射
+                if (extension_settings.twt.presetTagLinks) {
+                    for (const [tId, pName] of Object.entries(extension_settings.twt.presetTagLinks)) {
+                        if (pName === current) delete extension_settings.twt.presetTagLinks[tId];
+                    }
+                }
+                if (extension_settings.twt.presetThemeLinks) {
+                    for (const [thKey, pName] of Object.entries(extension_settings.twt.presetThemeLinks)) {
+                        if (pName === current) delete extension_settings.twt.presetThemeLinks[thKey];
+                    }
+                }
+
                 extension_settings.twt.currentPreset = 'custom';
                 getContext().saveSettingsDebounced();
                 renderPresetList();
@@ -1873,6 +2165,13 @@ function bindUI() {
 
     $htmlPopupEnabled.on('change', function () {
         extension_settings.twt.htmlPopupEnabled = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+        updateHtmlPopupSubOptionsVisibility();
+        applyHtmlPopupSettings();
+    });
+
+    $htmlPopupTriggerMode.on('change', function () {
+        extension_settings.twt.htmlPopupTriggerMode = $(this).val();
         getContext().saveSettingsDebounced();
         applyHtmlPopupSettings();
     });

@@ -122,3 +122,22 @@ body.twt-visual-mode #chat[style*="--twt-paragraph-spacing"] .mes_text p {
 body.twt-visual-mode.twt-custom-font-active *:not(i):not([class*="fa-"]):not([class*="material-"]):not(.fa):not(.fas):not(.far):not(.fal):not(.fab):not(.fad):not(.fa-solid):not(.fa-regular):not(.fa-brands):not(.material-icons):not([class*="material-symbols"]):not([style*="FontAwesome"]):not([style*="Font Awesome"]):not([style*="Material"]) {
     font-family: var(--twt-global-font-family) !important;
 }
+
+/* ── 5. 全局美化关联多级标签树样式 ─────────────────────────────────── */
+.twt-tag-tree-node {
+    transition: background 0.15s ease;
+}
+.twt-tag-row {
+    transition: background 0.15s ease;
+    border-radius: 4px;
+}
+.twt-tag-row:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+.twt-tag-fold-btn {
+    transition: transform 0.15s ease, opacity 0.15s ease;
+}
+.twt-tag-fold-btn:hover {
+    opacity: 1 !important;
+    transform: scale(1.15);
+}

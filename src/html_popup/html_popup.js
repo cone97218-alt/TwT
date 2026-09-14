@@ -16,6 +16,8 @@ function getDoc() {
 }
 
 const QR_BTN_ID = 'twt-qr-html-app-btn';
+const FLOAT_BTN_ID = 'twt-float-html-app-btn';
+const FLOAT_POS_KEY = 'twt_html_popup_float_pos';
 const MODAL_ID = 'twt-html-app-modal';
 const POS_KEY = 'twt_html_popup_saved_pos';
 
@@ -139,9 +141,13 @@ let hasUnreadApp = false;
 function updateQrBadge(show) {
     hasUnreadApp = show;
     const doc = getDoc();
-    const btn = doc.getElementById(QR_BTN_ID);
-    if (btn) {
-        btn.classList.toggle('has-unread', show);
+    const qrBtn = doc.getElementById(QR_BTN_ID);
+    if (qrBtn) {
+        qrBtn.classList.toggle('has-unread', show);
+    }
+    const floatBtn = doc.getElementById(FLOAT_BTN_ID);
+    if (floatBtn) {
+        floatBtn.classList.toggle('has-unread', show);
     }
 }
 
@@ -176,6 +182,7 @@ function removeOutsideClickListener() {
         const doc = getDoc();
         doc.removeEventListener('mousedown', activeOutsideClickListener, true);
         doc.removeEventListener('touchstart', activeOutsideClickListener, true);
+        doc.removeEventListener('click', activeOutsideClickListener, true);
         activeOutsideClickListener = null;
     }
 }
@@ -657,6 +664,101 @@ function injectStyles() {
             display: block;
         }
 
+        /* 拖拽期间防止 iframe 截断事件 */
+        body.twt-ball-dragging-active iframe {
+            pointer-events: none !important;
+        }
+
+        /* 侧边吸附可拖拽悬浮球样式 (参考 Zero 悬浮球磁吸贴边与半隐藏) */
+        #twt-float-html-app-btn {
+            position: fixed;
+            z-index: 10002;
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            background: var(--SmartThemeBlurTintColor, rgba(24, 24, 32, 0.88));
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border: 1.5px solid var(--SmartThemeQuoteColor, #7b8cde);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.42), 0 0 12px rgba(123, 140, 222, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: grab;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+            transition: transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1), opacity 0.2s ease, box-shadow 0.2s ease;
+            box-sizing: border-box;
+            color: var(--SmartThemeBodyColor, #cdd6f4);
+            font-size: 16px;
+        }
+
+        #twt-float-html-app-btn:hover,
+        #twt-float-html-app-btn:active {
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 16px rgba(123, 140, 222, 0.35);
+        }
+
+        #twt-float-html-app-btn.is-dragging,
+        #twt-float-html-app-btn.dragging {
+            cursor: grabbing !important;
+            transform: scale(1.08) translate3d(0, 0, 0) !important;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6), 0 0 20px rgba(123, 140, 222, 0.45) !important;
+            opacity: 0.95 !important;
+            transition: none !important;
+        }
+
+        /* 贴边半隐藏态 (Docked Edge Half-Hide) */
+        #twt-float-html-app-btn.docked-right {
+            transform: translate3d(50%, 0, 0);
+            opacity: 0.68;
+        }
+
+        #twt-float-html-app-btn.docked-right:hover,
+        #twt-float-html-app-btn.docked-right:active,
+        #twt-float-html-app-btn.docked-right.modal-open {
+            transform: translate3d(0, 0, 0);
+            opacity: 1;
+        }
+
+        #twt-float-html-app-btn.docked-left {
+            transform: translate3d(-50%, 0, 0);
+            opacity: 0.68;
+        }
+
+        #twt-float-html-app-btn.docked-left:hover,
+        #twt-float-html-app-btn.docked-left:active,
+        #twt-float-html-app-btn.docked-left.modal-open {
+            transform: translate3d(0, 0, 0);
+            opacity: 1;
+        }
+
+        #twt-float-html-app-btn.modal-open {
+            border-color: var(--SmartThemeUnderlineColor, #007aff);
+            background: var(--SmartThemeUnderlineColor, #007aff);
+            color: #ffffff;
+            opacity: 1;
+            box-shadow: 0 0 14px var(--SmartThemeUnderlineColor, #007aff);
+        }
+
+        #twt-float-html-app-btn .twt-float-badge {
+            display: none;
+            position: absolute;
+            top: -2px;
+            right: -2px;
+            width: 10px;
+            height: 10px;
+            background-color: var(--SmartThemeQuoteColor, #f38ba8);
+            border-radius: 50%;
+            border: 1.5px solid var(--SmartThemeDarkColor, #1e1e2e);
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        #twt-float-html-app-btn.has-unread .twt-float-badge {
+            display: block;
+        }
+
         /* 弹窗顶层遮罩（允许穿透到底图，仅弹窗主体响应鼠标） */
         #twt-html-app-modal {
             position: fixed;
@@ -1126,6 +1228,7 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diff
 
     const modal = doc.createElement('div');
     modal.id = MODAL_ID;
+    doc.body?.classList.add('twt-html-popup-active');
 
     const dialog = doc.createElement('div');
     dialog.className = 'twt-modal-dialog no-transition';
@@ -1449,7 +1552,8 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diff
             removeOutsideClickListener();
             return;
         }
-        if (dialog.contains(e.target) || e.target.closest?.(`#${QR_BTN_ID}`)) return;
+        if (dialog.contains(e.target) || e.target.closest?.(`#${QR_BTN_ID}`) || e.target.closest?.(`#${FLOAT_BTN_ID}`)) return;
+        win.__twtLastHtmlModalCloseTime = Date.now();
         closeHtmlAppModal();
     };
 
@@ -1457,10 +1561,16 @@ export function openHtmlAppModal(appEls, mesIndexInfo, initialIndex = null, diff
         if (doc.getElementById(MODAL_ID)) {
             doc.addEventListener('mousedown', activeOutsideClickListener, true);
             doc.addEventListener('touchstart', activeOutsideClickListener, true);
+            doc.addEventListener('click', activeOutsideClickListener, true);
         }
     }, 40);
 
     doc.body.appendChild(modal);
+
+    const floatBtn = doc.getElementById(FLOAT_BTN_ID);
+    if (floatBtn) {
+        floatBtn.classList.add('modal-open');
+    }
 
     // 首次渲染完成后移除 no-transition，恢复后续交互的平滑过渡
     requestAnimationFrame(() => {
@@ -1495,10 +1605,18 @@ export function closeHtmlAppModal() {
     returnMovedElementBack();
 
     const doc = getDoc();
+    const win = getWin();
+    win.__twtLastHtmlModalCloseTime = Date.now();
+    doc.body?.classList.remove('twt-html-popup-active');
+
     const old = doc.getElementById(MODAL_ID);
     if (old) {
         old.remove();
         console.log('[TwT HtmlPopup] Modal 弹窗已关闭，真实 DOM 已归位');
+    }
+    const floatBtn = doc.getElementById(FLOAT_BTN_ID);
+    if (floatBtn) {
+        floatBtn.classList.remove('modal-open');
     }
 }
 
@@ -1671,16 +1789,273 @@ export function registerHtmlPopupEvents(context) {
 }
 
 /**
- * 注入与更新 QR 栏按钮
+ * 悬浮球位置读取与持久化 (完全对齐 Zero 拓展)
+ */
+function loadFloatPosition() {
+    try {
+        const raw = localStorage.getItem(FLOAT_POS_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        const side = parsed.side || (typeof parsed.x === 'number' && parsed.x < window.innerWidth / 2 ? 'left' : 'right');
+        const top = typeof parsed.top === 'number' ? parsed.top : (typeof parsed.y === 'number' ? parsed.y : null);
+        return { side, top };
+    } catch (e) {
+        return null;
+    }
+}
+
+function saveFloatPosition(side, top) {
+    try {
+        localStorage.setItem(FLOAT_POS_KEY, JSON.stringify({ side, top: Math.round(top) }));
+    } catch (e) {}
+}
+
+/**
+ * 初始化悬浮球位置与贴边状态
+ */
+function initFloatPosition(ball, win, doc) {
+    const saved = loadFloatPosition();
+    const vh = win.innerHeight || doc.documentElement?.clientHeight || 600;
+    const bh = 42;
+    const dockSide = saved?.side || 'right';
+    let top = saved?.top ?? Math.round(vh * 0.65);
+    top = Math.max(20, Math.min(top, vh - bh - 20));
+
+    ball.style.top = `${top}px`;
+    if (dockSide === 'right') {
+        ball.style.left = 'auto';
+        ball.style.right = '0px';
+        ball.classList.remove('docked-left');
+        ball.classList.add('docked-right');
+    } else {
+        ball.style.left = '0px';
+        ball.style.right = 'auto';
+        ball.classList.remove('docked-right');
+        ball.classList.add('docked-left');
+    }
+}
+
+/**
+ * 磁吸贴边 (Magnetic Edge Snap - 参考 Zero 拓展)
+ * @param {HTMLElement} ball 
+ * @param {Window} win 
+ * @param {Document} doc 
+ * @param {boolean} animate 是否执行平滑缓动动画
+ */
+function snapFloatToEdge(ball, win, doc, animate = true) {
+    if (!ball) return;
+
+    const rect = ball.getBoundingClientRect();
+    const vw = win.innerWidth || doc.documentElement?.clientWidth || 800;
+    const vh = win.innerHeight || doc.documentElement?.clientHeight || 600;
+    const bw = ball.offsetWidth || 42;
+    const bh = ball.offsetHeight || 42;
+
+    const centerX = rect.left + bw / 2;
+    const snapToRight = centerX >= vw / 2;
+    const dockSide = snapToRight ? 'right' : 'left';
+
+    const finalTop = Math.max(20, Math.min(vh - bh - 20, rect.top));
+    saveFloatPosition(dockSide, finalTop);
+
+    if (animate) {
+        const targetLeft = snapToRight ? vw - bw : 0;
+        ball.style.transition = 'left 0.22s cubic-bezier(0.2, 0.9, 0.3, 1), top 0.22s cubic-bezier(0.2, 0.9, 0.3, 1), transform 0.22s ease, opacity 0.22s ease';
+        ball.style.left = `${targetLeft}px`;
+        ball.style.right = 'auto';
+        ball.style.top = `${finalTop}px`;
+
+        setTimeout(() => {
+            if (!ball || !ball.isConnected) return;
+            ball.style.transition = '';
+            if (dockSide === 'right') {
+                ball.style.left = 'auto';
+                ball.style.right = '0px';
+                ball.classList.remove('docked-left');
+                ball.classList.add('docked-right');
+            } else {
+                ball.style.left = '0px';
+                ball.style.right = 'auto';
+                ball.classList.remove('docked-right');
+                ball.classList.add('docked-left');
+            }
+        }, 220);
+    } else {
+        ball.style.transition = 'none';
+        ball.style.top = `${finalTop}px`;
+        if (dockSide === 'right') {
+            ball.style.left = 'auto';
+            ball.style.right = '0px';
+            ball.classList.remove('docked-left');
+            ball.classList.add('docked-right');
+        } else {
+            ball.style.left = '0px';
+            ball.style.right = 'auto';
+            ball.classList.remove('docked-right');
+            ball.classList.add('docked-left');
+        }
+    }
+}
+
+/**
+ * 确保侧边吸附、可拖拽悬浮球的注入、更新与移除
+ */
+function ensureFloatButton(doc, win, showFloat) {
+    let floatBtn = doc.getElementById(FLOAT_BTN_ID);
+
+    if (!showFloat) {
+        if (floatBtn) {
+            floatBtn.remove();
+            console.log('[TwT HtmlPopup] 悬浮球已移除');
+        }
+        return;
+    }
+
+    if (!floatBtn) {
+        floatBtn = doc.createElement('div');
+        floatBtn.id = FLOAT_BTN_ID;
+        floatBtn.className = 'twt-float-html-app interactable';
+        floatBtn.setAttribute('role', 'button');
+        floatBtn.setAttribute('tabindex', '0');
+        floatBtn.title = '召出/收回当前消息 HTML 应用 (拖拽贴边吸附)';
+        floatBtn.innerHTML = `<i class="fa-solid fa-window-maximize"></i><span class="twt-float-badge"></span>`;
+
+        initFloatPosition(floatBtn, win, doc);
+
+        // 绑定拖拽逻辑 (参考 Zero 拓展的 document 捕获模型与时间/位移防误触)
+        let isTracking = false;
+        let hasDragged = false;
+        let startX = 0, startY = 0;
+        let initialLeft = 0, initialTop = 0;
+        let startTime = 0;
+
+        const onStart = (e) => {
+            if (e.type === 'mousedown' && e.button !== 0) return;
+
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+            startX = clientX;
+            startY = clientY;
+            startTime = Date.now();
+            hasDragged = false;
+            isTracking = true;
+
+            const rect = floatBtn.getBoundingClientRect();
+            initialLeft = rect.left;
+            initialTop = rect.top;
+
+            doc.addEventListener('mousemove', onMove, { passive: false });
+            doc.addEventListener('mouseup', onEnd, { capture: true });
+            doc.addEventListener('touchmove', onMove, { passive: false });
+            doc.addEventListener('touchend', onEnd, { capture: true });
+            doc.addEventListener('touchcancel', onEnd, { capture: true });
+        };
+
+        const onMove = (e) => {
+            if (!isTracking) return;
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+            const deltaX = clientX - startX;
+            const deltaY = clientY - startY;
+
+            if (!hasDragged && Math.hypot(deltaX, deltaY) > 6) {
+                hasDragged = true;
+                doc.body.classList.add('twt-ball-dragging-active');
+                floatBtn.classList.remove('docked-left', 'docked-right');
+                floatBtn.classList.add('is-dragging');
+            }
+
+            if (hasDragged) {
+                if (e.cancelable) e.preventDefault();
+
+                const vw = win.innerWidth || doc.documentElement?.clientWidth || 800;
+                const vh = win.innerHeight || doc.documentElement?.clientHeight || 600;
+                const bw = floatBtn.offsetWidth || 42;
+                const bh = floatBtn.offsetHeight || 42;
+
+                const newLeft = Math.max(0, Math.min(vw - bw, initialLeft + deltaX));
+                const newTop = Math.max(20, Math.min(vh - bh - 20, initialTop + deltaY));
+
+                floatBtn.style.left = `${newLeft}px`;
+                floatBtn.style.right = 'auto';
+                floatBtn.style.top = `${newTop}px`;
+            }
+        };
+
+        const onEnd = (e) => {
+            if (!isTracking) return;
+            isTracking = false;
+
+            doc.removeEventListener('mousemove', onMove);
+            doc.removeEventListener('mouseup', onEnd, { capture: true });
+            doc.removeEventListener('touchmove', onMove);
+            doc.removeEventListener('touchend', onEnd, { capture: true });
+            doc.removeEventListener('touchcancel', onEnd, { capture: true });
+            doc.body.classList.remove('twt-ball-dragging-active');
+
+            const duration = Date.now() - startTime;
+            floatBtn.classList.remove('is-dragging');
+
+            if (!hasDragged || duration < 220) {
+                if (e.cancelable) e.preventDefault();
+                e.stopPropagation();
+                handleQrBtnClick();
+                return;
+            }
+
+            snapFloatToEdge(floatBtn, win, doc, true);
+        };
+
+        floatBtn.addEventListener('mousedown', onStart);
+        floatBtn.addEventListener('touchstart', onStart, { passive: true });
+
+        // 键盘回车/空格辅助
+        floatBtn.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleQrBtnClick();
+            }
+        });
+
+        doc.body.appendChild(floatBtn);
+        console.log('[TwT HtmlPopup] 成功注入 Zero 风格磁吸贴边悬浮球');
+    }
+
+    // 状态更新
+    floatBtn.classList.toggle('has-unread', hasUnreadApp);
+    const hasModal = !!doc.getElementById(MODAL_ID);
+    floatBtn.classList.toggle('modal-open', hasModal);
+
+    // 窗口尺寸变化自适应贴边
+    if (!floatResizeBound) {
+        floatResizeBound = true;
+        win.addEventListener('resize', () => {
+            const btn = doc.getElementById(FLOAT_BTN_ID);
+            if (!btn || btn.classList.contains('is-dragging')) return;
+            snapFloatToEdge(btn, win, doc, false);
+        });
+    }
+}
+
+/**
+ * 注入与更新 QR 栏按钮及悬浮球
  */
 export function applyHtmlPopupSettings() {
     injectStyles();
     const settings = extension_settings?.twt;
     const enabled = settings?.htmlPopupEnabled !== false;
+    const triggerMode = settings?.htmlPopupTriggerMode || 'qr';
     const doc = getDoc();
+    const win = getWin();
 
+    const showQr = enabled && (triggerMode === 'qr' || triggerMode === 'both');
+    const showFloat = enabled && (triggerMode === 'float' || triggerMode === 'both');
+
+    // 1. QR 栏按钮管理
     let btn = doc.getElementById(QR_BTN_ID);
-    if (enabled) {
+    if (showQr) {
         if (!btn) {
             const btnContainer = doc.querySelector('#qr--bar .qr--buttons') || doc.getElementById('qr--bar');
             if (btnContainer) {
@@ -1703,12 +2078,20 @@ export function applyHtmlPopupSettings() {
         if (btn) {
             btn.classList.toggle('has-unread', hasUnreadApp);
         }
-        hideMessageHtmlApps();
     } else {
         if (btn) {
             btn.remove();
-            console.log('[TwT HtmlPopup] 功能已禁用，已移除 QR 栏按钮');
+            console.log('[TwT HtmlPopup] QR 栏按钮已移除');
         }
+    }
+
+    // 2. 悬浮球管理
+    ensureFloatButton(doc, win, showFloat);
+
+    // 3. 正文应用节点隐藏/显示管理
+    if (enabled) {
+        hideMessageHtmlApps();
+    } else {
         doc.querySelectorAll('.twt-app-hidden').forEach(el => el.classList.remove('twt-app-hidden'));
     }
 }
@@ -1724,9 +2107,14 @@ export function initHtmlPopup() {
     const win = getWin();
     const MutationObserverClass = win.MutationObserver || win.parent?.MutationObserver || window.MutationObserver;
 
-    // 保持 Observer 监听（同 mulu.js 机制），在 QR bar 被酒馆重构时自动重新注入按钮
+    // 保持 Observer 监听，在 QR bar 或 DOM 发生变动时按需补全按钮或悬浮球
     const observer = new MutationObserverClass(() => {
-        if (doc.querySelector('#qr--bar')) {
+        const settings = extension_settings?.twt;
+        const enabled = settings?.htmlPopupEnabled !== false;
+        const triggerMode = settings?.htmlPopupTriggerMode || 'qr';
+        const needsQr = enabled && (triggerMode === 'qr' || triggerMode === 'both') && !doc.getElementById(QR_BTN_ID) && doc.querySelector('#qr--bar');
+        const needsFloat = enabled && (triggerMode === 'float' || triggerMode === 'both') && !doc.getElementById(FLOAT_BTN_ID);
+        if (needsQr || needsFloat) {
             applyHtmlPopupSettings();
         }
     });

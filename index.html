@@ -105,11 +105,24 @@
 
                 <div class="twt-setting-row"
                     style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
-                    <label for="twt_html_popup_enabled">HTML/Iframe 应用抽离并通过 QR 栏召出</label>
+                    <label for="twt_html_popup_enabled">HTML/Iframe 应用抽离并通过独立入口召出</label>
                     <input type="checkbox" id="twt_html_popup_enabled" />
                 </div>
                 <div style="font-size: 0.85em; opacity: 0.6; margin-bottom: 10px; margin-top: -2px; padding-left: 2px;">
-                    开启后，消息正文中的 HTML / Iframe 将不在翻页文本流中直接展示，而是通过点击 QR 栏【应用】按钮在弹窗中原样召出。
+                    开启后，消息正文中的 HTML / Iframe 将不在翻页文本流中直接展示，而是通过独立入口在弹窗中原样召出。
+                </div>
+
+                <div class="twt-setting-row" id="twt_html_popup_trigger_mode_row"
+                    style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
+                    <label for="twt_html_popup_trigger_mode" style="font-size: 0.95em;">应用召出入口方式</label>
+                    <select id="twt_html_popup_trigger_mode" class="text_pole" style="width: auto; min-width: 170px;">
+                        <option value="qr">QR 栏按钮 (默认)</option>
+                        <option value="float">侧边吸附悬浮球</option>
+                        <option value="both">两者同时显示</option>
+                    </select>
+                </div>
+                <div id="twt_html_popup_trigger_mode_hint" style="font-size: 0.85em; opacity: 0.6; margin-bottom: 10px; margin-top: -2px; padding-left: 2px;">
+                    可选用支持拖拽移动、释放后自动吸附至屏幕边缘的悬浮球进行召出。
                 </div>
 
                 <div class="twt-setting-row"
@@ -952,8 +965,13 @@
         
         <!-- 标签面板 -->
         <div id="twt-panel-tags" style="display: none; flex-direction: column; gap: 8px; flex: 1; min-height: 0;">
-            <input type="text" id="twt-tag-search" placeholder="搜索标签..." style="width: 100%; box-sizing: border-box; font-size: 0.85em; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--SmartThemeBorderColor); background: rgba(0,0,0,0.2); color: inherit;" />
-            <div id="twt-tag-checkboxes-container" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; background: rgba(0,0,0,0.1);">
+            <div style="display: flex; gap: 6px; align-items: center;">
+                <input type="text" id="twt-tag-search" placeholder="搜索标签或层级路径..." style="flex: 1; box-sizing: border-box; font-size: 0.85em; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--SmartThemeBorderColor); background: rgba(0,0,0,0.2); color: inherit;" />
+                <button id="twt-tag-toggle-expand" class="menu_button" title="全部展开 / 折叠" style="padding: 4px 8px !important; margin: 0 !important; font-size: 0.85em !important; height: auto !important; min-height: unset !important; display: inline-flex !important; align-items: center; justify-content: center; gap: 4px; white-space: nowrap;">
+                    <i class="fa-solid fa-folder-tree"></i>
+                </button>
+            </div>
+            <div id="twt-tag-checkboxes-container" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding: 6px; border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; background: rgba(0,0,0,0.1);">
                 <!-- Checkboxes populated dynamically -->
             </div>
         </div>
