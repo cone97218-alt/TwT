@@ -41,9 +41,18 @@ export function applyVisualMode(enabled, settings) {
                     chatContainer.style.setProperty('--twt-font-weight', `${settings.fontWeight ?? 'normal'}`, 'important');
                 }
                 if (settings.fontFamily && settings.fontFamily !== 'inherit') {
-                    const cleanFont = settings.fontFamily.replace(/"/g, '');
+                    const cleanFont = String(settings.fontFamily).replace(/['"]/g, '').trim();
+                    const isSerif = /mincho|serif|song|ming|kai|明朝|宋体|楷体/i.test(cleanFont);
+                    const fallback = isSerif
+                        ? '"Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", serif'
+                        : '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif';
+                    const fullFontStack = `"${cleanFont}", ${fallback}`;
+
                     if (doc.documentElement) {
-                        doc.documentElement.style.setProperty('--twt-global-font-family', `"${cleanFont}", sans-serif`);
+                        doc.documentElement.style.setProperty('--twt-global-font-family', fullFontStack);
+                    }
+                    if (chatContainer) {
+                        chatContainer.style.setProperty('--twt-font-family', fullFontStack, 'important');
                     }
                     if (doc.body) {
                         doc.body.classList.add('twt-custom-font-active');
@@ -51,6 +60,9 @@ export function applyVisualMode(enabled, settings) {
                 } else {
                     if (doc.documentElement) {
                         doc.documentElement.style.removeProperty('--twt-global-font-family');
+                    }
+                    if (chatContainer) {
+                        chatContainer.style.removeProperty('--twt-font-family');
                     }
                     if (doc.body) {
                         doc.body.classList.remove('twt-custom-font-active');
@@ -63,6 +75,10 @@ export function applyVisualMode(enabled, settings) {
                 }
                 if (doc.documentElement) {
                     doc.documentElement.style.removeProperty('--twt-global-font-family');
+                }
+                const chatContainer = doc.getElementById('chat');
+                if (chatContainer) {
+                    chatContainer.style.removeProperty('--twt-font-family');
                 }
             }
         } catch (e) {

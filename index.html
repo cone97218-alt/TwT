@@ -453,10 +453,12 @@
                     </div>
                     <div class="twt-collapsible-content" style="display: none; padding-top: 8px;">
                         <div class="twt-setting-row"
-                            style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                            style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
                             <select id="twt_font_family"
                                 style="flex: 1; margin-right: 5px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 4px;"></select>
                             <div style="display: flex; gap: 5px; align-items: center;">
+                                <button id="twt_font_info" class="menu_button" style="padding: 4px 8px; margin: 0;"
+                                    title="查看当前字体详情与实时预览"><i class="fa-solid fa-circle-info"></i></button>
                                 <button id="twt_font_import_file" class="menu_button" style="padding: 4px 8px; margin: 0;"
                                     title="导入本地字体文件 (.ttf/.otf/.woff/.woff2)"><i class="fa-solid fa-file-import"></i></button>
                                 <button id="twt_font_import_css" class="menu_button" style="padding: 4px 8px; margin: 0;"
@@ -464,6 +466,10 @@
                                 <button id="twt_font_delete" class="menu_button" style="padding: 4px 8px; margin: 0;"
                                     title="删除选中自定义字体"><i class="fa-solid fa-trash"></i></button>
                             </div>
+                        </div>
+                        <div id="twt_font_summary_hint" style="font-size: 0.82em; opacity: 0.8; margin-bottom: 10px; padding: 4px 8px; background: rgba(0,0,0,0.15); border-radius: 4px; border: 1px solid var(--SmartThemeBorderColor); display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                            <span id="twt_font_summary_text" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">当前字体：系统默认</span>
+                            <a id="twt_font_view_details_btn" href="javascript:void(0);" style="color: var(--SmartThemeUnderlineColor, #007aff); text-decoration: none; white-space: nowrap; cursor: pointer; font-size: 0.95em;">[详情与预览]</a>
                         </div>
                         <input type="file" id="twt_font_file_input" accept=".ttf,.otf,.woff,.woff2,.eot" style="display: none;" />
                     </div>
@@ -996,6 +1002,86 @@
         </div>
         <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 5px;">
             <button id="twt_optimize_save_editor" class="menu_button" style="padding: 6px 16px !important; margin: 0 !important; display: inline-block !important; width: auto !important; height: auto !important; min-height: unset !important;">保存并应用</button>
+        </div>
+    </div>
+</div>
+
+<!-- 网络字体与 CSS 导入 Modal -->
+<div id="twt-font-import-modal" class="twt-preview-modal-overlay" style="display: none; z-index: 1000004;">
+    <div style="background: var(--twt-comments-bg-solid, var(--SmartThemeDarkColor)); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 8px; padding: 20px; width: 95%; max-width: 520px; max-height: 85vh; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.6); box-sizing: border-box;">
+        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--SmartThemeBorderColor); padding-bottom: 8px;">
+            <h4 style="margin: 0; font-size: 1.1em; font-weight: bold;">导入网络字体 / 自定义 CSS</h4>
+            <button id="twt_font_import_close" class="menu_button" style="padding: 4px 8px !important; margin: 0 !important; font-size: 0.85em !important; height: auto !important; min-height: unset !important; display: flex; align-items: center; justify-content: center; line-height: 1 !important;"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div style="flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; overflow-y: auto;">
+            <div>
+                <div style="font-size: 0.85em; opacity: 0.8; margin-bottom: 4px;">粘贴 CSS 代码或 URL (支持 @import、&lt;link&gt;、@font-face 或直接 HTTP 链接)：</div>
+                <textarea id="twt_font_import_code" rows="5" placeholder="例如：&#10;@import url('https://fonts.googleapis.com/css2?family=Long+Cang&display=swap');&#10;或直接粘贴网络 CSS 链接" style="width: 100%; font-family: monospace; font-size: 0.85em; box-sizing: border-box; padding: 8px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; resize: vertical; outline: none;"></textarea>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <div style="flex: 1;">
+                    <label for="twt_font_import_display_name" style="font-size: 0.85em; opacity: 0.8; display: block; margin-bottom: 4px;">显示名称 (下拉菜单展示)</label>
+                    <input type="text" id="twt_font_import_display_name" placeholder="例如：龙苍体" style="width: 100%; box-sizing: border-box; padding: 6px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-size: 0.9em;" />
+                </div>
+                <div style="flex: 1;">
+                    <label for="twt_font_import_family_name" style="font-size: 0.85em; opacity: 0.8; display: block; margin-bottom: 4px;">字体族名 (CSS font-family)</label>
+                    <input type="text" id="twt_font_import_family_name" placeholder="例如：Long Cang" style="width: 100%; box-sizing: border-box; padding: 6px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-size: 0.9em;" />
+                </div>
+            </div>
+            <div style="font-size: 0.8em; opacity: 0.6; line-height: 1.4;">
+                <i class="fa-solid fa-circle-info"></i> 提示：粘贴后会自动尝试识别族名；“字体族名”必须与 CSS 样式中定义的实际英文/中文名完全一致，才能正确生效。
+            </div>
+        </div>
+        <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 5px;">
+            <button id="twt_font_import_cancel" class="menu_button" style="padding: 6px 16px !important; margin: 0 !important; display: inline-block !important; width: auto !important; height: auto !important; min-height: unset !important; background: rgba(255,255,255,0.1) !important;">取消</button>
+            <button id="twt_font_import_confirm" class="menu_button" style="padding: 6px 16px !important; margin: 0 !important; display: inline-block !important; width: auto !important; height: auto !important; min-height: unset !important; background: var(--SmartThemeUnderlineColor, #007aff) !important; color: #fff !important;">保存并导入</button>
+        </div>
+    </div>
+</div>
+
+<!-- 字体详情与实时预览 Modal -->
+<div id="twt-font-info-modal" class="twt-preview-modal-overlay" style="display: none; z-index: 1000005;">
+    <div style="background: var(--twt-comments-bg-solid, var(--SmartThemeDarkColor)); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 8px; padding: 20px; width: 95%; max-width: 560px; max-height: 85vh; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 4px 20px rgba(0,0,0,0.6); box-sizing: border-box;">
+        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--SmartThemeBorderColor); padding-bottom: 8px;">
+            <h4 style="margin: 0; font-size: 1.1em; font-weight: bold; display: flex; align-items: center; gap: 8px;">
+                <i class="fa-solid fa-font"></i> 字体详情与效果预览
+            </h4>
+            <button id="twt_font_info_close" class="menu_button" style="padding: 4px 8px !important; margin: 0 !important; font-size: 0.85em !important; height: auto !important; min-height: unset !important; display: flex; align-items: center; justify-content: center; line-height: 1 !important;"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div style="flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; padding-right: 2px;">
+            <!-- 基础元数据网格 -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.9em; background: rgba(0,0,0,0.15); padding: 10px; border-radius: 6px; border: 1px solid var(--SmartThemeBorderColor);">
+                <div><span style="opacity: 0.6;">显示名称：</span><b id="twt_font_info_name">-</b></div>
+                <div><span style="opacity: 0.6;">字体类型：</span><span id="twt_font_info_type" style="padding: 2px 6px; border-radius: 4px; font-size: 0.85em; background: rgba(0,122,255,0.2); color: #007aff;">-</span></div>
+                <div style="grid-column: span 2;"><span style="opacity: 0.6;">CSS 族名 (font-family)：</span><code id="twt_font_info_family" style="background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; font-family: monospace;">-</code></div>
+            </div>
+
+            <!-- 源代码 / CSS 内容区 -->
+            <div id="twt_font_info_code_container">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                    <span style="font-size: 0.85em; opacity: 0.8;">字体引用配置 / 源码：</span>
+                    <button id="twt_font_info_copy_code" class="menu_button" style="padding: 2px 8px !important; margin: 0 !important; font-size: 0.8em !important; height: auto !important; min-height: unset !important; display: inline-flex !important; align-items: center; gap: 4px;">
+                        <i class="fa-solid fa-copy"></i> 复制内容
+                    </button>
+                </div>
+                <textarea id="twt_font_info_code" rows="4" readonly style="width: 100%; font-family: monospace; font-size: 0.82em; box-sizing: border-box; padding: 8px; background: rgba(0,0,0,0.25); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; resize: vertical; outline: none;"></textarea>
+            </div>
+
+            <!-- 实时排版预览体验区 -->
+            <div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                    <span style="font-size: 0.85em; opacity: 0.8;">实时字体渲染效果 (可在此直接打字测试)：</span>
+                    <span style="font-size: 0.78em; opacity: 0.5;">支持中文 / 英文 / 符号</span>
+                </div>
+                <div id="twt_font_info_preview_box" contenteditable="true" style="width: 100%; min-height: 110px; max-height: 180px; overflow-y: auto; box-sizing: border-box; padding: 12px; background: rgba(0,0,0,0.2); border: 1px solid var(--SmartThemeBorderColor); border-radius: 6px; font-size: 17px; line-height: 1.7; outline: none;">
+                    天地玄黄，宇宙洪荒。日月盈昃，辰宿列张。<br>
+                    The quick brown fox jumps over the lazy dog.<br>
+                    0123456789 「」【】《》“”‘’！？
+                </div>
+            </div>
+        </div>
+        <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+            <button id="twt_font_info_ok" class="menu_button" style="padding: 6px 20px !important; margin: 0 !important; display: inline-block !important; width: auto !important; height: auto !important; min-height: unset !important; background: var(--SmartThemeUnderlineColor, #007aff) !important; color: #fff !important;">确定</button>
         </div>
     </div>
 </div>
