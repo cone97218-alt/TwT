@@ -219,11 +219,27 @@ body.twt-reading-mode #chat .mes_video {
     margin: 0 auto !important;
 }
 
-/* 代码块和思维链：只控制横向溢出，绝对不能加 break-inside: avoid，必须允许垂直自然断页 */
+/* 代码块（被反引号包裹的文本）与思维链：允许跨列自然断页与自动折行
+   在 CSS 多列（Multi-column）排版规范中，任何非 visible 的 overflow（如 overflow-x: auto / overflow-y: auto）
+   都会建立滚动容器（Scroll Container），使元素变为单块原子不可拆分（Monolithic Box），
+   导致超出一页高度的代码块无法跨列拆分断页，超出部分被裁切截断，翻页后直接跳到后续内容。
+   因此翻页模式下必须强制 overflow: visible，并配合 white-space: pre-wrap 与 break-inside: auto 允许自然断页。 */
 body.twt-reading-mode #chat .mes_text pre,
-body.twt-reading-mode #chat .thought-block {
-    overflow-x: auto !important;
-    max-width: 100%;
+body.twt-reading-mode #chat .mes_text pre code,
+body.twt-reading-mode #chat .mes_text code,
+body.twt-reading-mode #chat .thought-block,
+body.twt-reading-mode #chat .mes_reasoning {
+    overflow: visible !important;
+    overflow-x: visible !important;
+    overflow-y: visible !important;
+    white-space: pre-wrap !important;
+    word-break: break-all !important;
+    overflow-wrap: break-word !important;
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+    -webkit-column-break-inside: auto !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
 }
 
 /* 禁用滑动翻页 */
