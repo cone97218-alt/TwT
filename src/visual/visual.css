@@ -69,10 +69,15 @@ body.twt-visual-mode #chat .mes_text {
     line-break: strict !important;
 }
 
-/* .mes_text 内所有子节点：强行继承并覆盖字号、行高 (!important)、字间距与字重，
+/* .mes_text 内主要文本容器：强行继承并覆盖字号、行高 (!important)、字间距与字重，
    彻底突破美化主题在 p 标签上设置的 line-height !important 锁定；
-   排除：代码块 / 引用 / 主题定位标签 */
-body.twt-visual-mode #chat .mes_text *:not(code):not(pre):not(blockquote):not(.name_text):not(.mesIDDisplay):not(.timestamp):not(.tokenCounterDisplay) {
+   使用显式元素列表替代灾难级通配符 *:not(...)，消除超长文档下对数万 DOM 节点的匹配雪崩 */
+body.twt-visual-mode #chat .mes_text p,
+body.twt-visual-mode #chat .mes_text span:not(.name_text):not(.mesIDDisplay):not(.timestamp):not(.tokenCounterDisplay),
+body.twt-visual-mode #chat .mes_text div,
+body.twt-visual-mode #chat .mes_text li,
+body.twt-visual-mode #chat .mes_text em,
+body.twt-visual-mode #chat .mes_text a {
     font-size: inherit !important;
     line-height: inherit !important;
     letter-spacing: inherit !important;

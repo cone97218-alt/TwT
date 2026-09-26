@@ -88,6 +88,7 @@ async function restorePaginationPosition() {
 let lastUserPage = 0;           // 用户当前所在页（唯一权威来源）
 let isScrolling = false;        // 正在执行程序化 scrollTo，屏蔽 snap 校正
 let isTouching = false;         // 手指正在触摸屏幕
+let isGenerating = false;       // 正在进行 AI 流式生成，抑制高频后台排版扫描
 
 /** 判断用户当前是否在输入框打字（此时应全面暂停后台排版与重试计算，避免打字卡顿） */
 export function isInputFocused() {
@@ -172,18 +173,58 @@ export function captureReadingAnchor() {
     const chat = getChat();
     if (!chat || !document.body.classList.contains('twt-reading-mode')) return null;
     const chatRect = chat.getBoundingClientRect();
-    const messages = chat.querySelectorAll('.mes');
-    if (!messages.length) return null;
+    if (chatRect.width <= 0) return null;
 
     let visibleMes = null;
-    for (let i = 0; i < messages.length; i++) {
-        const rect = messages[i].getBoundingClientRect();
-        if (rect.right > chatRect.left + 1 && rect.left < chatRect.right - 1) {
-            visibleMes = messages[i];
-            break;
+
+    // 1. 尝试极速探测 (O(1)): 利用 document.elementFromPoint
+    // 直接以视口偏左上区域进行像素点命中检测，微秒级拿到当前可见消息，0 次 Layout
+    const probeX = chatRect.left + Math.min(50, chatRect.width * 0.15);
+    const probeY = chatRect.top + Math.min(80, chatRect.height * 0.3);
+    const hitEl = document.elementFromPoint(probeX, probeY);
+    if (hitEl && chat.contains(hitEl)) {
+        visibleMes = hitEl.closest('.mes');
+    }
+
+    // 2. 如果视口上方是空白或未命中，在视口中心再次探测
+    if (!visibleMes) {
+        const midHit = document.elementFromPoint(chatRect.left + chatRect.width * 0.5, chatRect.top + chatRect.height * 0.5);
+        if (midHit && chat.contains(midHit)) {
+            visibleMes = midHit.closest('.mes');
         }
     }
-    if (!visibleMes) visibleMes = messages[0];
+
+    // 3. 兜底策略：若像素探测未命中，利用消息横向物理 left 单调递增特性进行二分查找 O(log N)
+    // 彻底消除原本对数百上千条消息进行线性 O(N) 遍历引发的灾难级 Layout Thrashing！
+    if (!visibleMes) {
+        const messages = chat.querySelectorAll('.mes');
+        const len = messages.length;
+        if (!len) return null;
+
+        let low = 0;
+        let high = len - 1;
+        let bestMid = 0;
+
+        while (low <= high) {
+            const mid = (low + high) >> 1;
+            const rect = messages[mid].getBoundingClientRect();
+            if (rect.right <= chatRect.left + 1) {
+                low = mid + 1;
+            } else if (rect.left >= chatRect.right - 1) {
+                high = mid - 1;
+            } else {
+                bestMid = mid;
+                visibleMes = messages[mid];
+                break;
+            }
+            bestMid = mid;
+        }
+        if (!visibleMes) {
+            visibleMes = messages[bestMid] || messages[0];
+        }
+    }
+
+    if (!visibleMes) return null;
     const mesId = visibleMes.getAttribute('mesid');
     const visualLeft = visibleMes.getBoundingClientRect().left - chatRect.left;
     return { mesId, visualLeft };
@@ -270,6 +311,7 @@ export function handleMessageSwiped(mesId) {
  * 重roll场景下对齐到被重roll楼层第一页，防止继承旧回答末尾偏移
  */
 export function handleGenerationStarted(type) {
+    isGenerating = true;
     const isReroll = (type === 'swipe' || type === 'regenerate');
     if (isReroll) {
         const chat = getChat();
@@ -291,7 +333,15 @@ export function handleUserMessageSent() {
  * 生成结束（GENERATION_STOPPED / GENERATION_ENDED）时的视口校准
  */
 export function handleGenerationEnded() {
+    isGenerating = false;
     updateActiveReadingAnchor();
+    // 生成彻底结束，稍作防抖等待 DOM 稳定后统一执行一次增量收容与工具调用打标
+    setTimeout(() => {
+        if (!isGenerating && !isTouching && !isScrolling && !isInputFocused()) {
+            containOversizedElements();
+            tagToolCallMessages();
+        }
+    }, 250);
 }
 
 export async function triggerLoadMoreMessages(isFlippingBackwards = false) {
@@ -427,9 +477,12 @@ function getAdaptiveMaxHeight(el, chat, colH, pageBreakEnabled) {
     return remaining > 150 ? remaining - 20 : Math.max(150, Math.min(200, colH - 20));
 }
 
+const POTENTIAL_CONTAINERS_SELECTOR = '.mes_text > table, .mes_text > details, .mes_text > iframe, .mes_text > section, .mes_text > form, .mes_text > article, .mes_text > div';
+
 function containOversizedElements() {
     const chat = document.getElementById('chat');
     if (!chat || !document.body.classList.contains('twt-reading-mode')) return;
+    if (isGenerating || isInputFocused()) return;
     const colH = chat.clientHeight;
     if (colH <= 0) return;
 
@@ -447,7 +500,9 @@ function containOversizedElements() {
     const scrollableEls = new Set();
     const containerClasses = [];
 
-    const children = chat.querySelectorAll('.mes_text > *');
+    // 精准选择潜在大容器，避免在长聊天中遍历数千个常规文本节点（P、SPAN等）
+    const children = chat.querySelectorAll(POTENTIAL_CONTAINERS_SELECTOR);
+    if (!children.length) return;
 
     // ------------------------------------------------------------
     // 读相位 (Phase 1: Read All Layout Data) - 全程 0 次 DOM 写入
@@ -455,11 +510,8 @@ function containOversizedElements() {
     for (let i = 0; i < children.length; i++) {
         const el = children[i];
 
-        // 1. 跳过思维链
-        if (el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')) continue;
-
-        // 1.1 跳过 Tool Call 内部容器（避免对其内部折叠块或代码块误加 .twt-html-needs-break 导致意外断页）
-        if (el.closest('.toolCall, .twt-toolcall-mes')) continue;
+        // 1. 跳过思维链与工具调用内部
+        if (el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body, .toolCall, .twt-toolcall-mes')) continue;
 
         const isContainer = (
             el.tagName === 'DIV' || el.tagName === 'TABLE' ||
@@ -496,27 +548,24 @@ function containOversizedElements() {
         const remaining = (elTop > 0 && elTop < colH) ? colH - elTop : colH;
         const currentH = el.scrollHeight;
 
-        // 5. DETAILS：展开后估算高度
+        // 5. DETAILS：仅在展开状态下评估，彻底消除循环内 toggle open 引发的剧烈 Layout Thrashing
         if (el.tagName === 'DETAILS') {
-            const wasOpen = el.open;
-            if (!wasOpen) el.open = true;
-            const expandedH = Array.from(el.children).reduce((s, c) => s + c.scrollHeight, 0);
-            if (!wasOpen) el.open = false;
-
-            if (expandedH > remaining) {
-                if (pageBreakEnabled) {
-                    toBreakSet.add(el);
-                    if (expandedH > colH) {
-                        toScrollable.push({ el, maxH: colH - 20 });
+            if (el.open) {
+                if (currentH > remaining) {
+                    if (pageBreakEnabled) {
+                        toBreakSet.add(el);
+                        if (currentH > colH) {
+                            toScrollable.push({ el, maxH: colH - 20 });
+                            scrollableEls.add(el);
+                        }
+                    } else {
+                        const maxH = remaining > 150 ? remaining - 20 : Math.max(150, Math.min(200, colH - 20));
+                        toScrollable.push({ el, maxH });
                         scrollableEls.add(el);
                     }
-                } else {
-                    const maxH = remaining > 150 ? remaining - 20 : Math.max(150, Math.min(200, colH - 20));
-                    toScrollable.push({ el, maxH });
-                    scrollableEls.add(el);
                 }
             }
-            elementPrevHeights.set(el, el.scrollHeight);
+            elementPrevHeights.set(el, currentH);
             continue;
         }
 
@@ -641,9 +690,6 @@ function scrollToPage(chat, page, cw) {
     page = Math.max(0, Math.min(page, total - 1));
     const targetScrollLeft = page * step;
 
-    // 若跨页较大（超过2页），使用即时滚动，避免长距离平滑滚动中被各种事件干扰
-    const isLongJump = Math.abs(chat.scrollLeft - targetScrollLeft) > (step * 2);
-
     lastUserPage = page;
     debouncedSavePaginationPosition();
     isScrolling = true;
@@ -652,24 +698,21 @@ function scrollToPage(chat, page, cw) {
     scrollUnlockTimer = setTimeout(() => {
         isScrolling = false;
         updateActiveReadingAnchor();
-    }, isLongJump ? 100 : 400);
+    }, 80);
 
-    if (isLongJump) {
-        chat.scrollLeft = targetScrollLeft;
-    } else {
-        chat.scrollTo({ left: targetScrollLeft, behavior: 'smooth' });
-    }
+    // 在上百页的大型多列排版下，必须使用即时位移，杜绝 browser smooth scroll 逐帧插值引起的灾难级掉帧与重绘堆积
+    chat.scrollLeft = targetScrollLeft;
 }
 
 // ============================================================
 // snap 校正（scroll 结束后对齐到最近整页）
 // ============================================================
 function doSnap(chat) {
-    if (isTouching || isScrolling || isInputFocused()) return;
+    if (isTouching || isScrolling || isInputFocused() || isGenerating) return;
     if (!document.body.classList.contains('twt-reading-mode')) return;
     if (document.body.classList.contains('twt-paragraph-editing')) return;
 
-    const cw = getColStep(chat);
+    const cw = stableColWidth > 0 ? stableColWidth : (chat.clientWidth || 0);
     if (cw <= 0) return;
 
     const nearest = Math.round(chat.scrollLeft / cw);
@@ -706,7 +749,7 @@ function updateColWidth() {
     }
 }
 
-function updateColWidthWhenReady(retries = 20, interval = 150) {
+function updateColWidthWhenReady(retries = 3, interval = 80) {
     clearTimeout(colWidthRetryTimer);
     const chat = getChat();
     if (!chat || !document.body.classList.contains('twt-reading-mode')) return;
@@ -717,18 +760,19 @@ function updateColWidthWhenReady(retries = 20, interval = 150) {
         return;
     }
 
-    // Wait for scrollWidth to stabilise over two frames (tolerance 2px for HiDPI/subpixel)
+    // 容差自适应：在 300+ 列超长文档下，亚像素浮点抖动通常在几像素内，避免反复无效重排
     const sw1 = chat.scrollWidth;
     requestAnimationFrame(() => {
         if (!document.body.classList.contains('twt-reading-mode')) return;
         const sw2 = chat.scrollWidth;
-        if (Math.abs(sw2 - sw1) > 2 && retries > 0) {
+        const tolerance = Math.max(6, rawW * 0.01);
+        if (Math.abs(sw2 - sw1) > tolerance && retries > 0) {
             colWidthRetryTimer = setTimeout(() => updateColWidthWhenReady(retries - 1, interval), interval);
             return;
         }
         chat.style.setProperty('--twt-col-width', `${rawW}px`, 'important');
         containOversizedElements();
-        // Layout verified stable over two frames: establish precise step cache
+        // Layout verified stable: establish precise step cache
         {
             const sw = chat.scrollWidth;
             if (sw > 0) {
@@ -838,12 +882,12 @@ function initMutationObserver() {
             }
         }
 
-        // 用户打字输入期间，跳过背景重排与收容，保证键盘打字极速响应
-        if (isInputFocused()) return;
+        // 用户打字输入期间或 AI 正在流式生成输出期间，全面跳过背景重排与收容，彻底杜绝打字与生成卡顿
+        if (isInputFocused() || isGenerating) return;
 
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
-            if (isTouching || isInputFocused()) return;
+            if (isTouching || isInputFocused() || isGenerating) return;
             mutationObserver.disconnect();
             try {
                 containOversizedElements();
@@ -952,12 +996,6 @@ function getMessageFloorText(mes) {
     if (mesId !== null && mesId !== undefined && mesId !== '') {
         return `#${mesId}`;
     }
-    const chat = mes.parentElement;
-    if (chat) {
-        const allMes = Array.from(chat.querySelectorAll('.mes'));
-        const idx = allMes.indexOf(mes);
-        if (idx >= 0) return `#${idx}`;
-    }
     return '';
 }
 
@@ -1009,16 +1047,22 @@ function updateToolCallFloorBadge(mes) {
 export function tagToolCallMessages(settings = extension_settings?.twt) {
     const chat = getChat();
     if (!chat) return;
+    if (isGenerating || isInputFocused()) return;
     const selector = settings?.toolCallSelector?.trim() || '.mes.toolCall, .mes[is_system="true"].toolCall';
     try {
         const matches = chat.querySelectorAll(selector);
-        matches.forEach(el => {
+        for (let i = 0; i < matches.length; i++) {
+            const el = matches[i];
             const mes = el.closest('.mes') || el;
-            if (!mes.classList.contains('twt-toolcall-mes')) {
+            const hasTagged = mes.classList.contains('twt-toolcall-mes');
+            if (!hasTagged) {
                 mes.classList.add('twt-toolcall-mes');
             }
-            updateToolCallFloorBadge(mes);
-        });
+            // 增量优化：如果已经打标且已经有了徽章，跳过重复的 DOM 操作
+            if (!hasTagged || !mes.querySelector('.twt-toolcall-floor-badge')) {
+                updateToolCallFloorBadge(mes);
+            }
+        }
     } catch (e) {
         console.warn('[TwT] Invalid toolCallSelector:', e);
     }
@@ -1162,8 +1206,8 @@ export function realignPagination(verbose = true) {
     const sheld = document.getElementById('sheld');
     if (sheld) sheld.scrollTop = 0;
 
-    // 清理聊天区内部所有子元素可能产生的 scrollTop
-    const internalScrolled = chat.querySelectorAll('.mes, .mes_text, .mes_block');
+    // 清理聊天区内部真正具有滚动能力的子容器可能产生的 scrollTop
+    const internalScrolled = chat.querySelectorAll('.twt-pagination-scrollable, pre, textarea');
     internalScrolled.forEach(el => {
         if (el.scrollTop > 0) el.scrollTop = 0;
     });
@@ -1272,6 +1316,7 @@ export function resetPaginationBinding(getSettings) {
     lastKnownScrollWidth = 0;
     clearTimeout(stableColWidthTimer);
     isScrolling  = false;
+    isGenerating = false;
 
     if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null; }
     disconnectMutationObserver();
@@ -1410,14 +1455,22 @@ function bindScrollEvents(getSettings) {
         }, { signal });
     }
 
+    let scrollRafId = null;
+
     chat.addEventListener('scroll', () => {
         if (document.body.classList.contains('twt-paragraph-editing')) return;
         if (isInputFocused()) return;
         if (isScrolling) return;
 
-        const cw = getColStep(chat);
-        if (cw > 0) {
-            lastUserPage = Math.round(chat.scrollLeft / cw);
+        // 使用 rAF 节流，彻底杜绝在 120Hz/60Hz 高频滚动中重复读取引起布局重排
+        if (!scrollRafId) {
+            scrollRafId = requestAnimationFrame(() => {
+                scrollRafId = null;
+                const cw = stableColWidth > 0 ? stableColWidth : (chat.clientWidth || 0);
+                if (cw > 0) {
+                    lastUserPage = Math.round(chat.scrollLeft / cw);
+                }
+            });
         }
 
         clearTimeout(snapTimer);

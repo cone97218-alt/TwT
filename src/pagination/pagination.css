@@ -20,8 +20,8 @@ body.twt-reading-mode #chat {
     /* 不使用 CSS scroll-snap-type：column 布局无 snap-align 锚点，会导致 touchmove 时跳多页 */
     /* 不使用 -webkit-overflow-scrolling: touch：对横向同样触发惯性，由 touchmove preventDefault 接管 */
 
-    /* GPU 合成与平滑滚动 */
-    will-change: scroll-position;
+    /* GPU 硬件加速合成 */
+    transform: translateZ(0);
 
     /* 关键：横向手势完全由 JS 接管，浏览器不处理横向滚动和惯性 */
     /* 比 preventDefault 更底层，无 passive 冲突问题 */
@@ -123,9 +123,14 @@ body.twt-reading-mode #chat .mes {
     /* 不在每个 .mes 上单独提升合成层，避免 column layout 下合成层碎片化 */
 }
 
-/* 默认使用 BFC 自动收容浮动 avatar，除非启用主题头像布局 */
+/* 默认使用 block 与 clearfix 收容浮动 avatar，消除 flow-root 在多列排版下阻碍跨列自然分割的性能瓶颈 */
 body.twt-reading-mode:not(.twt-avatar-theme-layout) #chat .mes {
-    display: flow-root !important;
+    display: block !important;
+}
+body.twt-reading-mode:not(.twt-avatar-theme-layout) #chat .mes::after {
+    content: "" !important;
+    display: table !important;
+    clear: both !important;
 }
 
 body.twt-reading-mode #chat .mes_block,
