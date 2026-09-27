@@ -4089,13 +4089,23 @@ function updateCommentsBgSolid() {
             const r = match[1];
             const g = match[2];
             const b = match[3];
-            document.documentElement.style.setProperty('--twt-comments-bg-solid', `rgb(${r}, ${g}, ${b})`);
+            const solidColor = `rgb(${r}, ${g}, ${b})`;
+            document.documentElement.style.setProperty('--twt-comments-bg-solid', solidColor);
+            if (parentDoc && parentDoc.documentElement && parentDoc !== document) {
+                parentDoc.documentElement.style.setProperty('--twt-comments-bg-solid', solidColor);
+            }
         } else {
             document.documentElement.style.setProperty('--twt-comments-bg-solid', 'var(--SmartThemeBlurTintColor)');
+            if (parentDoc && parentDoc.documentElement && parentDoc !== document) {
+                parentDoc.documentElement.style.setProperty('--twt-comments-bg-solid', 'var(--SmartThemeBlurTintColor)');
+            }
         }
     } catch (e) {
         console.warn("TwT: Failed to parse SmartThemeBlurTintColor:", e);
         document.documentElement.style.setProperty('--twt-comments-bg-solid', 'var(--SmartThemeBlurTintColor)');
+        if (parentDoc && parentDoc.documentElement && parentDoc !== document) {
+            parentDoc.documentElement.style.setProperty('--twt-comments-bg-solid', 'var(--SmartThemeBlurTintColor)');
+        }
     }
 }
 

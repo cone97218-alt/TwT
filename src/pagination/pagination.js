@@ -826,27 +826,47 @@ function initMutationObserver() {
         if (document.body.classList.contains('twt-paragraph-editing')) return;
         if (isFocusGuarding) return;
 
-        // 检查是否有消息元素在前面被添加或移除（如酒馆历史截断移除最旧楼层，或在顶部插入历史消息）
+        // 检查是否有消息元素在“当前阅读锚点之前”被添加或移除（如酒馆历史截断移除最旧楼层，或在顶部插入历史消息）
+        // 尾部追加新消息（AI回复/用户发送）绝不属于前置变动，严禁对当前锚点补偿位移导致视口错位
         let hasFrontChanges = false;
-        if (mutations && mutations.length > 0) {
+        if (mutations && mutations.length > 0 && activeReadingAnchor && activeReadingAnchor.mesId !== undefined) {
+            const anchorMesId = Number(activeReadingAnchor.mesId);
             for (let i = 0; i < mutations.length; i++) {
                 const m = mutations[i];
                 if (m.type === 'childList') {
                     if (m.removedNodes && m.removedNodes.length > 0) {
                         for (let j = 0; j < m.removedNodes.length; j++) {
                             const node = m.removedNodes[j];
-                            if (node.nodeType === 1 && (node.classList?.contains('mes') || node.id === 'show_more_messages')) {
-                                hasFrontChanges = true;
-                                break;
+                            if (node.nodeType === 1) {
+                                if (node.id === 'show_more_messages') {
+                                    hasFrontChanges = true;
+                                    break;
+                                }
+                                if (node.classList?.contains('mes')) {
+                                    const mesId = Number(node.getAttribute('mesid'));
+                                    if (isNaN(mesId) || isNaN(anchorMesId) || mesId <= anchorMesId) {
+                                        hasFrontChanges = true;
+                                        break;
+                                    }
+                                }
                             }
                         }
                     }
                     if (m.addedNodes && m.addedNodes.length > 0) {
                         for (let j = 0; j < m.addedNodes.length; j++) {
                             const node = m.addedNodes[j];
-                            if (node.nodeType === 1 && (node.classList?.contains('mes') || node.id === 'show_more_messages')) {
-                                hasFrontChanges = true;
-                                break;
+                            if (node.nodeType === 1) {
+                                if (node.id === 'show_more_messages') {
+                                    hasFrontChanges = true;
+                                    break;
+                                }
+                                if (node.classList?.contains('mes')) {
+                                    const mesId = Number(node.getAttribute('mesid'));
+                                    if (isNaN(mesId) || isNaN(anchorMesId) || mesId < anchorMesId) {
+                                        hasFrontChanges = true;
+                                        break;
+                                    }
+                                }
                             }
                         }
                     }
@@ -856,7 +876,7 @@ function initMutationObserver() {
         }
 
         // 视口相对锚点零误差对齐：若顶部发生增删，立刻在微任务阶段补偿 scrollLeft 位移，彻底消除跳动
-        if (hasFrontChanges && activeReadingAnchor && activeReadingAnchor.mesId && !isTouching) {
+        if (hasFrontChanges && activeReadingAnchor && activeReadingAnchor.mesId && !isTouching && !isGenerating) {
             const anchorEl = chat.querySelector(`.mes[mesid="${activeReadingAnchor.mesId}"]`);
             if (anchorEl) {
                 const chatRect = chat.getBoundingClientRect();

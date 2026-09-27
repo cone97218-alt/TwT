@@ -1085,6 +1085,31 @@ function getParentDoc() {
     return doc;
 }
 
+function getSolidThemeBgColor(doc) {
+    try {
+        const targetDoc = doc || getParentDoc() || document;
+        const tempEl = targetDoc.createElement('div');
+        tempEl.style.color = 'var(--SmartThemeBlurTintColor, var(--SmartThemePanelColor, #1e1e1e))';
+        targetDoc.body.appendChild(tempEl);
+        const computedColor = getComputedStyle(tempEl).color;
+        targetDoc.body.removeChild(tempEl);
+        const match = computedColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        if (match) {
+            const solidColor = `rgb(${match[1]}, ${match[2]}, ${match[3]})`;
+            try {
+                targetDoc.documentElement.style.setProperty('--twt-comments-bg-solid', solidColor);
+                if (document && document.documentElement && document !== targetDoc) {
+                    document.documentElement.style.setProperty('--twt-comments-bg-solid', solidColor);
+                }
+            } catch (err) {}
+            return solidColor;
+        }
+    } catch (e) {
+        console.warn("TwT: Failed to parse SmartThemeBlurTintColor for full edit modal:", e);
+    }
+    return '';
+}
+
 function startExcerptLinkage() {
     const settings = getSettingsCallback ? getSettingsCallback() : {};
     const parentDoc = getParentDoc();
@@ -1381,9 +1406,14 @@ export function openFullTextEditor(mesId) {
         font-family: var(--monoFontFamily, sans-serif);
     `;
 
+    const solidBg = getSolidThemeBgColor(parentDoc);
+    const bgStyle = solidBg
+        ? `var(--twt-comments-bg-solid, ${solidBg})`
+        : 'var(--twt-comments-bg-solid, var(--SmartThemeBlurTintColor, #1e1e1e))';
+
     const container = parentDoc.createElement('div');
     container.style.cssText = `
-        background: var(--SmartThemeBlurTintColor, var(--SmartThemePanelColor, #1e1e1e));
+        background: ${bgStyle};
         border: 1px solid var(--SmartThemeBorderColor, rgba(255,255,255,0.2));
         border-radius: 12px;
         padding: 18px 20px;
