@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { extension_settings, getContext } from '../../../../../extensions.js';
 import { showMoreMessages } from '../../../../../../script.js';
-import { setLastUserPage, realignPagination, getColStep, setExplicitJumpLoading } from '../pagination/pagination.js';
+import { setLastUserPage, realignPagination, getColStep, setExplicitJumpLoading, updateActiveReadingAnchor } from '../pagination/pagination.js';
 
 // ============================================================
 // P2 & P3：TauriTavern Store & Search API 接入层
@@ -285,6 +285,7 @@ async function jumpToMessagePosition(mesId, charIndex = 0, totalLength = 1) {
         chatContainer.scrollTo({ left: targetPage * step, behavior: 'auto' });
         setLastUserPage(targetPage);
         chatContainer.scrollTop = 0;
+        if (typeof updateActiveReadingAnchor === 'function') updateActiveReadingAnchor();
     } else {
         mes.scrollIntoView({ behavior: 'auto', block: 'start' });
     }
@@ -582,37 +583,33 @@ function getTargetMessage() {
 
 async function scrollToMessageEdge(edge) {
     let mes = getTargetMessage();
-    if (!mes) {
-        // If no active AI message can be found, just scroll to absolute start or end!
-        const doc = getDoc();
-        const chatContainer = doc.getElementById('chat');
-        if (chatContainer) {
-            if (doc.body.classList.contains('twt-reading-mode')) {
-                const cw = chatContainer.getBoundingClientRect().width;
-                if (edge === 'start') {
-                    chatContainer.scrollTo({ left: 0, behavior: 'smooth' });
-                    setLastUserPage(0);
-                } else {
-                    const maxPage = Math.max(0, Math.ceil(chatContainer.scrollWidth / cw) - 1);
-                    chatContainer.scrollTo({ left: chatContainer.scrollWidth, behavior: 'smooth' });
-                    setLastUserPage(maxPage);
-                }
-            } else {
-                if (edge === 'start') {
-                    chatContainer.scrollTo({ top: 0, behavior: 'smooth' });
-                } else {
-                    chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
-                }
-            }
-            return;
-        }
-        toastr.info('未找到AI消息', '提示');
-        return;
-    }
-    
     const doc = getDoc();
     const chatContainer = doc.getElementById('chat');
     if (!chatContainer) return;
+
+    if (!mes) {
+        // 未找到活跃 AI 消息，直接瞬间跳到绝对开头或绝对结尾
+        if (doc.body.classList.contains('twt-reading-mode')) {
+            const step = (typeof getColStep === 'function' ? getColStep(chatContainer) : 0) || chatContainer.clientWidth || 1;
+            if (edge === 'start') {
+                chatContainer.scrollLeft = 0;
+                setLastUserPage(0);
+            } else {
+                const maxPage = Math.max(0, Math.ceil(chatContainer.scrollWidth / step) - 1);
+                chatContainer.scrollLeft = maxPage * step;
+                setLastUserPage(maxPage);
+            }
+            chatContainer.scrollTop = 0;
+            if (typeof updateActiveReadingAnchor === 'function') updateActiveReadingAnchor();
+        } else {
+            if (edge === 'start') {
+                chatContainer.scrollTop = 0;
+            } else {
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }
+        }
+        return;
+    }
     
     const currentId = parseInt(mes.getAttribute('mesid'));
     if (isNaN(currentId)) return;
@@ -620,7 +617,7 @@ async function scrollToMessageEdge(edge) {
     if (doc.body.classList.contains('twt-reading-mode')) {
         chatContainer.scrollTop = 0;
         const chatRect = chatContainer.getBoundingClientRect();
-        const step = (typeof getColStep === 'function' ? getColStep(chatContainer) : 0) || chatContainer.getBoundingClientRect().width;
+        const step = (typeof getColStep === 'function' ? getColStep(chatContainer) : 0) || chatContainer.clientWidth || 1;
         const currentScrollLeft = chatContainer.scrollLeft;
         const currentPage = Math.round(currentScrollLeft / step);
         
@@ -665,22 +662,24 @@ async function scrollToMessageEdge(edge) {
         }
         
         if (targetPage === currentPage) {
-            // Sibling not found or already at edge -> jump to absolute start or end!
+            // 已在边界或未找到相邻 AI 消息 -> 直接瞬间跳到聊天的绝对开头或绝对结尾！
             if (edge === 'start') {
-                chatContainer.scrollTo({ left: 0, behavior: 'smooth' });
+                chatContainer.scrollLeft = 0;
                 setLastUserPage(0);
             } else {
                 const maxPage = Math.max(0, Math.ceil(chatContainer.scrollWidth / step) - 1);
-                chatContainer.scrollTo({ left: chatContainer.scrollWidth, behavior: 'smooth' });
+                chatContainer.scrollLeft = maxPage * step;
                 setLastUserPage(maxPage);
             }
         } else {
-            chatContainer.scrollTo({ left: targetPage * step, behavior: 'smooth' });
+            // 即时定位到目标页，0ms 延迟，杜绝 smooth scroll 逐帧插值引发的一页页翻过和严重掉帧！
+            chatContainer.scrollLeft = targetPage * step;
             setLastUserPage(targetPage);
         }
         chatContainer.scrollTop = 0;
+        if (typeof updateActiveReadingAnchor === 'function') updateActiveReadingAnchor();
     } else {
-        // Vertical scroll mode chain scrolling
+        // 垂直滚动模式
         const chatRect = chatContainer.getBoundingClientRect();
         const rect = mes.getBoundingClientRect();
         const currentScrollTop = chatContainer.scrollTop;
@@ -716,14 +715,15 @@ async function scrollToMessageEdge(edge) {
                 const targetScrollTop = edge === 'start'
                     ? newRect.top - chatRect.top + currentScrollTop
                     : newRect.bottom - chatRect.bottom + currentScrollTop;
-                chatContainer.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+                const isFar = Math.abs(targetScrollTop - currentScrollTop) > 1500;
+                chatContainer.scrollTo({ top: targetScrollTop, behavior: isFar ? 'auto' : 'smooth' });
                 return;
             }
             // Sibling not found or already at edge -> jump to absolute start or end!
             if (edge === 'start') {
-                chatContainer.scrollTo({ top: 0, behavior: 'smooth' });
+                chatContainer.scrollTop = 0;
             } else {
-                chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
+                chatContainer.scrollTop = chatContainer.scrollHeight;
             }
             return;
         }
@@ -731,11 +731,38 @@ async function scrollToMessageEdge(edge) {
         const targetScrollTop = edge === 'start'
             ? rect.top - chatRect.top + currentScrollTop
             : rect.bottom - chatRect.bottom + currentScrollTop;
-        chatContainer.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+        const isFar = Math.abs(targetScrollTop - currentScrollTop) > 1500;
+        chatContainer.scrollTo({ top: targetScrollTop, behavior: isFar ? 'auto' : 'smooth' });
     }
 }
 
-function createButton(id, title, iconClass, onClick) {
+function scrollToAbsoluteEdge(edge) {
+    const doc = getDoc();
+    const chatContainer = doc.getElementById('chat');
+    if (!chatContainer) return;
+    if (doc.body.classList.contains('twt-reading-mode')) {
+        chatContainer.scrollTop = 0;
+        const step = (typeof getColStep === 'function' ? getColStep(chatContainer) : 0) || chatContainer.clientWidth || 1;
+        if (edge === 'start') {
+            chatContainer.scrollLeft = 0;
+            setLastUserPage(0);
+        } else {
+            const maxPage = Math.max(0, Math.ceil(chatContainer.scrollWidth / step) - 1);
+            chatContainer.scrollLeft = maxPage * step;
+            setLastUserPage(maxPage);
+        }
+        chatContainer.scrollTop = 0;
+        if (typeof updateActiveReadingAnchor === 'function') updateActiveReadingAnchor();
+    } else {
+        if (edge === 'start') {
+            chatContainer.scrollTop = 0;
+        } else {
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+    }
+}
+
+function createButton(id, title, iconClass, onClick, onDblClick = null) {
     const doc = getDoc();
     const btn = doc.createElement('div');
     btn.id = id;
@@ -749,6 +776,13 @@ function createButton(id, title, iconClass, onClick) {
         e.stopPropagation();
         onClick();
     });
+    if (onDblClick) {
+        btn.addEventListener('dblclick', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onDblClick();
+        });
+    }
     return btn;
 }
 
@@ -2385,16 +2419,17 @@ function scrollToMessage(mes) {
     if (doc.body.classList.contains('twt-reading-mode')) {
         chatContainer.scrollTop = 0;
         const chatRect = chatContainer.getBoundingClientRect();
-        const step = (typeof getColStep === 'function' ? getColStep(chatContainer) : 0) || chatContainer.getBoundingClientRect().width;
+        const step = (typeof getColStep === 'function' ? getColStep(chatContainer) : 0) || chatContainer.clientWidth || 1;
         const currentScrollLeft = chatContainer.scrollLeft;
         const rect = mes.getBoundingClientRect();
         const absoluteLeft = rect.left - chatRect.left + currentScrollLeft;
         const targetPage = Math.max(0, Math.floor(absoluteLeft / step));
-        chatContainer.scrollTo({ left: targetPage * step, behavior: 'smooth' });
+        chatContainer.scrollLeft = targetPage * step;
         setLastUserPage(targetPage);
         chatContainer.scrollTop = 0;
+        if (typeof updateActiveReadingAnchor === 'function') updateActiveReadingAnchor();
     } else {
-        mes.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        mes.scrollIntoView({ behavior: 'auto', block: 'start' });
     }
 }
 
@@ -2447,11 +2482,11 @@ export function applyMuluSettings() {
     const enabled = settings.muluEnabled;
     const doc = getDoc();
     
-    const toggleBtn = (id, show, title, icon, action) => {
+    const toggleBtn = (id, show, title, icon, action, dblAction = null) => {
         let btn = doc.getElementById(id);
         if (enabled && show) {
             if (!btn) {
-                btn = createButton(id, title, icon, action);
+                btn = createButton(id, title, icon, action, dblAction);
                 const btnContainer = doc.querySelector('#qr--bar .qr--buttons') || doc.getElementById('qr--bar');
                 if (btnContainer) {
                     btnContainer.prepend(btn);
@@ -2462,9 +2497,9 @@ export function applyMuluSettings() {
         }
     };
 
-    toggleBtn(BTN_END_ID, settings.muluBtnEnd, '跳至结尾 / 下一条', 'fa-angle-right', () => scrollToMessageEdge('end'));
+    toggleBtn(BTN_END_ID, settings.muluBtnEnd, '跳至结尾 / 下一条 (双击直达最末)', 'fa-angle-right', () => scrollToMessageEdge('end'), () => scrollToAbsoluteEdge('end'));
     toggleBtn(BTN_TOC_ID, settings.muluBtnToc, '阅读目录', 'fa-book', showMuluModal);
-    toggleBtn(BTN_START_ID, settings.muluBtnStart, '跳至开头 / 上一条', 'fa-angle-left', () => scrollToMessageEdge('start'));
+    toggleBtn(BTN_START_ID, settings.muluBtnStart, '跳至开头 / 上一条 (双击直达最初)', 'fa-angle-left', () => scrollToMessageEdge('start'), () => scrollToAbsoluteEdge('start'));
 }
 
 export function initMulu() {
