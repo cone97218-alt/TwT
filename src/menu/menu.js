@@ -109,8 +109,8 @@ export function initMenu(getSettings, onToggleExcerpt) {
 
         // PC right click:
         const target = e.target;
-        // Avoid launching menu when interacting with already interactive controls
-        if ($(target).closest('button, a, input, textarea, select, .mes_button, .swipe-button, .ch_name, img, .svg-icon').length) {
+        // Avoid launching menu when interacting with already interactive controls or bbi image slot
+        if ($(target).closest('button, a, input, textarea, select, .mes_button, .swipe-button, .ch_name, img, .svg-icon, div[data-bbi-slot], [data-bbi-slot], #bbi-app-host').length) {
             return;
         }
 
@@ -127,8 +127,8 @@ export function initMenu(getSettings, onToggleExcerpt) {
         if (!settings || !settings.menuEnabled || settings.menuInvokeMethod !== 'longpress') return;
 
         const target = e.target;
-        // Avoid launching menu when interacting with already interactive controls
-        if ($(target).closest('button, a, input, textarea, select, .mes_button, .swipe-button, .ch_name, img, .svg-icon').length) {
+        // Avoid launching menu when interacting with already interactive controls or bbi image slot
+        if ($(target).closest('button, a, input, textarea, select, .mes_button, .swipe-button, .ch_name, img, .svg-icon, div[data-bbi-slot], [data-bbi-slot], #bbi-app-host').length) {
             return;
         }
 
@@ -284,7 +284,8 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
         'menuOptPurifier',
         'menuOptPurifierDiff',
         'menuOptPromptViewer',
-        'menuOptRandomInspect'
+        'menuOptRandomInspect',
+        'menuOptImageTag'
     ];
 
     if (!order.includes('menuOptFullEdit')) {
@@ -298,6 +299,10 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
 
     if (!order.includes('menuOptRandomInspect')) {
         order = [...order, 'menuOptRandomInspect'];
+    }
+
+    if (!order.includes('menuOptImageTag')) {
+        order = [...order, 'menuOptImageTag'];
     }
 
     for (const key of order) {
@@ -563,6 +568,36 @@ function showContextMenu(e, $mes, clientX, clientY, settings) {
                         console.warn('[TwT] 未找到随机宏引擎(RandomMacro)扩展或未启用');
                         if (typeof toastr !== 'undefined') {
                             toastr.warning('未找到随机宏引擎扩展或未启用', '提示');
+                        }
+                    }
+                }
+            });
+        }
+
+        if (key === 'menuOptImageTag' && settings.menuOptImageTag !== false) {
+            appendMenuItem({
+                label: '生成生图tag（已有tag时重新生成）',
+                shortLabel: '生图Tag',
+                icon: 'fa-solid fa-palette',
+                isGridItem: false,
+                onClick: () => {
+                    const $mesEl = $(`#chat .mes[mesid="${mesId}"]`);
+                    const $btn = $mesEl.find('.bbi-tag-action');
+                    if ($btn.length) {
+                        $btn[0].click();
+                        return;
+                    }
+                    if (isUser) {
+                        if (typeof toastr !== 'undefined') {
+                            toastr.info('当前消息为用户消息，生图拓展仅支持为 AI 回复生成生图 tag', '生图Tag');
+                        }
+                    } else if (typeof window.STBaiBaiImage === 'undefined' && !$('.bbi-tag-action').length) {
+                        if (typeof toastr !== 'undefined') {
+                            toastr.warning('柏宝绘（生图拓展）未加载或未启用', '提示');
+                        }
+                    } else {
+                        if (typeof toastr !== 'undefined') {
+                            toastr.warning('该楼层未找到生图 tag 生成按钮或当前聊天已被排除', '提示');
                         }
                     }
                 }

@@ -1415,6 +1415,11 @@ export function initPaginationEvent(getSettings) {
                 }
             }
 
+            // 生图拓展防误触：ST-BaiBai-Image（柏宝绘）生图卡片区域与宿主点击不触发翻页
+            try {
+                if (e.target.closest('div[data-bbi-slot], [data-bbi-slot], .bbi-figure, #bbi-app-host')) return;
+            } catch { /* ignore */ }
+
             // 交互元素判断
             const baseSelector = 'button, a, input, textarea, select, label, summary, [onclick], [role="button"], [tabindex], .mes_button, .swipe-button, .ch_name, .avatar, img, .svg-icon';
             let interactive = false;
@@ -1424,8 +1429,36 @@ export function initPaginationEvent(getSettings) {
             }
             if (!interactive) interactive = !!e.target.closest(baseSelector);
             if (!interactive) {
-                try { interactive = getComputedStyle(e.target).cursor === 'pointer'; } catch { /* ignore */ }
+                try {
+                    const cur = getComputedStyle(e.target).cursor;
+                    interactive = (cur === 'pointer' || cur === 'zoom-in' || cur === 'zoom-out');
+                } catch { /* ignore */ }
             }
+
+            // Shadow DOM / 组合事件路径穿透判定（针对由 ShadowRoot 内部触发并被浏览器重定向 target 的点击事件）
+            if (!interactive && typeof e.composedPath === 'function') {
+                try {
+                    const path = e.composedPath();
+                    for (let i = 0; i < path.length; i++) {
+                        const node = path[i];
+                        if (!node || !(node instanceof Element)) continue;
+                        if (node.matches?.('div[data-bbi-slot], [data-bbi-slot], .bbi-figure, [class*="bbi-"]') || node.dataset?.bbiSlot !== undefined) {
+                            interactive = true;
+                            break;
+                        }
+                        if (node.matches?.(baseSelector)) {
+                            interactive = true;
+                            break;
+                        }
+                        const cur = getComputedStyle(node).cursor;
+                        if (cur === 'pointer' || cur === 'zoom-in' || cur === 'zoom-out') {
+                            interactive = true;
+                            break;
+                        }
+                    }
+                } catch { /* ignore */ }
+            }
+
             if (interactive) return;
         }
 
