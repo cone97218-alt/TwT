@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { extension_settings, getContext } from '../../../extensions.js';
+import { extension_settings, getContext } from '../../../../extensions.js';
 import { jumpToStart, jumpToEnd, openMuluModal } from './mulu/mulu.js';
 import { toggleHtmlAppPopup } from './html_popup/html_popup.js';
 import { realignPagination } from './pagination/pagination.js';
@@ -20,17 +20,34 @@ export async function registerSlashCommands() {
     let SlashCommandParser = null;
 
     try {
-        const scModule = await import('../../../slash-commands/SlashCommand.js');
-        const scpModule = await import('../../../slash-commands/SlashCommandParser.js');
-        SlashCommand = scModule.SlashCommand;
-        SlashCommandParser = scpModule.SlashCommandParser;
-    } catch (e) {
-        if (window.SlashCommand && window.SlashCommandParser) {
-            SlashCommand = window.SlashCommand;
-            SlashCommandParser = window.SlashCommandParser;
-        } else if (window.parent && window.parent.SlashCommand && window.parent.SlashCommandParser) {
-            SlashCommand = window.parent.SlashCommand;
-            SlashCommandParser = window.parent.SlashCommandParser;
+        const ctx = typeof getContext === 'function' ? getContext() : (window.SillyTavern?.getContext ? window.SillyTavern.getContext() : null);
+        if (ctx?.SlashCommand && ctx?.SlashCommandParser) {
+            SlashCommand = ctx.SlashCommand;
+            SlashCommandParser = ctx.SlashCommandParser;
+        }
+    } catch (e) {}
+
+    if (!SlashCommand || !SlashCommandParser) {
+        try {
+            const scModule = await import('/scripts/slash-commands/SlashCommand.js');
+            const scpModule = await import('/scripts/slash-commands/SlashCommandParser.js');
+            SlashCommand = scModule.SlashCommand;
+            SlashCommandParser = scpModule.SlashCommandParser;
+        } catch (e) {
+            try {
+                const scModule = await import('../../../../slash-commands/SlashCommand.js');
+                const scpModule = await import('../../../../slash-commands/SlashCommandParser.js');
+                SlashCommand = scModule.SlashCommand;
+                SlashCommandParser = scpModule.SlashCommandParser;
+            } catch (err) {
+                if (window.SlashCommand && window.SlashCommandParser) {
+                    SlashCommand = window.SlashCommand;
+                    SlashCommandParser = window.SlashCommandParser;
+                } else if (window.parent?.SlashCommand && window.parent?.SlashCommandParser) {
+                    SlashCommand = window.parent.SlashCommand;
+                    SlashCommandParser = window.parent.SlashCommandParser;
+                }
+            }
         }
     }
 
