@@ -2042,15 +2042,23 @@ function ensureFloatButton(doc, win, showFloat) {
 /**
  * 注入与更新 QR 栏按钮及悬浮球
  */
+export function toggleHtmlAppPopup() {
+    handleQrBtnClick();
+}
+
+/**
+ * 注入与更新 QR 栏按钮及悬浮球
+ */
 export function applyHtmlPopupSettings() {
     injectStyles();
     const settings = extension_settings?.twt;
     const enabled = settings?.htmlPopupEnabled !== false;
     const triggerMode = settings?.htmlPopupTriggerMode || 'qr';
+    const qrInject = settings?.qrInjectEnabled !== false;
     const doc = getDoc();
     const win = getWin();
 
-    const showQr = enabled && (triggerMode === 'qr' || triggerMode === 'both');
+    const showQr = enabled && qrInject && (triggerMode === 'qr' || triggerMode === 'both');
     const showFloat = enabled && (triggerMode === 'float' || triggerMode === 'both');
 
     // 1. QR 栏按钮管理
@@ -2112,7 +2120,8 @@ export function initHtmlPopup() {
         const settings = extension_settings?.twt;
         const enabled = settings?.htmlPopupEnabled !== false;
         const triggerMode = settings?.htmlPopupTriggerMode || 'qr';
-        const needsQr = enabled && (triggerMode === 'qr' || triggerMode === 'both') && !doc.getElementById(QR_BTN_ID) && doc.querySelector('#qr--bar');
+        const qrInject = settings?.qrInjectEnabled !== false;
+        const needsQr = enabled && qrInject && (triggerMode === 'qr' || triggerMode === 'both') && !doc.getElementById(QR_BTN_ID) && doc.querySelector('#qr--bar');
         const needsFloat = enabled && (triggerMode === 'float' || triggerMode === 'both') && !doc.getElementById(FLOAT_BTN_ID);
         if (needsQr || needsFloat) {
             applyHtmlPopupSettings();

@@ -2480,11 +2480,12 @@ export function applyMuluSettings() {
     if (!settings) return;
 
     const enabled = settings.muluEnabled;
+    const qrInject = settings.qrInjectEnabled !== false;
     const doc = getDoc();
     
     const toggleBtn = (id, show, title, icon, action, dblAction = null) => {
         let btn = doc.getElementById(id);
-        if (enabled && show) {
+        if (enabled && show && qrInject) {
             if (!btn) {
                 btn = createButton(id, title, icon, action, dblAction);
                 const btnContainer = doc.querySelector('#qr--bar .qr--buttons') || doc.getElementById('qr--bar');
@@ -2500,6 +2501,20 @@ export function applyMuluSettings() {
     toggleBtn(BTN_END_ID, settings.muluBtnEnd, '跳至结尾 / 下一条 (双击直达最末)', 'fa-angle-right', () => scrollToMessageEdge('end'), () => scrollToAbsoluteEdge('end'));
     toggleBtn(BTN_TOC_ID, settings.muluBtnToc, '阅读目录', 'fa-book', showMuluModal);
     toggleBtn(BTN_START_ID, settings.muluBtnStart, '跳至开头 / 上一条 (双击直达最初)', 'fa-angle-left', () => scrollToMessageEdge('start'), () => scrollToAbsoluteEdge('start'));
+}
+
+export function jumpToStart(absolute = false) {
+    if (absolute) scrollToAbsoluteEdge('start');
+    else scrollToMessageEdge('start');
+}
+
+export function jumpToEnd(absolute = false) {
+    if (absolute) scrollToAbsoluteEdge('end');
+    else scrollToMessageEdge('end');
+}
+
+export function openMuluModal() {
+    showMuluModal();
 }
 
 export function initMulu() {

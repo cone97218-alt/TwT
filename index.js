@@ -6,6 +6,7 @@ import { saveFontToStorage, getFontBlobUrl, deleteFontFromStorage } from './src/
 import { initMulu, applyMuluSettings } from './src/mulu/mulu.js';
 import { initMenu, applyMenuMode, applyFullscreenMode } from './src/menu/menu.js';
 import { initHtmlPopup, applyHtmlPopupSettings, registerHtmlPopupEvents } from './src/html_popup/html_popup.js';
+import { registerSlashCommands } from './src/slash_commands.js';
 
 let parentDoc = document;
 try {
@@ -116,6 +117,7 @@ const extensionName = 'TwT';
 
 const defaultSettings = {
     enabled: true,
+    qrInjectEnabled: true,
     swipeEnabled: true,
     messagePageEnabled: false,
     autoScrollNewMessage: true,
@@ -1599,6 +1601,7 @@ function initThemeLinkListener() {
 // ============================================================
 function bindUI() {
     const $enabled = $('#twt_enabled');
+    const $qrInjectEnabled = $('#twt_qr_inject_enabled');
     const $swipeEnabled = $('#twt_swipe_enabled');
     const $messagePageEnabled = $('#twt_message_page_enabled');
     const $autoScrollNewMessage = $('#twt_auto_scroll_new_message');
@@ -1668,6 +1671,7 @@ function bindUI() {
 
     // UI初始化
     $enabled.prop('checked', extension_settings.twt.enabled);
+    $qrInjectEnabled.prop('checked', extension_settings.twt.qrInjectEnabled !== false);
     $swipeEnabled.prop('checked', extension_settings.twt.swipeEnabled);
     $messagePageEnabled.prop('checked', extension_settings.twt.messagePageEnabled);
     $autoScrollNewMessage.prop('checked', extension_settings.twt.autoScrollNewMessage !== false);
@@ -2954,6 +2958,13 @@ function bindUI() {
         getContext().saveSettingsDebounced();
         updatePageTabVisibility();
         applyPaginationMode(extension_settings.twt.enabled, extension_settings.twt);
+    });
+
+    $qrInjectEnabled.on('change', function () {
+        extension_settings.twt.qrInjectEnabled = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+        applyMuluSettings();
+        applyHtmlPopupSettings();
     });
 
     $swipeEnabled.on('change', function () {
@@ -4634,6 +4645,7 @@ jQuery(async () => {
     updateInjectedStyles();
     initMulu();
     initHtmlPopup();
+    registerSlashCommands();
     try {
         const ctx = getContext();
         registerHtmlPopupEvents(ctx);

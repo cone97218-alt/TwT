@@ -55,6 +55,16 @@
                     <label for="twt_comments_enabled">启用小说段评</label>
                     <input type="checkbox" id="twt_comments_enabled" />
                 </div>
+                <div style="border-top: 1px dashed var(--SmartThemeBorderColor); margin-top: 12px; padding-top: 10px;">
+                    <div class="twt-setting-row"
+                        style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
+                        <label for="twt_qr_inject_enabled">向 QR 栏注入快捷功能按钮</label>
+                        <input type="checkbox" id="twt_qr_inject_enabled" />
+                    </div>
+                    <div style="font-size: 0.85em; opacity: 0.6; margin-bottom: 5px; margin-top: -2px; padding-left: 2px;">
+                        开启后将在输入框上方 QR 栏显示目录/翻转/应用按钮；关闭后不向 QR 栏注入任何按钮，仅使用斜杠命令（如 <code>/twt-toc</code>、<code>/twt-app</code>、<code>/twt-start</code> 等）或悬浮球召出。
+                    </div>
+                </div>
             </div>
 
             <!-- 翻页 Tab -->
@@ -119,6 +129,7 @@
                         <option value="qr">QR 栏按钮 (默认)</option>
                         <option value="float">侧边吸附悬浮球</option>
                         <option value="both">两者同时显示</option>
+                        <option value="command">仅斜杠命令 (不显示按钮)</option>
                     </select>
                 </div>
                 <div id="twt_html_popup_trigger_mode_hint" style="font-size: 0.85em; opacity: 0.6; margin-bottom: 10px; margin-top: -2px; padding-left: 2px;">
@@ -680,9 +691,12 @@
                     <input type="checkbox" id="twt_mulu_btn_toc" />
                 </div>
                 <div class="twt-setting-row"
-                    style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;">
+                    style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
                     <label for="twt_mulu_btn_end">显示“回到结尾”按钮 (右箭头)</label>
                     <input type="checkbox" id="twt_mulu_btn_end" />
+                </div>
+                <div style="font-size: 0.85em; opacity: 0.6; margin-bottom: 15px; margin-top: -2px; padding-left: 2px;">
+                    提示：若在设置中关闭了“向 QR 栏注入快捷功能按钮”，上述按钮将不会显示在 QR 栏，但可通过斜杠命令（<code>/twt-toc</code>、<code>/twt-start</code>、<code>/twt-end</code>）召出。
                 </div>
 
                 <div class="twt-setting-row"
