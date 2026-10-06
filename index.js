@@ -717,6 +717,22 @@ function handleConfirmCreatePatch() {
         folder: selectedFolder
     };
 
+    // 同步到视觉预设：在当前选中的预设中标记为启用，其余所有预设中默认为不启用状态
+    const curPreset = extension_settings.twt.currentPreset;
+    const presets = extension_settings.twt.visualPresets || {};
+    for (const [pName, pData] of Object.entries(presets)) {
+        if (pData && typeof pData === 'object') {
+            if (!pData.optimizePatches || typeof pData.optimizePatches !== 'object') {
+                pData.optimizePatches = {};
+            }
+            if (curPreset && curPreset !== 'custom' && pName === curPreset) {
+                pData.optimizePatches[patchName] = true;
+            } else {
+                pData.optimizePatches[patchName] = false;
+            }
+        }
+    }
+
     getContext().saveSettingsDebounced();
     closeOptimizeCreateModal();
     renderOptimizePatchList();
@@ -1050,11 +1066,16 @@ function applyPreset(presetName) {
         
         // CSS Optimization Patches: apply saved patch active states if defined in preset
         const patches = extension_settings.twt.optimizePatches || {};
-        if (preset.optimizePatches && typeof preset.optimizePatches === 'object') {
-            for (const [key, val] of Object.entries(preset.optimizePatches)) {
-                if (patches[key]) {
-                    patches[key].active = !!val;
-                }
+        if (!preset.optimizePatches || typeof preset.optimizePatches !== 'object') {
+            preset.optimizePatches = {};
+        }
+        for (const [key, patch] of Object.entries(patches)) {
+            if (key in preset.optimizePatches) {
+                patch.active = !!preset.optimizePatches[key];
+            } else {
+                // 其余预设中该补丁默认为不启用状态
+                patch.active = false;
+                preset.optimizePatches[key] = false;
             }
         }
         renderOptimizePatchList();
@@ -1740,7 +1761,11 @@ function bindUI() {
     renderFontFamilyOptions();
     renderPresetList();
     renderMuluRegexPresetList();
-    renderOptimizePatchList();
+    if (extension_settings.twt.currentPreset && extension_settings.twt.currentPreset !== 'custom' && extension_settings.twt.visualPresets?.[extension_settings.twt.currentPreset]) {
+        applyPreset(extension_settings.twt.currentPreset);
+    } else {
+        renderOptimizePatchList();
+    }
 
     $('#twt_mulu_regex_input').val(extension_settings.twt.customMuluRegex);
 
@@ -2838,6 +2863,16 @@ function bindUI() {
         const active = $(this).prop('checked');
         if (extension_settings.twt.optimizePatches[name]) {
             extension_settings.twt.optimizePatches[name].active = active;
+
+            // 若当前处于特定预设，同步更新该预设中的补丁启用状态
+            const currentPreset = extension_settings.twt.currentPreset;
+            if (currentPreset && currentPreset !== 'custom' && extension_settings.twt.visualPresets?.[currentPreset]) {
+                if (!extension_settings.twt.visualPresets[currentPreset].optimizePatches) {
+                    extension_settings.twt.visualPresets[currentPreset].optimizePatches = {};
+                }
+                extension_settings.twt.visualPresets[currentPreset].optimizePatches[name] = active;
+            }
+
             getContext().saveSettingsDebounced();
             updateInjectedStyles();
         }
@@ -2867,6 +2902,16 @@ function bindUI() {
                 currentlyEditingPatchName = trimmedName;
                 getEl('#twt_optimize_editor_title').text(`正在编辑: ${trimmedName}`);
             }
+
+            // 同步预设中的补丁名称
+            const presets = extension_settings.twt.visualPresets || {};
+            for (const pData of Object.values(presets)) {
+                if (pData?.optimizePatches && current in pData.optimizePatches) {
+                    pData.optimizePatches[trimmedName] = pData.optimizePatches[current];
+                    delete pData.optimizePatches[current];
+                }
+            }
+
             getContext().saveSettingsDebounced();
             renderOptimizePatchList();
             updateInjectedStyles();
@@ -2882,6 +2927,15 @@ function bindUI() {
             if (currentlyEditingPatchName === current) {
                 closeOptimizeEditor();
             }
+
+            // 同步清理预设中的补丁
+            const presets = extension_settings.twt.visualPresets || {};
+            for (const pData of Object.values(presets)) {
+                if (pData?.optimizePatches && current in pData.optimizePatches) {
+                    delete pData.optimizePatches[current];
+                }
+            }
+
             getContext().saveSettingsDebounced();
             renderOptimizePatchList();
             updateInjectedStyles();
