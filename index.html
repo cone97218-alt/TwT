@@ -448,20 +448,14 @@
                                     class="fa-solid fa-trash"></i></button>
                         </div>
                     </div>
-                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-top: 4px;">
-                        <div style="display: flex; gap: 6px; align-items: center;">
-                            <button id="twt_visual_import" class="menu_button" style="padding: 4px 8px; margin: 0; font-size: 0.85em; display: inline-flex !important; align-items: center !important; gap: 4px !important; white-space: nowrap !important;" title="导入视觉预设或配置备份 (.json)">
-                                <i class="fa-solid fa-file-import"></i> 导入
-                            </button>
-                            <button id="twt_visual_export" class="menu_button" style="padding: 4px 8px; margin: 0; font-size: 0.85em; display: inline-flex !important; align-items: center !important; gap: 4px !important; white-space: nowrap !important;" title="导出当前预设或视觉配置备份">
-                                <i class="fa-solid fa-file-export"></i> 导出
-                            </button>
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 5px; margin-top: 4px;">
+                        <div style="display: flex; gap: 5px; align-items: center;">
+                            <button id="twt_visual_import" class="menu_button" style="padding: 4px 8px; margin: 0;" title="导入预设/配置备份 (.json)"><i class="fa-solid fa-file-import"></i></button>
+                            <button id="twt_visual_export" class="menu_button" style="padding: 4px 8px; margin: 0;" title="导出预设/配置备份"><i class="fa-solid fa-file-export"></i></button>
                             <input type="file" id="twt_visual_import_file" accept=".json" style="display: none;" />
                         </div>
                         <div>
-                            <button id="twt_visual_reset" class="menu_button" style="padding: 4px 8px; margin: 0; font-size: 0.85em; color: #ff6666; display: inline-flex !important; align-items: center !important; gap: 4px !important; white-space: nowrap !important;" title="一键清空视觉模块所有自定义配置并恢复初始设置">
-                                <i class="fa-solid fa-rotate-left"></i> 一键初始化
-                            </button>
+                            <button id="twt_visual_reset" class="menu_button" style="padding: 4px 8px; margin: 0; color: #ff4444;" title="一键清空并恢复初始化设置"><i class="fa-solid fa-rotate-left"></i></button>
                         </div>
                     </div>
                 </div>
@@ -1006,6 +1000,37 @@
         <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 5px; flex-direction: row; flex-wrap: nowrap;">
             <button id="twt_link_theme_cancel" class="menu_button" style="padding: 6px 16px !important; margin: 0 !important; display: inline-block !important; width: auto !important; height: auto !important; min-height: unset !important; background: rgba(255,255,255,0.1) !important;">取消</button>
             <button id="twt_link_theme_save" class="menu_button" style="padding: 6px 16px !important; margin: 0 !important; display: inline-block !important; width: auto !important; height: auto !important; min-height: unset !important; background: var(--SmartThemeUnderlineColor, #007aff) !important; color: #fff !important;">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- 新建 CSS 补丁 Modal -->
+<div id="twt-optimize-create-modal" class="twt-preview-modal-overlay" style="display: none; z-index: 1000003;">
+    <div style="background: var(--twt-comments-bg-solid, var(--SmartThemeDarkColor)); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 8px; padding: 20px; width: 95%; max-width: 440px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 4px 20px rgba(0,0,0,0.6); box-sizing: border-box;">
+        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--SmartThemeBorderColor); padding-bottom: 8px;">
+            <h4 style="margin: 0; font-size: 1.1em; font-weight: bold; display: flex; align-items: center; gap: 6px;">
+                <i class="fa-solid fa-plus" style="font-size: 0.9em;"></i> 新建 CSS 优化补丁
+            </h4>
+            <button id="twt_optimize_create_close" class="menu_button" style="padding: 4px 8px !important; margin: 0 !important; font-size: 0.85em !important; height: auto !important; min-height: unset !important; display: flex; align-items: center; justify-content: center; line-height: 1 !important;"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div>
+                <label for="twt_optimize_create_folder" style="font-size: 0.85em; opacity: 0.85; display: block; margin-bottom: 5px; font-weight: bold;">
+                    第一步：选择所属分组 / 分类
+                </label>
+                <select id="twt_optimize_create_folder" style="width: 100%; box-sizing: border-box; padding: 8px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-size: 0.9em;"></select>
+                <input type="text" id="twt_optimize_create_new_folder" placeholder="输入新分组名称..." style="display: none; width: 100%; box-sizing: border-box; padding: 7px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-size: 0.9em; margin-top: 6px;" />
+            </div>
+            <div>
+                <label for="twt_optimize_create_name" style="font-size: 0.85em; opacity: 0.85; display: block; margin-bottom: 5px; font-weight: bold;">
+                    第二步：输入补丁名称
+                </label>
+                <input type="text" id="twt_optimize_create_name" placeholder="例如：隐藏顶栏头像、输入框圆角化..." style="width: 100%; box-sizing: border-box; padding: 8px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; font-size: 0.9em;" />
+            </div>
+        </div>
+        <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 4px;">
+            <button id="twt_optimize_create_cancel" class="menu_button" style="padding: 6px 16px !important; margin: 0 !important; display: inline-block !important; width: auto !important; height: auto !important; min-height: unset !important; background: rgba(255,255,255,0.1) !important;">取消</button>
+            <button id="twt_optimize_create_confirm" class="menu_button" style="padding: 6px 16px !important; margin: 0 !important; display: inline-block !important; width: auto !important; height: auto !important; min-height: unset !important; background: var(--SmartThemeUnderlineColor, #007aff) !important; color: #fff !important;">确定创建并编辑</button>
         </div>
     </div>
 </div>

@@ -536,6 +536,7 @@ function renderOptimizePatchList() {
                     </div>
                     <div style="display: flex; gap: 8px; align-items: center;">
                         <span class="twt-folder-count" style="font-size: 0.8em; opacity: 0.5;">(${patchCount})</span>
+                        <button class="twt-folder-add-patch menu_button" style="padding: 2px 5px !important; margin: 0 !important; font-size: 0.75em !important; height: auto !important; min-height: unset !important;" title="在该分类下新建补丁"><i class="fa-solid fa-plus"></i></button>
                         <button class="twt-folder-rename menu_button" style="padding: 2px 5px !important; margin: 0 !important; font-size: 0.75em !important; height: auto !important; min-height: unset !important;" title="重命名分类"><i class="fa-solid fa-pen"></i></button>
                         <button class="twt-folder-delete menu_button" style="padding: 2px 5px !important; margin: 0 !important; font-size: 0.75em !important; height: auto !important; min-height: unset !important; color: #ff4444 !important;" title="删除分类"><i class="fa-solid fa-trash"></i></button>
                     </div>
@@ -579,7 +580,10 @@ function renderOptimizePatchList() {
                         <i class="fa-solid ${isCollapsed ? 'fa-folder' : 'fa-folder-open'} twt-folder-icon" style="color: #a0a0a0; font-size: 0.95em;"></i>
                         <span style="font-weight: bold; font-size: 0.9em; opacity: 0.85;">未分类</span>
                     </div>
-                    <span class="twt-folder-count" style="font-size: 0.8em; opacity: 0.5;">(${patchCount})</span>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <span class="twt-folder-count" style="font-size: 0.8em; opacity: 0.5;">(${patchCount})</span>
+                        <button class="twt-folder-add-patch menu_button" style="padding: 2px 5px !important; margin: 0 !important; font-size: 0.75em !important; height: auto !important; min-height: unset !important;" title="在未分类下新建补丁"><i class="fa-solid fa-plus"></i></button>
+                    </div>
                 </div>
                 <div class="twt-optimize-folder-content" style="display: ${isCollapsed ? 'none' : 'flex'}; flex-direction: column; gap: 6px; padding: 4px 0 4px 12px; border-left: 1px dashed rgba(255,255,255,0.15); margin-left: 14px;">
                     <!-- Items will be placed here -->
@@ -624,6 +628,104 @@ function closeOptimizeEditor() {
     currentlyEditingPatchName = null;
     getEl('#twt-optimize-editor-modal').css('display', 'none');
     renderOptimizePatchList();
+}
+
+function openOptimizeCreateModal(preselectedFolder = '') {
+    const $modal = getEl('#twt-optimize-create-modal');
+    const $folderSelect = getEl('#twt_optimize_create_folder');
+    const $newFolderInput = getEl('#twt_optimize_create_new_folder');
+    const $nameInput = getEl('#twt_optimize_create_name');
+
+    $folderSelect.empty();
+    const folders = extension_settings.twt.optimizeFolders || [];
+
+    // 填充已有分组选项
+    folders.forEach(f => {
+        $folderSelect.append($('<option></option>').val(f).text(f));
+    });
+    $folderSelect.append(`<option value="">(未分类)</option>`);
+    $folderSelect.append(`<option value="__new__">＋ 新建分组...</option>`);
+
+    if (preselectedFolder !== undefined && preselectedFolder !== null && (folders.includes(preselectedFolder) || preselectedFolder === '')) {
+        $folderSelect.val(preselectedFolder);
+        $newFolderInput.hide().val('');
+    } else if (folders.length > 0) {
+        $folderSelect.val(folders[0]);
+        $newFolderInput.hide().val('');
+    } else {
+        $folderSelect.val('');
+        $newFolderInput.hide().val('');
+    }
+
+    $nameInput.val('');
+    $modal.css('display', 'flex');
+    setTimeout(() => {
+        $nameInput.focus();
+    }, 50);
+}
+
+function closeOptimizeCreateModal() {
+    getEl('#twt-optimize-create-modal').css('display', 'none');
+}
+
+function handleConfirmCreatePatch() {
+    const $folderSelect = getEl('#twt_optimize_create_folder');
+    const $newFolderInput = getEl('#twt_optimize_create_new_folder');
+    const $nameInput = getEl('#twt_optimize_create_name');
+
+    let selectedFolder = $folderSelect.val();
+    if (selectedFolder === '__new__') {
+        const newFolderName = $newFolderInput.val().trim();
+        if (!newFolderName) {
+            toastr.warning('请输入新分组名称！', '提示');
+            $newFolderInput.focus();
+            return;
+        }
+        if (!extension_settings.twt.optimizeFolders) {
+            extension_settings.twt.optimizeFolders = [];
+        }
+        if (!extension_settings.twt.optimizeFolders.includes(newFolderName)) {
+            extension_settings.twt.optimizeFolders.push(newFolderName);
+        }
+        selectedFolder = newFolderName;
+    }
+
+    const patchName = $nameInput.val().trim();
+    if (!patchName) {
+        toastr.warning('请输入补丁名称！', '提示');
+        $nameInput.focus();
+        return;
+    }
+
+    if (!extension_settings.twt.optimizePatches) {
+        extension_settings.twt.optimizePatches = {};
+    }
+
+    if (extension_settings.twt.optimizePatches[patchName]) {
+        toastr.warning(`补丁 "${patchName}" 已存在！`, '提示');
+        $nameInput.focus();
+        return;
+    }
+
+    // 确保所属分组处于展开状态
+    collapsedFolders[selectedFolder] = false;
+
+    // 创建新补丁
+    extension_settings.twt.optimizePatches[patchName] = {
+        code: '',
+        active: true,
+        folder: selectedFolder
+    };
+
+    getContext().saveSettingsDebounced();
+    closeOptimizeCreateModal();
+    renderOptimizePatchList();
+    openOptimizeEditor(patchName);
+    updateInjectedStyles();
+    logWork(`新建 CSS 补丁 [${patchName}]，所属分组: [${selectedFolder || '未分类'}]`);
+    if (typeof toastr !== 'undefined') {
+        toastr.success(`已创建补丁 "${patchName}"（分组：${selectedFolder || '未分类'}）`, '创建成功');
+    }
 }
 
 export function updateInjectedStyles(notify = false) {
@@ -2525,23 +2627,16 @@ function bindUI() {
         logWork(`手动刷新 CSS 优化补丁，已重新应用 ${res.count} 个补丁: ${res.names.join(', ') || '无'}`);
     });
 
-    $('#twt_optimize_add').on('click', function() {
-        const name = prompt('请输入新补丁名称：');
-        if (name && name.trim().length > 0) {
-            const trimmedName = name.trim();
-            if (extension_settings.twt.optimizePatches[trimmedName]) {
-                toastr.warning('同名补丁已存在！', '提示');
-                return;
-            }
-            if (!extension_settings.twt.optimizePatches) {
-                extension_settings.twt.optimizePatches = {};
-            }
-            extension_settings.twt.optimizePatches[trimmedName] = { code: '', active: true, folder: '' };
-            getContext().saveSettingsDebounced();
-            renderOptimizePatchList();
-            openOptimizeEditor(trimmedName);
-            updateInjectedStyles();
-        }
+    $('#twt_optimize_add').on('click', function(e) {
+        e.preventDefault();
+        openOptimizeCreateModal();
+    });
+
+    $('#twt_optimize_list').on('click', '.twt-folder-add-patch', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const folder = $(this).closest('.twt-optimize-folder').attr('data-folder') || '';
+        openOptimizeCreateModal(folder);
     });
 
     // 新建分类文件夹
@@ -2697,6 +2792,43 @@ function bindUI() {
         if ($(e.target).is('#twt-optimize-editor-modal')) {
             e.preventDefault();
             closeOptimizeEditor();
+        }
+    });
+
+    getEl('#twt_optimize_create_close, #twt_optimize_create_cancel').off('click').on('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeOptimizeCreateModal();
+    });
+
+    getEl('#twt_optimize_create_confirm').off('click').on('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleConfirmCreatePatch();
+    });
+
+    $(parentDoc).off('change', '#twt_optimize_create_folder').on('change', '#twt_optimize_create_folder', function() {
+        const val = $(this).val();
+        const $newFolderInput = getEl('#twt_optimize_create_new_folder');
+        if (val === '__new__') {
+            $newFolderInput.show().focus();
+        } else {
+            $newFolderInput.hide().val('');
+        }
+    });
+
+    $(parentDoc).off('keydown', '#twt_optimize_create_name, #twt_optimize_create_new_folder').on('keydown', '#twt_optimize_create_name, #twt_optimize_create_new_folder', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handleConfirmCreatePatch();
+        }
+    });
+
+    getEl('#twt-optimize-create-modal').off('click mousedown mouseup pointerdown pointerup touchstart').on('click mousedown mouseup pointerdown pointerup touchstart', function(e) {
+        e.stopPropagation();
+        if ($(e.target).is('#twt-optimize-create-modal')) {
+            e.preventDefault();
+            closeOptimizeCreateModal();
         }
     });
 
@@ -4428,6 +4560,7 @@ jQuery(async () => {
     $('#twt-comments-preview-modal').appendTo(parentDoc.body);
     $('#twt-comments-help-modal').appendTo(parentDoc.body);
     $('#twt-link-theme-modal').appendTo(parentDoc.body);
+    $('#twt-optimize-create-modal').appendTo(parentDoc.body);
     $('#twt-optimize-editor-modal').appendTo(parentDoc.body);
     $('#twt-font-import-modal').appendTo(parentDoc.body);
     $('#twt-font-info-modal').appendTo(parentDoc.body);
