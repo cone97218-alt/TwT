@@ -963,6 +963,43 @@ function applyPreset(presetName) {
     }
 }
 
+function applyVisualSettingsStateAndUI(s) {
+    if (!s || typeof s !== 'object') return;
+    if (s.paddingTop !== undefined) extension_settings.twt.paddingTop = Number(s.paddingTop);
+    if (s.paddingBottom !== undefined) extension_settings.twt.paddingBottom = Number(s.paddingBottom);
+    if (s.paddingLeft !== undefined) extension_settings.twt.paddingLeft = Number(s.paddingLeft);
+    if (s.paddingRight !== undefined) extension_settings.twt.paddingRight = Number(s.paddingRight);
+    if (s.avatarLayoutMode !== undefined) extension_settings.twt.avatarLayoutMode = s.avatarLayoutMode;
+
+    if (s.fontSize !== undefined) extension_settings.twt.fontSize = Number(s.fontSize);
+    if (s.lineHeight !== undefined) extension_settings.twt.lineHeight = Number(s.lineHeight);
+    if (s.textIndent !== undefined) extension_settings.twt.textIndent = Number(s.textIndent);
+    if (s.textAlign !== undefined) extension_settings.twt.textAlign = s.textAlign;
+    if (s.paragraphSpacing !== undefined) extension_settings.twt.paragraphSpacing = Number(s.paragraphSpacing);
+    if (s.letterSpacing !== undefined) extension_settings.twt.letterSpacing = Number(s.letterSpacing);
+    if (s.fontWeight !== undefined) extension_settings.twt.fontWeight = s.fontWeight;
+    if (s.fontFamily !== undefined) extension_settings.twt.fontFamily = s.fontFamily;
+
+    $('#twt_padding_top').val(extension_settings.twt.paddingTop);
+    $('#twt_padding_bottom').val(extension_settings.twt.paddingBottom);
+    $('#twt_padding_left').val(extension_settings.twt.paddingLeft);
+    $('#twt_padding_right').val(extension_settings.twt.paddingRight);
+    $('#twt_avatar_layout_mode').val(extension_settings.twt.avatarLayoutMode || 'float');
+
+    $('#twt_font_size').val(extension_settings.twt.fontSize);
+    $('#twt_line_height').val(extension_settings.twt.lineHeight);
+    $('#twt_text_indent').val(extension_settings.twt.textIndent);
+    $('#twt_text_align').val(extension_settings.twt.textAlign);
+    $('#twt_paragraph_spacing').val(extension_settings.twt.paragraphSpacing);
+    $('#twt_letter_spacing').val(extension_settings.twt.letterSpacing);
+    $('#twt_font_weight').val(extension_settings.twt.fontWeight || 'normal');
+
+    renderFontFamilyOptions();
+    applyPaginationMode(extension_settings.twt.enabled, extension_settings.twt);
+    applyVisualMode(extension_settings.twt.visualEnabled, extension_settings.twt);
+    updateCustomFontsStyle();
+}
+
 function saveCurrentToPreset(name) {
     const presetData = {
         paddingTop: extension_settings.twt.paddingTop,
@@ -2139,6 +2176,264 @@ function bindUI() {
             }
         } else {
             toastr.warning('“自定义”状态不可删除。', '提示');
+        }
+    });
+
+    // 导出视觉设置/预设
+    $('#twt_visual_export').on('click', function() {
+        const currentPreset = extension_settings.twt.currentPreset || 'custom';
+        const currentSettings = {
+            paddingTop: extension_settings.twt.paddingTop ?? 0,
+            paddingBottom: extension_settings.twt.paddingBottom ?? 60,
+            paddingLeft: extension_settings.twt.paddingLeft ?? 15,
+            paddingRight: extension_settings.twt.paddingRight ?? 15,
+            avatarLayoutMode: extension_settings.twt.avatarLayoutMode || 'float',
+            fontSize: extension_settings.twt.fontSize ?? 16,
+            lineHeight: extension_settings.twt.lineHeight ?? 1.6,
+            textIndent: extension_settings.twt.textIndent ?? 0,
+            textAlign: extension_settings.twt.textAlign || 'left',
+            paragraphSpacing: extension_settings.twt.paragraphSpacing ?? 0,
+            letterSpacing: extension_settings.twt.letterSpacing ?? 0,
+            fontWeight: extension_settings.twt.fontWeight || 'normal',
+            fontFamily: extension_settings.twt.fontFamily || 'inherit'
+        };
+
+        const hasPresets = Object.keys(extension_settings.twt.visualPresets || {}).length > 0;
+        let exportAll = false;
+        if (hasPresets || currentPreset !== 'custom') {
+            exportAll = confirm(`点击【确定】导出整个视觉模块的完整配置包（含所有自定义预设、补丁与当前设置）；\n点击【取消】仅导出当前视觉配置/预设【${currentPreset}】。`);
+        }
+
+        let exportData;
+        let filename;
+
+        if (exportAll) {
+            exportData = {
+                type: 'twt_visual_bundle',
+                version: 1,
+                exportedAt: new Date().toISOString(),
+                currentPreset: currentPreset,
+                currentSettings: currentSettings,
+                visualPresets: extension_settings.twt.visualPresets || {},
+                presetThemeLinks: extension_settings.twt.presetThemeLinks || {},
+                presetTagLinks: extension_settings.twt.presetTagLinks || {},
+                optimizePatches: extension_settings.twt.optimizePatches || {},
+                optimizeFolders: extension_settings.twt.optimizeFolders || []
+            };
+            filename = `twt_visual_backup_${new Date().toISOString().slice(0, 10)}.json`;
+        } else {
+            const singlePresetPatches = {};
+            const patches = extension_settings.twt.optimizePatches || {};
+            for (const pName of Object.keys(patches)) {
+                singlePresetPatches[pName] = !!patches[pName].active;
+            }
+            exportData = {
+                type: 'twt_visual_preset',
+                name: currentPreset,
+                ...currentSettings,
+                optimizePatches: singlePresetPatches
+            };
+            filename = `twt_visual_${currentPreset !== 'custom' ? currentPreset : 'settings'}.json`;
+        }
+
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportData, null, 4));
+        const downloadAnchor = document.createElement('a');
+        downloadAnchor.setAttribute("href", dataStr);
+        downloadAnchor.setAttribute("download", filename);
+        document.body.appendChild(downloadAnchor);
+        downloadAnchor.click();
+        downloadAnchor.remove();
+        if (typeof toastr !== 'undefined') toastr.success(`视觉配置已成功导出为 "${filename}"！`, '导出成功');
+        logWork(`导出视觉配置: ${filename}`);
+    });
+
+    // 导入视觉设置/预设
+    $('#twt_visual_import').on('click', function() {
+        $('#twt_visual_import_file').trigger('click');
+    });
+
+    $('#twt_visual_import_file').on('change', function(e) {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async function(event) {
+            try {
+                const data = JSON.parse(event.target.result);
+                if (!data || typeof data !== 'object') {
+                    throw new Error('无效的 JSON 格式');
+                }
+
+                if (!extension_settings.twt.visualPresets) extension_settings.twt.visualPresets = {};
+
+                // 情况 1：完整视觉模块配置包 (bundle)
+                if (data.type === 'twt_visual_bundle' || (data.visualPresets && typeof data.visualPresets === 'object')) {
+                    let countPresets = 0;
+                    if (data.visualPresets) {
+                        for (const [pName, pVal] of Object.entries(data.visualPresets)) {
+                            if (pVal && typeof pVal === 'object') {
+                                extension_settings.twt.visualPresets[pName] = pVal;
+                                countPresets++;
+                            }
+                        }
+                    }
+
+                    if (data.presetThemeLinks && typeof data.presetThemeLinks === 'object') {
+                        extension_settings.twt.presetThemeLinks = Object.assign({}, extension_settings.twt.presetThemeLinks || {}, data.presetThemeLinks);
+                    }
+                    if (data.presetTagLinks && typeof data.presetTagLinks === 'object') {
+                        extension_settings.twt.presetTagLinks = Object.assign({}, extension_settings.twt.presetTagLinks || {}, data.presetTagLinks);
+                    }
+
+                    if (data.optimizePatches && typeof data.optimizePatches === 'object') {
+                        if (!extension_settings.twt.optimizePatches) extension_settings.twt.optimizePatches = {};
+                        for (const [pKey, pVal] of Object.entries(data.optimizePatches)) {
+                            extension_settings.twt.optimizePatches[pKey] = Object.assign({}, extension_settings.twt.optimizePatches[pKey] || {}, pVal);
+                        }
+                    }
+
+                    if (Array.isArray(data.optimizeFolders)) {
+                        const existingFolders = new Set(extension_settings.twt.optimizeFolders || []);
+                        data.optimizeFolders.forEach(f => existingFolders.add(f));
+                        extension_settings.twt.optimizeFolders = Array.from(existingFolders);
+                    }
+
+                    const settingsToApply = data.currentSettings || (data.fontSize !== undefined ? data : null);
+                    if (settingsToApply) {
+                        applyVisualSettingsStateAndUI(settingsToApply);
+                    }
+
+                    if (data.currentPreset && extension_settings.twt.visualPresets[data.currentPreset]) {
+                        extension_settings.twt.currentPreset = data.currentPreset;
+                        applyPreset(data.currentPreset);
+                    }
+
+                    renderPresetList();
+                    renderOptimizePatchList();
+                    updateInjectedStyles();
+                    getContext().saveSettingsDebounced();
+
+                    const msg = `成功导入视觉配置包（包含 ${countPresets} 个预设）！`;
+                    if (typeof toastr !== 'undefined') toastr.success(msg, '导入成功');
+                    logWork(msg);
+                }
+                // 情况 2：单预设导入或单项设置导入
+                else {
+                    let pName = data.name || data.presetName;
+                    if (!pName || pName === 'custom') {
+                        const defaultName = file.name.replace(/\.[^/.]+$/, '').replace(/^twt_visual_/, '') || '导入预设';
+                        pName = prompt('检测到单项视觉配置，请输入保存的预设名称：', defaultName);
+                    }
+                    if (!pName || !pName.trim()) {
+                        return;
+                    }
+                    const trimmedName = pName.trim();
+
+                    const presetData = {
+                        paddingTop: data.paddingTop !== undefined ? Number(data.paddingTop) : (extension_settings.twt.paddingTop ?? 0),
+                        paddingBottom: data.paddingBottom !== undefined ? Number(data.paddingBottom) : (extension_settings.twt.paddingBottom ?? 60),
+                        paddingLeft: data.paddingLeft !== undefined ? Number(data.paddingLeft) : (extension_settings.twt.paddingLeft ?? 15),
+                        paddingRight: data.paddingRight !== undefined ? Number(data.paddingRight) : (extension_settings.twt.paddingRight ?? 15),
+                        fontSize: data.fontSize !== undefined ? Number(data.fontSize) : (extension_settings.twt.fontSize ?? 16),
+                        lineHeight: data.lineHeight !== undefined ? Number(data.lineHeight) : (extension_settings.twt.lineHeight ?? 1.6),
+                        textIndent: data.textIndent !== undefined ? Number(data.textIndent) : (extension_settings.twt.textIndent ?? 0),
+                        textAlign: data.textAlign || (extension_settings.twt.textAlign ?? 'left'),
+                        paragraphSpacing: data.paragraphSpacing !== undefined ? Number(data.paragraphSpacing) : (extension_settings.twt.paragraphSpacing ?? 0),
+                        letterSpacing: data.letterSpacing !== undefined ? Number(data.letterSpacing) : (extension_settings.twt.letterSpacing ?? 0),
+                        fontWeight: data.fontWeight || (extension_settings.twt.fontWeight ?? 'normal'),
+                        fontFamily: data.fontFamily || (extension_settings.twt.fontFamily ?? 'inherit'),
+                        avatarLayoutMode: data.avatarLayoutMode || (extension_settings.twt.avatarLayoutMode ?? 'float')
+                    };
+
+                    if (data.optimizePatches && typeof data.optimizePatches === 'object') {
+                        presetData.optimizePatches = data.optimizePatches;
+                    }
+
+                    extension_settings.twt.visualPresets[trimmedName] = presetData;
+                    extension_settings.twt.currentPreset = trimmedName;
+
+                    renderPresetList();
+                    applyPreset(trimmedName);
+                    getContext().saveSettingsDebounced();
+
+                    const msg = `已成功导入并应用视觉预设 "${trimmedName}"！`;
+                    if (typeof toastr !== 'undefined') toastr.success(msg, '导入成功');
+                    logWork(msg);
+                }
+            } catch (err) {
+                console.error('[TwT] 导入视觉配置失败:', err);
+                if (typeof toastr !== 'undefined') toastr.error(`导入失败：${err.message || '文件解析错误'}`, '错误');
+                else alert('导入失败：' + (err.message || '文件解析错误'));
+            } finally {
+                $('#twt_visual_import_file').val('');
+            }
+        };
+        reader.readAsText(file);
+    });
+
+    // 一键清空所有初始化设置
+    $('#twt_visual_reset').on('click', function() {
+        if (!confirm('确定要一键清空视觉模块设置并恢复初始默认值吗？\n\n此操作将重置：\n- 页面留白与边距 (恢复为默认)\n- 字体大小、行高、缩进、对齐与粗细 (恢复为默认)\n- 字体选择 (恢复为系统默认)\n- CSS优化补丁 (恢复为默认初始状态)')) {
+            return;
+        }
+
+        const hasPresets = Object.keys(extension_settings.twt.visualPresets || {}).length > 0;
+        if (hasPresets) {
+            if (confirm('是否同时清空所有已保存的视觉自定义预设及美化关联？\n\n点击【确定】清空所有预设；\n点击【取消】保留预设列表，仅重置当前页面设置。')) {
+                extension_settings.twt.visualPresets = {};
+                extension_settings.twt.presetThemeLinks = {};
+                extension_settings.twt.presetTagLinks = {};
+            }
+        }
+
+        // 重置视觉模块的所有状态为 defaultSettings 中的初始值
+        extension_settings.twt.paddingTop = defaultSettings.paddingTop;
+        extension_settings.twt.paddingBottom = defaultSettings.paddingBottom;
+        extension_settings.twt.paddingLeft = defaultSettings.paddingLeft;
+        extension_settings.twt.paddingRight = defaultSettings.paddingRight;
+        extension_settings.twt.avatarLayoutMode = defaultSettings.avatarLayoutMode;
+        extension_settings.twt.fontSize = defaultSettings.fontSize;
+        extension_settings.twt.lineHeight = defaultSettings.lineHeight;
+        extension_settings.twt.textIndent = defaultSettings.textIndent;
+        extension_settings.twt.textAlign = defaultSettings.textAlign;
+        extension_settings.twt.paragraphSpacing = defaultSettings.paragraphSpacing;
+        extension_settings.twt.letterSpacing = defaultSettings.letterSpacing;
+        extension_settings.twt.fontWeight = defaultSettings.fontWeight;
+        extension_settings.twt.fontFamily = defaultSettings.fontFamily;
+        extension_settings.twt.currentPreset = 'custom';
+
+        // 重置 CSS 补丁为默认初始补丁
+        extension_settings.twt.optimizePatches = JSON.parse(JSON.stringify(defaultPatches));
+        extension_settings.twt.optimizeFolders = ['界面调整', '手势与选择'];
+
+        // 同步更新 DOM UI 元素
+        $('#twt_padding_top').val(defaultSettings.paddingTop);
+        $('#twt_padding_bottom').val(defaultSettings.paddingBottom);
+        $('#twt_padding_left').val(defaultSettings.paddingLeft);
+        $('#twt_padding_right').val(defaultSettings.paddingRight);
+        $('#twt_avatar_layout_mode').val(defaultSettings.avatarLayoutMode);
+
+        $('#twt_font_size').val(defaultSettings.fontSize);
+        $('#twt_line_height').val(defaultSettings.lineHeight);
+        $('#twt_text_indent').val(defaultSettings.textIndent);
+        $('#twt_text_align').val(defaultSettings.textAlign);
+        $('#twt_paragraph_spacing').val(defaultSettings.paragraphSpacing);
+        $('#twt_letter_spacing').val(defaultSettings.letterSpacing);
+        $('#twt_font_weight').val(defaultSettings.fontWeight);
+        $('#twt_font_family').val(defaultSettings.fontFamily);
+        updateFontSummaryHint();
+
+        renderPresetList();
+        renderOptimizePatchList();
+        updateInjectedStyles();
+        updateCustomFontsStyle();
+        applyPaginationMode(extension_settings.twt.enabled, extension_settings.twt);
+        applyVisualMode(extension_settings.twt.visualEnabled, extension_settings.twt);
+
+        getContext().saveSettingsDebounced();
+        logWork('一键清空视觉模块设置并恢复初始默认状态');
+        if (typeof toastr !== 'undefined') {
+            toastr.success('视觉模块所有初始化设置已成功恢复！', '已恢复初始设置');
         }
     });
 

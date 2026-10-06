@@ -429,9 +429,9 @@
             <div class="twt-tab-content" id="twt-tab-visual" style="display: none;">
                 <!-- 预设管理 -->
                 <div
-                    style="border-bottom: 1px dashed var(--SmartThemeBorderColor); padding-bottom: 4px; margin-bottom: 4px;">
+                    style="border-bottom: 1px dashed var(--SmartThemeBorderColor); padding-bottom: 6px; margin-bottom: 6px;">
                     <div class="twt-setting-row"
-                        style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                        style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
                         <select id="twt_visual_preset"
                             style="flex: 1; margin-right: 5px; background: var(--SmartThemeDarkColor); color: var(--SmartThemeBodyColor); border: 1px solid var(--SmartThemeBorderColor); border-radius: 4px; padding: 4px;"></select>
                         <div style="display: flex; gap: 5px; align-items: center;">
@@ -446,6 +446,22 @@
                             <button id="twt_preset_delete" class="menu_button"
                                 style="padding: 4px 8px; margin: 0; color: #ff4444;" title="删除预设"><i
                                     class="fa-solid fa-trash"></i></button>
+                        </div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-top: 4px;">
+                        <div style="display: flex; gap: 6px; align-items: center;">
+                            <button id="twt_visual_import" class="menu_button" style="padding: 4px 8px; margin: 0; font-size: 0.85em; display: inline-flex !important; align-items: center !important; gap: 4px !important; white-space: nowrap !important;" title="导入视觉预设或配置备份 (.json)">
+                                <i class="fa-solid fa-file-import"></i> 导入
+                            </button>
+                            <button id="twt_visual_export" class="menu_button" style="padding: 4px 8px; margin: 0; font-size: 0.85em; display: inline-flex !important; align-items: center !important; gap: 4px !important; white-space: nowrap !important;" title="导出当前预设或视觉配置备份">
+                                <i class="fa-solid fa-file-export"></i> 导出
+                            </button>
+                            <input type="file" id="twt_visual_import_file" accept=".json" style="display: none;" />
+                        </div>
+                        <div>
+                            <button id="twt_visual_reset" class="menu_button" style="padding: 4px 8px; margin: 0; font-size: 0.85em; color: #ff6666; display: inline-flex !important; align-items: center !important; gap: 4px !important; white-space: nowrap !important;" title="一键清空视觉模块所有自定义配置并恢复初始设置">
+                                <i class="fa-solid fa-rotate-left"></i> 一键初始化
+                            </button>
                         </div>
                     </div>
                 </div>
