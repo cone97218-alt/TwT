@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
-import { applyPaginationMode, initPaginationEvent, resetPaginationBinding, realignPagination, handleMoreMessagesLoaded, handleNewMessageRendered, updateActiveReadingAnchor, handleUserMessageSent, handleMessageSwiped, handleGenerationStarted, handleGenerationEnded } from './src/pagination/pagination.js';
+import { applyPaginationMode, initPaginationEvent, resetPaginationBinding, realignPagination, handleMoreMessagesLoaded, handleNewMessageRendered, updateActiveReadingAnchor, handleUserMessageSent, handleMessageSwiped, handleGenerationStarted, handleGenerationEnded, autoNormalizeBubbleTheme, cleanupBubbleThemeNormalization } from './src/pagination/pagination.js';
 import { applyVisualMode } from './src/visual/visual.js';
 import { saveFontToStorage, getFontBlobUrl, deleteFontFromStorage } from './src/visual/font_storage.js';
 import { initMulu, applyMuluSettings } from './src/mulu/mulu.js';
@@ -120,6 +120,7 @@ const defaultSettings = {
     qrInjectEnabled: true,
     swipeEnabled: true,
     messagePageEnabled: false,
+    autoBubbleThemeEnabled: true,
     autoScrollNewMessage: true,
     autoRestoreReadingPosition: true,
     htmlPageBreakEnabled: true,
@@ -1529,6 +1530,8 @@ function initThemeLinkListener() {
         }
 
         updateCommentsBgSolid();
+        cleanupBubbleThemeNormalization();
+        setTimeout(() => autoNormalizeBubbleTheme(extension_settings?.twt), 100);
     };
 
     const checkCurrentTheme = (force = false) => {
@@ -1604,6 +1607,7 @@ function bindUI() {
     const $qrInjectEnabled = $('#twt_qr_inject_enabled');
     const $swipeEnabled = $('#twt_swipe_enabled');
     const $messagePageEnabled = $('#twt_message_page_enabled');
+    const $autoBubbleThemeEnabled = $('#twt_auto_bubble_theme_enabled');
     const $autoScrollNewMessage = $('#twt_auto_scroll_new_message');
     const $autoRestoreReadingPosition = $('#twt_auto_restore_reading_position');
     const $htmlPageBreakEnabled = $('#twt_html_page_break_enabled');
@@ -1674,6 +1678,7 @@ function bindUI() {
     $qrInjectEnabled.prop('checked', extension_settings.twt.qrInjectEnabled !== false);
     $swipeEnabled.prop('checked', extension_settings.twt.swipeEnabled);
     $messagePageEnabled.prop('checked', extension_settings.twt.messagePageEnabled);
+    $autoBubbleThemeEnabled.prop('checked', extension_settings.twt.autoBubbleThemeEnabled !== false);
     $autoScrollNewMessage.prop('checked', extension_settings.twt.autoScrollNewMessage !== false);
     $autoRestoreReadingPosition.prop('checked', extension_settings.twt.autoRestoreReadingPosition !== false);
     $htmlPageBreakEnabled.prop('checked', extension_settings.twt.htmlPageBreakEnabled);
@@ -2975,6 +2980,12 @@ function bindUI() {
 
     $messagePageEnabled.on('change', function () {
         extension_settings.twt.messagePageEnabled = $(this).prop('checked');
+        getContext().saveSettingsDebounced();
+        applyPaginationMode(extension_settings.twt.enabled, extension_settings.twt);
+    });
+
+    $autoBubbleThemeEnabled.on('change', function () {
+        extension_settings.twt.autoBubbleThemeEnabled = $(this).prop('checked');
         getContext().saveSettingsDebounced();
         applyPaginationMode(extension_settings.twt.enabled, extension_settings.twt);
     });

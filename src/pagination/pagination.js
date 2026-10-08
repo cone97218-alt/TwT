@@ -734,6 +734,7 @@ function updateColWidth() {
     stableColWidth = 0; // Invalidate cache; layout is changing
     const chat = getChat();
     if (!chat || !document.body.classList.contains('twt-reading-mode')) return;
+    autoNormalizeBubbleTheme();
     const rawW = chat.getBoundingClientRect().width || chat.clientWidth;
     if (rawW > 0) {
         // Use precise floating-point viewport width so column-width matches the real viewport
@@ -912,6 +913,7 @@ function initMutationObserver() {
             try {
                 containOversizedElements();
                 tagToolCallMessages();
+                autoNormalizeBubbleTheme();
             } finally {
                 mutationObserver.observe(chat, MUT_OPTS);
             }
@@ -1089,6 +1091,282 @@ export function tagToolCallMessages(settings = extension_settings?.twt) {
 }
 
 // ============================================================
+// 气泡拼接/负值外挂美化主题 — 自动坐标系平移自适应引擎
+// 自动检测并消除主题在 .mes::before、.mesAvatarWrapper 等组件上
+// 使用负位移导致的跨列撕裂与错层 Bug
+// ============================================================
+
+let lastNormalizedChatWidth = 0;
+let bubbleThemeRetryTimer = null;
+
+export function cleanupBubbleThemeNormalization() {
+    clearTimeout(bubbleThemeRetryTimer);
+    lastNormalizedChatWidth = 0;
+    const styleEl = document.getElementById('twt-auto-bubble-patch');
+    if (styleEl) styleEl.remove();
+}
+
+function getActiveThemeCustomCss() {
+    try {
+        if (typeof power_user !== 'undefined' && power_user?.custom_css) {
+            return power_user.custom_css;
+        }
+    } catch {}
+    try {
+        const customStyle = document.getElementById('custom-style');
+        if (customStyle && customStyle.textContent) {
+            return customStyle.textContent;
+        }
+    } catch {}
+    try {
+        const textarea = document.getElementById('customCSS');
+        if (textarea && textarea.value) {
+            return textarea.value;
+        }
+    } catch {}
+    return '';
+}
+
+function parseThemeBubbleRules(cssText) {
+    if (!cssText || typeof cssText !== 'string') return null;
+
+    let mesMarginTopStr = null;
+    const mMargin = cssText.match(/[.]mes\s*\{[^}]*?margin:\s*([^;]+);/s);
+    if (mMargin) mesMarginTopStr = mMargin[1].trim().split(/\s+/)[0];
+
+    if (!mesMarginTopStr) return null;
+    const isVw = mesMarginTopStr.includes('vw');
+    const isPx = mesMarginTopStr.includes('px');
+    const unit = isVw ? 'vw' : (isPx ? 'px' : null);
+    if (!unit) return null;
+
+    const H = parseFloat(mesMarginTopStr);
+    if (isNaN(H) || H < 25) return null; // 非气泡拼接主题
+
+    let beforeTopStr = null;
+    let beforeTranslateYStr = null;
+    let beforeAspectStr = null;
+    const mBefore = cssText.match(/[.]mes::before\s*\{[^}]*?\}/sg);
+    if (mBefore) {
+        mBefore.forEach(b => {
+            const topM = b.match(/top:\s*([^;]+);/);
+            if (topM) beforeTopStr = topM[1].trim();
+            const transM = b.match(/translateY\(([^)]+)\)/);
+            if (transM) beforeTranslateYStr = transM[1].trim();
+            const aspectM = b.match(/aspect-ratio:\s*([^;]+);/);
+            if (aspectM) beforeAspectStr = aspectM[1].trim();
+        });
+    }
+
+    let avatarTopStr = null;
+    const mAvatar = cssText.match(/[.]mesAvatarWrapper\s*\{[^}]*?\}/sg);
+    if (mAvatar) {
+        mAvatar.forEach(a => {
+            const topM = a.match(/top:\s*([^;]+);/);
+            if (topM) avatarTopStr = topM[1].trim();
+        });
+    }
+
+    let beforeTop = null;
+    if (beforeTranslateYStr && beforeTranslateYStr.includes('%')) {
+        let ratio = 1.0;
+        if (beforeAspectStr) {
+            const parts = beforeAspectStr.split('/').map(s => parseFloat(s.trim()));
+            if (parts.length === 2 && parts[0] > 0 && parts[1] > 0) {
+                ratio = parts[1] / parts[0];
+            }
+        }
+        const pct = Math.abs(parseFloat(beforeTranslateYStr));
+        const beforeShift = ratio * pct;
+        beforeTop = Math.max(0, H - beforeShift);
+    } else if (beforeTopStr) {
+        const bVal = parseFloat(beforeTopStr);
+        beforeTop = Math.max(0, H + bVal);
+    }
+
+    let avatarTop = null;
+    if (avatarTopStr) {
+        const aVal = parseFloat(avatarTopStr);
+        avatarTop = Math.max(0, H + aVal);
+    }
+
+    return {
+        unit,
+        safePaddingTop: `${H.toFixed(2)}${unit}`,
+        newBeforeTop: beforeTop !== null ? `${beforeTop.toFixed(2)}${unit}` : null,
+        newAvatarTop: avatarTop !== null ? `${avatarTop.toFixed(2)}${unit}` : null
+    };
+}
+
+export function autoNormalizeBubbleTheme(settings = extension_settings?.twt) {
+    if (!document.body.classList.contains('twt-reading-mode')) {
+        cleanupBubbleThemeNormalization();
+        return;
+    }
+    if (settings?.autoBubbleThemeEnabled === false) {
+        cleanupBubbleThemeNormalization();
+        return;
+    }
+
+    const chat = getChat();
+    if (!chat) return;
+
+    // AI 生成中避让
+    if (isGenerating) return;
+
+    let dynamicStyle = document.getElementById('twt-auto-bubble-patch');
+
+    // 优先：从原生主题 CSS 源码中解析原始参数，避免浏览器 computedStyle 测量阶段丢失 transform 百分比
+    const themeCss = getActiveThemeCustomCss();
+    const parsed = parseThemeBubbleRules(themeCss);
+
+    if (parsed) {
+        const { safePaddingTop, newBeforeTop, newAvatarTop } = parsed;
+        const css = `
+/* [TwT] 气泡拼接美化自动坐标平移自适应规则 (源码级精准解析) */
+body.twt-reading-mode #chat > .mes,
+body.twt-reading-mode #chat .mes {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    padding-top: ${safePaddingTop} !important;
+}
+${newBeforeTop !== null ? `body.twt-reading-mode #chat .mes::before {
+    top: ${newBeforeTop} !important;
+    transform: none !important;
+}` : ''}
+${newAvatarTop !== null ? `body.twt-reading-mode #chat .mes .mesAvatarWrapper {
+    top: ${newAvatarTop} !important;
+}` : ''}
+body.twt-reading-mode #chat .mes .timestamp,
+body.twt-reading-mode #chat .mes .mesIDDisplay,
+body.twt-reading-mode #chat .mes .tokenCounterDisplay,
+body.twt-reading-mode #chat .mes .mes_timer {
+    position: absolute !important;
+}
+`;
+
+        if (!dynamicStyle) {
+            dynamicStyle = document.createElement('style');
+            dynamicStyle.id = 'twt-auto-bubble-patch';
+            document.head.appendChild(dynamicStyle);
+        }
+        if (dynamicStyle.textContent !== css) {
+            dynamicStyle.textContent = css;
+            console.log(`[TwT] 气泡美化自适应已生效: padding-top=${safePaddingTop}, before.top=${newBeforeTop}, avatar.top=${newAvatarTop}`);
+        }
+        return;
+    }
+
+    // 备用：若主题 CSS 未注册在 custom_css 中，回退到 DOM computedStyle 测量
+    const candidateMes = chat.querySelector('.mes:not([is_system="true"]):not(.system_mes)') || chat.querySelector('.mes');
+    if (!candidateMes) {
+        clearTimeout(bubbleThemeRetryTimer);
+        bubbleThemeRetryTimer = setTimeout(() => {
+            if (document.body.classList.contains('twt-reading-mode')) {
+                autoNormalizeBubbleTheme(settings);
+            }
+        }, 150);
+        return;
+    }
+
+    const chatWidth = chat.clientWidth || window.innerWidth || 1;
+    if (dynamicStyle && lastNormalizedChatWidth > 0 && Math.abs(chatWidth - lastNormalizedChatWidth) < 2) {
+        return;
+    }
+
+    if (dynamicStyle) {
+        dynamicStyle.remove();
+        dynamicStyle = null;
+    }
+
+    try {
+        const mesStyle = window.getComputedStyle(candidateMes);
+        const beforeStyle = window.getComputedStyle(candidateMes, '::before');
+        const avatar = candidateMes.querySelector('.mesAvatarWrapper');
+        const avatarStyle = avatar ? window.getComputedStyle(avatar) : null;
+
+        const marginTopPx = parseFloat(mesStyle.marginTop) || 0;
+        if (marginTopPx < 25) return;
+
+        let beforeShiftPx = 0;
+        let hasBeforeDecor = false;
+        if (beforeStyle.content && beforeStyle.content !== 'none') {
+            const topPx = parseFloat(beforeStyle.top) || 0;
+            let translateYPx = 0;
+            if (beforeStyle.transform && beforeStyle.transform !== 'none') {
+                const matrixMatch = beforeStyle.transform.match(/matrix(?:3d)?\(([^)]+)\)/);
+                if (matrixMatch) {
+                    const parts = matrixMatch[1].split(',').map(s => parseFloat(s.trim()));
+                    if (parts.length === 6 && !isNaN(parts[5])) translateYPx = parts[5];
+                    else if (parts.length === 16 && !isNaN(parts[13])) translateYPx = parts[13];
+                }
+            }
+            beforeShiftPx = topPx + translateYPx;
+            hasBeforeDecor = true;
+        }
+
+        let avatarShiftPx = 0;
+        let hasAvatar = false;
+        if (avatarStyle) {
+            const aTopPx = parseFloat(avatarStyle.top) || 0;
+            let aTranslateYPx = 0;
+            if (avatarStyle.transform && avatarStyle.transform !== 'none') {
+                const matrixMatch = avatarStyle.transform.match(/matrix(?:3d)?\(([^)]+)\)/);
+                if (matrixMatch) {
+                    const parts = matrixMatch[1].split(',').map(s => parseFloat(s.trim()));
+                    if (parts.length === 6 && !isNaN(parts[5])) aTranslateYPx = parts[5];
+                    else if (parts.length === 16 && !isNaN(parts[13])) aTranslateYPx = parts[13];
+                }
+            }
+            avatarShiftPx = aTopPx + aTranslateYPx;
+            hasAvatar = true;
+        }
+
+        const isNegativeSuspension = (hasBeforeDecor && beforeShiftPx < -15) || (hasAvatar && avatarShiftPx < -15);
+        if (!isNegativeSuspension) return;
+
+        const winW = window.innerWidth || 1;
+        const pxToVw = (px) => ((px / winW) * 100).toFixed(3);
+
+        const safePaddingTopVw = pxToVw(marginTopPx);
+        const newBeforeTopVw = pxToVw(Math.max(0, marginTopPx + beforeShiftPx));
+        const newAvatarTopVw = pxToVw(Math.max(0, marginTopPx + avatarShiftPx));
+
+        const css = `
+body.twt-reading-mode #chat > .mes,
+body.twt-reading-mode #chat .mes {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    padding-top: ${safePaddingTopVw}vw !important;
+}
+${hasBeforeDecor ? `body.twt-reading-mode #chat .mes::before {
+    top: ${newBeforeTopVw}vw !important;
+    transform: none !important;
+}` : ''}
+${hasAvatar ? `body.twt-reading-mode #chat .mes .mesAvatarWrapper {
+    top: ${newAvatarTopVw}vw !important;
+}` : ''}
+body.twt-reading-mode #chat .mes .timestamp,
+body.twt-reading-mode #chat .mes .mesIDDisplay,
+body.twt-reading-mode #chat .mes .tokenCounterDisplay,
+body.twt-reading-mode #chat .mes .mes_timer {
+    position: absolute !important;
+}
+`;
+
+        dynamicStyle = document.createElement('style');
+        dynamicStyle.id = 'twt-auto-bubble-patch';
+        document.head.appendChild(dynamicStyle);
+        dynamicStyle.textContent = css;
+        lastNormalizedChatWidth = chatWidth;
+
+        console.log(`[TwT] 气泡美化自适应已生效 (DOM测量兜底): padding-top=${safePaddingTopVw}vw, before.top=${newBeforeTopVw}vw, avatar.top=${newAvatarTopVw}vw`);
+    } catch (e) {
+        console.warn('[TwT] autoNormalizeBubbleTheme error:', e);
+    }
+}
+
+// ============================================================
 // 公开 API
 // ============================================================
 
@@ -1107,6 +1385,7 @@ export function applyPaginationMode(enabled, settings) {
             document.body.classList.toggle('twt-toolcall-no-break',   settings.toolCallNoPageBreak !== false);
             tagToolCallMessages(settings);
         }
+        autoNormalizeBubbleTheme(settings);
         updateColWidthWhenReady();
         window.addEventListener('resize', onWindowResize);
         initResizeObserver();
@@ -1120,6 +1399,7 @@ export function applyPaginationMode(enabled, settings) {
             'twt-toolcall-hide', 'twt-toolcall-compact', 'twt-toolcall-minimal', 'twt-toolcall-no-break'
         );
         window.removeEventListener('resize', onWindowResize);
+        cleanupBubbleThemeNormalization();
 
         if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null; }
         disconnectMutationObserver();
