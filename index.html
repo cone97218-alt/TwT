@@ -86,14 +86,7 @@
                     开启后，每条消息将单独占一页，新消息另起一页。
                 </div>
 
-                <div class="twt-setting-row"
-                    style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
-                    <label for="twt_auto_bubble_theme_enabled">智能适配气泡拼接美化</label>
-                    <input type="checkbox" id="twt_auto_bubble_theme_enabled" />
-                </div>
-                <div style="font-size: 0.85em; opacity: 0.6; margin-bottom: 15px; margin-top: -2px; padding-left: 2px;">
-                    自动检测并平移顶图/头像带有负坐标悬挂的气泡美化主题（如蝶、深洋等），将其安全收容在内边距中，彻底消除翻页跨楼层错层断裂问题。
-                </div>
+
 
                 <div class="twt-setting-row"
                     style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
@@ -554,8 +547,13 @@
                                 <option value="theme">沿用主题美化布局</option>
                             </select>
                         </div>
-                        <div style="font-size: 0.85em; opacity: 0.6; margin-bottom: 10px; margin-top: -2px; padding-left: 2px;">
-                            文字环绕适合跨栏阅读；如遇到自定义主题头像位移，可设为沿用主题布局。
+                        <div class="twt-setting-row"
+                            style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
+                            <label for="twt_auto_bubble_theme_enabled">智能适配气泡拼接美化</label>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <button id="twt_copy_bubble_patch_css" class="menu_button" style="padding: 3px 8px; margin: 0; font-size: 0.85em;" title="复制当前匹配并识别出的自适应 CSS"><i class="fa-solid fa-copy"></i> 复制CSS</button>
+                                <input type="checkbox" id="twt_auto_bubble_theme_enabled" />
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -1198,6 +1198,113 @@ function parseThemeBubbleRules(cssText) {
     };
 }
 
+let lastGeneratedBubblePatchCss = '';
+
+export function generateBubbleThemePatchCss() {
+    const themeCss = getActiveThemeCustomCss();
+    const parsed = parseThemeBubbleRules(themeCss);
+    if (parsed) {
+        const { safePaddingTop, newBeforeTop, newAvatarTop } = parsed;
+        return `/* === [TwT] 气泡拼接美化智能适配规则 (源码级精准解析) === */
+body.twt-reading-mode #chat > .mes,
+body.twt-reading-mode #chat .mes {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    padding-top: ${safePaddingTop} !important;
+}
+${newBeforeTop !== null ? `body.twt-reading-mode #chat .mes::before {
+    top: ${newBeforeTop} !important;
+    transform: none !important;
+}
+` : ''}${newAvatarTop !== null ? `body.twt-reading-mode #chat .mes .mesAvatarWrapper {
+    top: ${newAvatarTop} !important;
+}
+` : ''}body.twt-reading-mode #chat .mes .timestamp,
+body.twt-reading-mode #chat .mes .mesIDDisplay,
+body.twt-reading-mode #chat .mes .tokenCounterDisplay,
+body.twt-reading-mode #chat .mes .mes_timer {
+    position: absolute !important;
+}`;
+    }
+
+    if (lastGeneratedBubblePatchCss) {
+        return lastGeneratedBubblePatchCss;
+    }
+
+    const chat = getChat();
+    const candidateMes = chat ? (chat.querySelector('.mes:not([is_system="true"]):not(.system_mes)') || chat.querySelector('.mes')) : null;
+    if (candidateMes) {
+        try {
+            const mesStyle = window.getComputedStyle(candidateMes);
+            const beforeStyle = window.getComputedStyle(candidateMes, '::before');
+            const avatar = candidateMes.querySelector('.mesAvatarWrapper');
+            const avatarStyle = avatar ? window.getComputedStyle(avatar) : null;
+            const marginTopPx = parseFloat(mesStyle.marginTop) || 0;
+            if (marginTopPx >= 25) {
+                let beforeShiftPx = 0;
+                let hasBeforeDecor = false;
+                if (beforeStyle.content && beforeStyle.content !== 'none') {
+                    const topPx = parseFloat(beforeStyle.top) || 0;
+                    let translateYPx = 0;
+                    if (beforeStyle.transform && beforeStyle.transform !== 'none') {
+                        const matrixMatch = beforeStyle.transform.match(/matrix(?:3d)?\(([^)]+)\)/);
+                        if (matrixMatch) {
+                            const parts = matrixMatch[1].split(',').map(s => parseFloat(s.trim()));
+                            if (parts.length === 6 && !isNaN(parts[5])) translateYPx = parts[5];
+                            else if (parts.length === 16 && !isNaN(parts[13])) translateYPx = parts[13];
+                        }
+                    }
+                    beforeShiftPx = topPx + translateYPx;
+                    hasBeforeDecor = true;
+                }
+                let avatarShiftPx = 0;
+                let hasAvatar = false;
+                if (avatarStyle) {
+                    const aTopPx = parseFloat(avatarStyle.top) || 0;
+                    let aTranslateYPx = 0;
+                    if (avatarStyle.transform && avatarStyle.transform !== 'none') {
+                        const matrixMatch = avatarStyle.transform.match(/matrix(?:3d)?\(([^)]+)\)/);
+                        if (matrixMatch) {
+                            const parts = matrixMatch[1].split(',').map(s => parseFloat(s.trim()));
+                            if (parts.length === 6 && !isNaN(parts[5])) aTranslateYPx = parts[5];
+                            else if (parts.length === 16 && !isNaN(parts[13])) aTranslateYPx = parts[13];
+                        }
+                    }
+                    avatarShiftPx = aTopPx + aTranslateYPx;
+                    hasAvatar = true;
+                }
+                const winW = window.innerWidth || 1;
+                const pxToVw = (px) => ((px / winW) * 100).toFixed(3);
+                const safePaddingTopVw = pxToVw(marginTopPx);
+                const newBeforeTopVw = pxToVw(Math.max(0, marginTopPx + beforeShiftPx));
+                const newAvatarTopVw = pxToVw(Math.max(0, marginTopPx + avatarShiftPx));
+                return `/* === [TwT] 气泡拼接美化智能适配规则 (DOM测量兜底) === */
+body.twt-reading-mode #chat > .mes,
+body.twt-reading-mode #chat .mes {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    padding-top: ${safePaddingTopVw}vw !important;
+}
+${hasBeforeDecor ? `body.twt-reading-mode #chat .mes::before {
+    top: ${newBeforeTopVw}vw !important;
+    transform: none !important;
+}
+` : ''}${hasAvatar ? `body.twt-reading-mode #chat .mes .mesAvatarWrapper {
+    top: ${newAvatarTopVw}vw !important;
+}
+` : ''}body.twt-reading-mode #chat .mes .timestamp,
+body.twt-reading-mode #chat .mes .mesIDDisplay,
+body.twt-reading-mode #chat .mes .tokenCounterDisplay,
+body.twt-reading-mode #chat .mes .mes_timer {
+    position: absolute !important;
+}`;
+            }
+        } catch {}
+    }
+
+    return '';
+}
+
 export function autoNormalizeBubbleTheme(settings = extension_settings?.twt) {
     if (!document.body.classList.contains('twt-reading-mode')) {
         cleanupBubbleThemeNormalization();
@@ -1245,6 +1352,7 @@ body.twt-reading-mode #chat .mes .mes_timer {
 }
 `;
 
+        lastGeneratedBubblePatchCss = css;
         if (!dynamicStyle) {
             dynamicStyle = document.createElement('style');
             dynamicStyle.id = 'twt-auto-bubble-patch';
@@ -1358,6 +1466,7 @@ body.twt-reading-mode #chat .mes .mes_timer {
         dynamicStyle.id = 'twt-auto-bubble-patch';
         document.head.appendChild(dynamicStyle);
         dynamicStyle.textContent = css;
+        lastGeneratedBubblePatchCss = css;
         lastNormalizedChatWidth = chatWidth;
 
         console.log(`[TwT] 气泡美化自适应已生效 (DOM测量兜底): padding-top=${safePaddingTopVw}vw, before.top=${newBeforeTopVw}vw, avatar.top=${newAvatarTopVw}vw`);

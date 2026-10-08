@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
-import { applyPaginationMode, initPaginationEvent, resetPaginationBinding, realignPagination, handleMoreMessagesLoaded, handleNewMessageRendered, updateActiveReadingAnchor, handleUserMessageSent, handleMessageSwiped, handleGenerationStarted, handleGenerationEnded, autoNormalizeBubbleTheme, cleanupBubbleThemeNormalization } from './src/pagination/pagination.js';
+import { applyPaginationMode, initPaginationEvent, resetPaginationBinding, realignPagination, handleMoreMessagesLoaded, handleNewMessageRendered, updateActiveReadingAnchor, handleUserMessageSent, handleMessageSwiped, handleGenerationStarted, handleGenerationEnded, autoNormalizeBubbleTheme, cleanupBubbleThemeNormalization, generateBubbleThemePatchCss } from './src/pagination/pagination.js';
 import { applyVisualMode } from './src/visual/visual.js';
 import { saveFontToStorage, getFontBlobUrl, deleteFontFromStorage } from './src/visual/font_storage.js';
 import { initMulu, applyMuluSettings } from './src/mulu/mulu.js';
@@ -1044,6 +1044,10 @@ function applyPreset(presetName) {
         if (preset.avatarLayoutMode !== undefined) extension_settings.twt.avatarLayoutMode = preset.avatarLayoutMode;
         else extension_settings.twt.avatarLayoutMode = 'float';
         $('#twt_avatar_layout_mode').val(extension_settings.twt.avatarLayoutMode);
+
+        if (preset.autoBubbleThemeEnabled !== undefined) extension_settings.twt.autoBubbleThemeEnabled = !!preset.autoBubbleThemeEnabled;
+        else extension_settings.twt.autoBubbleThemeEnabled = true;
+        $('#twt_auto_bubble_theme_enabled').prop('checked', extension_settings.twt.autoBubbleThemeEnabled);
         applyPaginationMode(extension_settings.twt.enabled, extension_settings.twt);
         
         // Typography
@@ -1096,6 +1100,7 @@ function applyVisualSettingsStateAndUI(s) {
     if (s.paddingLeft !== undefined) extension_settings.twt.paddingLeft = Number(s.paddingLeft);
     if (s.paddingRight !== undefined) extension_settings.twt.paddingRight = Number(s.paddingRight);
     if (s.avatarLayoutMode !== undefined) extension_settings.twt.avatarLayoutMode = s.avatarLayoutMode;
+    if (s.autoBubbleThemeEnabled !== undefined) extension_settings.twt.autoBubbleThemeEnabled = !!s.autoBubbleThemeEnabled;
 
     if (s.fontSize !== undefined) extension_settings.twt.fontSize = Number(s.fontSize);
     if (s.lineHeight !== undefined) extension_settings.twt.lineHeight = Number(s.lineHeight);
@@ -1111,6 +1116,7 @@ function applyVisualSettingsStateAndUI(s) {
     $('#twt_padding_left').val(extension_settings.twt.paddingLeft);
     $('#twt_padding_right').val(extension_settings.twt.paddingRight);
     $('#twt_avatar_layout_mode').val(extension_settings.twt.avatarLayoutMode || 'float');
+    $('#twt_auto_bubble_theme_enabled').prop('checked', extension_settings.twt.autoBubbleThemeEnabled !== false);
 
     $('#twt_font_size').val(extension_settings.twt.fontSize);
     $('#twt_line_height').val(extension_settings.twt.lineHeight);
@@ -1140,7 +1146,8 @@ function saveCurrentToPreset(name) {
         letterSpacing: extension_settings.twt.letterSpacing,
         fontWeight: extension_settings.twt.fontWeight || 'normal',
         fontFamily: extension_settings.twt.fontFamily || 'inherit',
-        avatarLayoutMode: extension_settings.twt.avatarLayoutMode || 'float'
+        avatarLayoutMode: extension_settings.twt.avatarLayoutMode || 'float',
+        autoBubbleThemeEnabled: extension_settings.twt.autoBubbleThemeEnabled !== false
     };
 
     presetData.optimizePatches = {};
@@ -2478,7 +2485,8 @@ function bindUI() {
                         letterSpacing: data.letterSpacing !== undefined ? Number(data.letterSpacing) : (extension_settings.twt.letterSpacing ?? 0),
                         fontWeight: data.fontWeight || (extension_settings.twt.fontWeight ?? 'normal'),
                         fontFamily: data.fontFamily || (extension_settings.twt.fontFamily ?? 'inherit'),
-                        avatarLayoutMode: data.avatarLayoutMode || (extension_settings.twt.avatarLayoutMode ?? 'float')
+                        avatarLayoutMode: data.avatarLayoutMode || (extension_settings.twt.avatarLayoutMode ?? 'float'),
+                        autoBubbleThemeEnabled: data.autoBubbleThemeEnabled !== undefined ? !!data.autoBubbleThemeEnabled : (extension_settings.twt.autoBubbleThemeEnabled !== false)
                     };
 
                     if (data.optimizePatches && typeof data.optimizePatches === 'object') {
@@ -2528,6 +2536,7 @@ function bindUI() {
         extension_settings.twt.paddingLeft = defaultSettings.paddingLeft;
         extension_settings.twt.paddingRight = defaultSettings.paddingRight;
         extension_settings.twt.avatarLayoutMode = defaultSettings.avatarLayoutMode;
+        extension_settings.twt.autoBubbleThemeEnabled = defaultSettings.autoBubbleThemeEnabled !== false;
         extension_settings.twt.fontSize = defaultSettings.fontSize;
         extension_settings.twt.lineHeight = defaultSettings.lineHeight;
         extension_settings.twt.textIndent = defaultSettings.textIndent;
@@ -2548,6 +2557,7 @@ function bindUI() {
         $('#twt_padding_left').val(defaultSettings.paddingLeft);
         $('#twt_padding_right').val(defaultSettings.paddingRight);
         $('#twt_avatar_layout_mode').val(defaultSettings.avatarLayoutMode);
+        $('#twt_auto_bubble_theme_enabled').prop('checked', defaultSettings.autoBubbleThemeEnabled !== false);
 
         $('#twt_font_size').val(defaultSettings.fontSize);
         $('#twt_line_height').val(defaultSettings.lineHeight);
@@ -2988,7 +2998,61 @@ function bindUI() {
         extension_settings.twt.autoBubbleThemeEnabled = $(this).prop('checked');
         getContext().saveSettingsDebounced();
         applyPaginationMode(extension_settings.twt.enabled, extension_settings.twt);
+        handleVisualChange();
     });
+
+    $('#twt_copy_bubble_patch_css').on('click', function (e) {
+        e.preventDefault();
+        const css = generateBubbleThemePatchCss();
+        if (!css) {
+            if (typeof toastr !== 'undefined') {
+                toastr.info('当前美化主题未检测到气泡拼接规则或无需补丁', 'TwT');
+            } else {
+                alert('当前美化主题未检测到气泡拼接规则或无需补丁');
+            }
+            return;
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(css).then(() => {
+                if (typeof toastr !== 'undefined') {
+                    toastr.success('已复制气泡拼接自适应 CSS 到剪贴板！', '复制成功');
+                } else {
+                    alert('已复制气泡拼接自适应 CSS 到剪贴板！');
+                }
+            }).catch(() => {
+                fallbackCopyText(css);
+            });
+        } else {
+            fallbackCopyText(css);
+        }
+    });
+
+    function fallbackCopyText(text) {
+        try {
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.position = 'fixed';
+            textArea.style.top = '0';
+            textArea.style.left = '0';
+            textArea.style.opacity = '0';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            const successful = document.execCommand('copy');
+            document.body.removeChild(textArea);
+            if (successful) {
+                if (typeof toastr !== 'undefined') {
+                    toastr.success('已复制气泡拼接自适应 CSS 到剪贴板！', '复制成功');
+                } else {
+                    alert('已复制气泡拼接自适应 CSS 到剪贴板！');
+                }
+            } else {
+                alert('复制失败，请手动选择复制');
+            }
+        } catch (err) {
+            alert('复制失败：' + (err.message || err));
+        }
+    }
 
     $autoScrollNewMessage.on('change', function () {
         extension_settings.twt.autoScrollNewMessage = $(this).prop('checked');
