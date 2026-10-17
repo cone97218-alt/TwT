@@ -326,6 +326,7 @@ export function handleGenerationStarted(type) {
  * 用户发送新消息（MESSAGE_SENT）时的翻页调度
  */
 export function handleUserMessageSent() {
+    isGenerating = true;
     updateActiveReadingAnchor();
 }
 
@@ -338,8 +339,22 @@ export function handleGenerationEnded() {
     // 生成彻底结束，稍作防抖等待 DOM 稳定后统一执行一次增量收容与工具调用打标
     setTimeout(() => {
         if (!isGenerating && !isTouching && !isScrolling && !isInputFocused()) {
+            const chat = getChat();
+            const savedPage = lastUserPage;
             containOversizedElements();
             tagToolCallMessages();
+            if (chat && savedPage >= 0) {
+                const step = getColStep(chat);
+                if (step > 0) {
+                    const total = Math.max(1, Math.round(chat.scrollWidth / step));
+                    const targetPage = Math.min(savedPage, total - 1);
+                    if (Math.abs(chat.scrollLeft - targetPage * step) > 1) {
+                        chat.scrollLeft = targetPage * step;
+                        lastUserPage = targetPage;
+                    }
+                }
+            }
+            updateActiveReadingAnchor();
         }
     }, 250);
 }
@@ -449,8 +464,10 @@ export function handleNewMessageRendered(messageId, settings = extension_setting
             if (targetMes) {
                 const chatRect = chat.getBoundingClientRect();
                 const rect = targetMes.getBoundingClientRect();
-                const absLeft = rect.left - chatRect.left + chat.scrollLeft;
-                targetPage = Math.max(0, Math.min(total - 1, Math.floor(absLeft / step)));
+                // 使用消息的右侧边缘计算目标页（对齐到该消息的尾部），而非只定位头部 left
+                const absRight = rect.right - chatRect.left + chat.scrollLeft;
+                const mesEndPage = Math.max(0, Math.min(total - 1, Math.floor((absRight - 1) / step)));
+                targetPage = mesEndPage;
             }
         }
 
@@ -892,14 +909,17 @@ function initMutationObserver() {
                     }
                 }
             } else {
-                // 若当前锚点消息本身被截断移除，平滑吸附到第一条现存消息
-                const firstMes = chat.querySelector('.mes');
-                if (firstMes) {
-                    chat.scrollLeft = 0;
-                    chat.scrollTop = 0;
-                    lastUserPage = 0;
-                    updateActiveReadingAnchor();
+                // 安全防线：锚点若暂时丢失或正在被重排，绝不直接将 scrollLeft 强行归零（防止瞬间跳到最开头的 #show_more_messages）！
+                // 仅进行合法视口边界收敛
+                const step = getColStep(chat);
+                if (step > 0) {
+                    const total = Math.max(1, Math.round(chat.scrollWidth / step));
+                    if (lastUserPage >= total) {
+                        lastUserPage = total - 1;
+                        chat.scrollLeft = lastUserPage * step;
+                    }
                 }
+                updateActiveReadingAnchor();
             }
         }
 
