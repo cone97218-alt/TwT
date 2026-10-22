@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
-import { applyPaginationMode, initPaginationEvent, resetPaginationBinding, realignPagination, handleMoreMessagesLoaded, handleNewMessageRendered, updateActiveReadingAnchor, handleUserMessageSent, handleMessageSwiped, handleGenerationStarted, handleGenerationEnded, autoNormalizeBubbleTheme, cleanupBubbleThemeNormalization, generateBubbleThemePatchCss } from './src/pagination/pagination.js';
+import { applyPaginationMode, initPaginationEvent, resetPaginationBinding, realignPagination, handleMoreMessagesLoaded, handleNewMessageRendered, updateActiveReadingAnchor, handleUserMessageSent, handleMessageSwiped, handleGenerationStarted, handleGenerationEnded, handleMessageDeleted, autoNormalizeBubbleTheme, cleanupBubbleThemeNormalization, generateBubbleThemePatchCss } from './src/pagination/pagination.js';
 import { applyVisualMode } from './src/visual/visual.js';
 import { saveFontToStorage, getFontBlobUrl, deleteFontFromStorage } from './src/visual/font_storage.js';
 import { initMulu, applyMuluSettings } from './src/mulu/mulu.js';
@@ -4817,6 +4817,12 @@ jQuery(async () => {
             if (ctx.eventTypes.CHARACTER_MESSAGE_RENDERED) {
                 ctx.eventSource.on(ctx.eventTypes.CHARACTER_MESSAGE_RENDERED, (mesId, type) => {
                     if (extension_settings.twt?.enabled) handleNewMessageRendered(mesId, extension_settings.twt, type || currentGenType);
+                });
+            }
+            if (ctx.eventTypes.MESSAGE_DELETED) {
+                ctx.eventSource.on(ctx.eventTypes.MESSAGE_DELETED, () => {
+                    if (extension_settings.twt?.enabled) handleMessageDeleted();
+                    reapplyVisualAndStyles();
                 });
             }
 

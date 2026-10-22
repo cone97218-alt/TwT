@@ -303,7 +303,13 @@ export function realignToMessageStart(mesId) {
  * 当某楼层发生 swipe（切换候选项或触发重roll）时调用
  */
 export function handleMessageSwiped(mesId) {
-    realignToMessageStart(mesId);
+    if (mesId === undefined || mesId === null) return;
+    const currentAnchor = captureReadingAnchor();
+    // 仅在读者当前正停留在该消息（或无有效锚点）时，才重对齐到该消息起始页
+    // 严禁在读者阅读前面楼层时强行将视口拽到末尾！
+    if (!currentAnchor || !currentAnchor.mesId || String(currentAnchor.mesId) === String(mesId)) {
+        realignToMessageStart(mesId);
+    }
 }
 
 /**
@@ -316,7 +322,8 @@ export function handleGenerationStarted(type) {
     if (isReroll) {
         const chat = getChat();
         const lastMesId = chat?.querySelector('.mes:last-child')?.getAttribute('mesid');
-        if (lastMesId) {
+        const currentAnchor = captureReadingAnchor();
+        if (lastMesId && (!currentAnchor || !currentAnchor.mesId || String(currentAnchor.mesId) === String(lastMesId))) {
             realignToMessageStart(lastMesId);
         }
     }
@@ -451,6 +458,21 @@ export function handleNewMessageRendered(messageId, settings = extension_setting
         return;
     }
 
+    const allMes = chat.querySelectorAll('.mes');
+    if (!allMes.length) return;
+    const lastMes = allMes[allMes.length - 1];
+    const lastMesId = Number(lastMes.getAttribute('mesid'));
+
+    // 关键校验 1：严禁对顶部补位渲染的历史楼层执行“新消息翻页”！
+    // 只有当被渲染的消息是末尾最新消息时，才属于新消息翻页
+    if (messageId !== undefined && messageId !== null && !isNaN(lastMesId)) {
+        const targetId = Number(messageId);
+        if (!isNaN(targetId) && targetId < lastMesId) {
+            // 这是删除末尾楼层后顶部补入的历史旧楼层，或者是向上加载的历史消息，绝不翻页！
+            return;
+        }
+    }
+
     requestAnimationFrame(() => {
         if (!document.body.classList.contains('twt-reading-mode')) return;
         const step = getColStep(chat);
@@ -464,14 +486,47 @@ export function handleNewMessageRendered(messageId, settings = extension_setting
             if (targetMes) {
                 const chatRect = chat.getBoundingClientRect();
                 const rect = targetMes.getBoundingClientRect();
-                // 使用消息的右侧边缘计算目标页（对齐到该消息的尾部），而非只定位头部 left
+                const absLeft = rect.left - chatRect.left + chat.scrollLeft;
+                const mesStartPage = Math.max(0, Math.min(total - 1, Math.floor(absLeft / step)));
                 const absRight = rect.right - chatRect.left + chat.scrollLeft;
                 const mesEndPage = Math.max(0, Math.min(total - 1, Math.floor((absRight - 1) / step)));
-                targetPage = mesEndPage;
+
+                // 关键校验 2：如果读者已经自主翻到了该新回复范围内开始阅读（从起始页到尾页）
+                // 尊重读者的自主阅读节奏，严禁在后续分段渲染或完成时强行将视口拽到剧透结尾！
+                if (lastUserPage >= mesStartPage && lastUserPage <= mesEndPage) {
+                    return;
+                }
+
+                // 首次自动翻页进入新楼层：对齐到新楼层的第一页（起始位置），方便自上而下阅读，而不是跳到结尾
+                targetPage = mesStartPage;
             }
         }
 
         scrollToPage(chat, targetPage, step);
+    });
+}
+
+/**
+ * 当删除消息（MESSAGE_DELETED）时的视口优雅收敛
+ */
+export function handleMessageDeleted() {
+    const chat = getChat();
+    if (!chat || !document.body.classList.contains('twt-reading-mode')) return;
+
+    requestAnimationFrame(() => {
+        const step = getColStep(chat);
+        if (step <= 0) return;
+        const total = Math.max(1, Math.round(chat.scrollWidth / step));
+        const allMes = chat.querySelectorAll('.mes');
+        if (!allMes.length) return;
+
+        // 如果读者当前阅读的位置超出了新总页数，或锚点已被删除
+        const anchorEl = (activeReadingAnchor && activeReadingAnchor.mesId) ? chat.querySelector(`.mes[mesid="${activeReadingAnchor.mesId}"]`) : null;
+        if (!anchorEl || lastUserPage >= total) {
+            const targetPage = Math.max(0, Math.min(lastUserPage, total - 1));
+            scrollToPage(chat, targetPage, step);
+            updateActiveReadingAnchor();
+        }
     });
 }
 
@@ -719,6 +774,7 @@ function scrollToPage(chat, page, cw) {
 
     // 在上百页的大型多列排版下，必须使用即时位移，杜绝 browser smooth scroll 逐帧插值引起的灾难级掉帧与重绘堆积
     chat.scrollLeft = targetScrollLeft;
+    updateActiveReadingAnchor();
 }
 
 // ============================================================
@@ -813,8 +869,6 @@ function updateColWidthWhenReady(retries = 3, interval = 80) {
                         const page = Math.min(restoredPage, total - 1);
                         lastUserPage = page;
                         chat.scrollLeft = page * cw;
-                    } else {
-                        chat.scrollLeft = 0;
                     }
                     setTimeout(updateActiveReadingAnchor, 100);
                 });
@@ -842,7 +896,7 @@ function initMutationObserver() {
     mutationObserver = new MutationObserver((mutations) => {
         if (!document.body.classList.contains('twt-reading-mode')) return;
         if (document.body.classList.contains('twt-paragraph-editing')) return;
-        if (isFocusGuarding) return;
+        if (isInputFocused()) return;
 
         // 检查是否有消息元素在“当前阅读锚点之前”被添加或移除（如酒馆历史截断移除最旧楼层，或在顶部插入历史消息）
         // 尾部追加新消息（AI回复/用户发送）绝不属于前置变动，严禁对当前锚点补偿位移导致视口错位
@@ -894,12 +948,14 @@ function initMutationObserver() {
         }
 
         // 视口相对锚点零误差对齐：若顶部发生增删，立刻在微任务阶段补偿 scrollLeft 位移，彻底消除跳动
-        if (hasFrontChanges && activeReadingAnchor && activeReadingAnchor.mesId && !isTouching && !isGenerating) {
+        // 关键防护：若正在进行历史消息加载 (isLoadingMoreMessages)，由 handleMoreMessagesLoaded 统一执行位移补偿，杜绝提前介入导致双重位移叠加！
+        if (hasFrontChanges && activeReadingAnchor && activeReadingAnchor.mesId && !isTouching && !isLoadingMoreMessages) {
             const anchorEl = chat.querySelector(`.mes[mesid="${activeReadingAnchor.mesId}"]`);
             if (anchorEl) {
                 const chatRect = chat.getBoundingClientRect();
                 const currentVisualLeft = anchorEl.getBoundingClientRect().left - chatRect.left;
                 const shift = currentVisualLeft - (activeReadingAnchor.visualLeft || 0);
+
                 if (Math.abs(shift) > 1) {
                     chat.scrollLeft += shift;
                     chat.scrollTop = 0;
@@ -907,6 +963,7 @@ function initMutationObserver() {
                     if (step > 0) {
                         lastUserPage = Math.round(chat.scrollLeft / step);
                     }
+                    activeReadingAnchor.visualLeft = anchorEl.getBoundingClientRect().left - chatRect.left;
                 }
             } else {
                 // 安全防线：锚点若暂时丢失或正在被重排，绝不直接将 scrollLeft 强行归零（防止瞬间跳到最开头的 #show_more_messages）！
@@ -1746,6 +1803,7 @@ export function resetPaginationBinding(getSettings) {
     clearTimeout(stableColWidthTimer);
     isScrolling  = false;
     isGenerating = false;
+    activeReadingAnchor = null;
 
     if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null; }
     disconnectMutationObserver();
