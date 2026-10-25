@@ -1287,7 +1287,9 @@ body.twt-reading-mode #chat > .mes,
 body.twt-reading-mode #chat .mes {
     margin-top: 0 !important;
     margin-bottom: 0 !important;
-    padding-top: ${safePaddingTop} !important;
+    padding: ${safePaddingTop} 0 0 0 !important;
+    background-origin: content-box !important;
+    background-clip: content-box !important;
 }
 ${newBeforeTop !== null ? `body.twt-reading-mode #chat .mes::before {
     top: ${newBeforeTop} !important;
@@ -1360,7 +1362,9 @@ body.twt-reading-mode #chat > .mes,
 body.twt-reading-mode #chat .mes {
     margin-top: 0 !important;
     margin-bottom: 0 !important;
-    padding-top: ${safePaddingTopVw}vw !important;
+    padding: ${safePaddingTopVw}vw 0 0 0 !important;
+    background-origin: content-box !important;
+    background-clip: content-box !important;
 }
 ${hasBeforeDecor ? `body.twt-reading-mode #chat .mes::before {
     top: ${newBeforeTopVw}vw !important;
@@ -1412,7 +1416,9 @@ body.twt-reading-mode #chat > .mes,
 body.twt-reading-mode #chat .mes {
     margin-top: 0 !important;
     margin-bottom: 0 !important;
-    padding-top: ${safePaddingTop} !important;
+    padding: ${safePaddingTop} 0 0 0 !important;
+    background-origin: content-box !important;
+    background-clip: content-box !important;
 }
 ${newBeforeTop !== null ? `body.twt-reading-mode #chat .mes::before {
     top: ${newBeforeTop} !important;
@@ -1437,7 +1443,7 @@ body.twt-reading-mode #chat .mes .mes_timer {
         }
         if (dynamicStyle.textContent !== css) {
             dynamicStyle.textContent = css;
-            console.log(`[TwT] 气泡美化自适应已生效: padding-top=${safePaddingTop}, before.top=${newBeforeTop}, avatar.top=${newAvatarTop}`);
+            console.log(`[TwT] 气泡美化自适应已生效: padding=${safePaddingTop} 0 0 0, before.top=${newBeforeTop}, avatar.top=${newAvatarTop}`);
         }
         return;
     }
@@ -1522,7 +1528,9 @@ body.twt-reading-mode #chat > .mes,
 body.twt-reading-mode #chat .mes {
     margin-top: 0 !important;
     margin-bottom: 0 !important;
-    padding-top: ${safePaddingTopVw}vw !important;
+    padding: ${safePaddingTopVw}vw 0 0 0 !important;
+    background-origin: content-box !important;
+    background-clip: content-box !important;
 }
 ${hasBeforeDecor ? `body.twt-reading-mode #chat .mes::before {
     top: ${newBeforeTopVw}vw !important;
@@ -1546,7 +1554,7 @@ body.twt-reading-mode #chat .mes .mes_timer {
         lastGeneratedBubblePatchCss = css;
         lastNormalizedChatWidth = chatWidth;
 
-        console.log(`[TwT] 气泡美化自适应已生效 (DOM测量兜底): padding-top=${safePaddingTopVw}vw, before.top=${newBeforeTopVw}vw, avatar.top=${newAvatarTopVw}vw`);
+        console.log(`[TwT] 气泡美化自适应已生效 (DOM测量兜底): padding=${safePaddingTopVw}vw 0 0 0, before.top=${newBeforeTopVw}vw, avatar.top=${newAvatarTopVw}vw`);
     } catch (e) {
         console.warn('[TwT] autoNormalizeBubbleTheme error:', e);
     }
