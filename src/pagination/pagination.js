@@ -1835,127 +1835,147 @@ export function resetPaginationBinding(getSettings) {
 }
 
 // ============================================================
+// 点按 / 点击翻页判断与处理引擎
+// ============================================================
+let lastPageTurnTime = 0;
+
+function isInteractiveTarget(targetEl, settings, chat) {
+    if (!targetEl || !chat) return false;
+    const el = targetEl.nodeType === 3 ? targetEl.parentElement : targetEl;
+    if (!el || !chat.contains(el)) return false;
+
+    // 装饰层穿透：若 pointer-events 为 none，说明是装饰性容器，不响应交互
+    try {
+        if (getComputedStyle(el).pointerEvents === 'none') return false;
+    } catch {}
+
+    // Tool Call 防误触
+    if (settings?.toolCallPreventFlip !== false) {
+        const tcSel = settings?.toolCallSelector?.trim() || '.mes.toolCall, .mes[is_system="true"].toolCall';
+        try {
+            if (el.closest(tcSel) || el.closest('.twt-toolcall-mes')) return true;
+        } catch {
+            if (el.closest('.mes.toolCall') || el.closest('.twt-toolcall-mes')) return true;
+        }
+    }
+
+    // 生图拓展防误触：ST-BaiBai-Image（柏宝绘）
+    try {
+        if (el.closest('div[data-bbi-slot], [data-bbi-slot], .bbi-figure, #bbi-app-host')) return true;
+    } catch {}
+
+    // 用户自定义白名单
+    if (settings?.customWhitelist?.trim()) {
+        try {
+            if (el.closest(settings.customWhitelist.trim())) return true;
+        } catch {}
+    }
+
+    // 明确的真实交互控件（排除容器如 .mes, .mes_block, .mes_text 等）
+    const baseSelector = 'button, a, input, textarea, select, label, summary, [onclick], .mes_button, .swipe-button, .swipe_left, .swipe_right, .ch_name, .avatar, img, video, audio, .svg-icon';
+    if (el.closest(baseSelector)) return true;
+
+    // 针对具有 role="button" 或带合法 tabindex 的交互控件（严禁误判 .mes 等大容器）
+    const customControl = el.closest('[role="button"], [tabindex]');
+    if (customControl && customControl !== chat &&
+        !customControl.classList.contains('mes') &&
+        !customControl.classList.contains('mes_block') &&
+        !customControl.classList.contains('mes_text')) {
+        const tabIdx = customControl.getAttribute('tabindex');
+        // tabindex="-1" 仅用于程序化聚焦，不视为交互控件
+        if (tabIdx !== '-1') {
+            return true;
+        }
+    }
+
+    // 仅针对目标元素本身（非大容器）检查是否为 pointer 光标
+    if (el !== chat && !el.classList.contains('mes') && !el.classList.contains('mes_block') && !el.classList.contains('mes_text')) {
+        try {
+            const cur = getComputedStyle(el).cursor;
+            if (cur === 'pointer' || cur === 'zoom-in' || cur === 'zoom-out') return true;
+        } catch {}
+    }
+
+    return false;
+}
+
+function handlePageFlip(clientX, targetEl, settings) {
+    if (!settings?.enabled) return false;
+    if (!document.body.classList.contains('twt-reading-mode')) return false;
+    if (document.body.classList.contains('twt-paragraph-editing')) return false;
+    if (document.body.classList.contains('twt-excerpt-active')) return false;
+
+    // 自定义菜单显示中，不翻页
+    const menu = document.getElementById('twt-custom-menu');
+    if (menu && getComputedStyle(menu).display !== 'none') return false;
+
+    // HTML / Iframe 浮窗弹窗召出中，或最近刚收起弹窗时，不翻页
+    if (document.body.classList.contains('twt-html-popup-active') ||
+        document.getElementById('twt-html-app-modal') ||
+        (Date.now() - (window.__twtLastHtmlModalCloseTime || 0) < 450)) {
+        return false;
+    }
+
+    const chat = getChat();
+    if (!chat) return false;
+    if (targetEl && !chat.contains(targetEl) && targetEl !== chat) return false;
+
+    // 点击加载更多历史消息按钮
+    const showMoreClicked = targetEl?.closest?.('#show_more_messages');
+    if (showMoreClicked) {
+        triggerLoadMoreMessages(false);
+        return true;
+    }
+
+    if (isInteractiveTarget(targetEl, settings, chat)) return false;
+
+    // 有文字选区时不翻页
+    if (window.getSelection && window.getSelection().toString().trim().length > 0) return false;
+
+    const cw = getColWidth(chat);
+    if (cw <= 0) return false;
+
+    const winW = window.innerWidth || document.documentElement.clientWidth || 1;
+    const ratio = clientX / winW;
+
+    if (ratio < 0.3) {
+        unlockReadingPosition();
+        if (lastUserPage <= 0 && document.getElementById('show_more_messages')) {
+            triggerLoadMoreMessages(true);
+            return true;
+        }
+        scrollToPage(chat, lastUserPage - 1, cw);
+        return true;
+    } else if (ratio > 0.7) {
+        unlockReadingPosition();
+        scrollToPage(chat, lastUserPage + 1, cw);
+        return true;
+    }
+    return false;
+}
+
+// ============================================================
 // initPaginationEvent：全局一次性初始化（不随聊天切换重建）
 // ============================================================
 export function initPaginationEvent(getSettings) {
 
-    // ---- 点击翻页（委托到 document，不随 #chat 重建而失效）----
-    document.addEventListener('click', e => {
-        const settings = getSettings();
-        if (!settings?.enabled) return;
-        if (!document.body.classList.contains('twt-reading-mode')) return;
-        if (document.body.classList.contains('twt-paragraph-editing')) return;
-        if (document.body.classList.contains('twt-excerpt-active')) return;
-
-        // 自定义菜单显示中，不翻页
-        const menu = document.getElementById('twt-custom-menu');
-        if (menu && getComputedStyle(menu).display !== 'none') return;
-
-        // HTML / Iframe 浮窗弹窗召出中，或最近刚收起弹窗时，点按界面其余位置不触发翻页
-        if (document.body.classList.contains('twt-html-popup-active') ||
-            document.getElementById('twt-html-app-modal') ||
-            (Date.now() - (window.__twtLastHtmlModalCloseTime || 0) < 450)) {
-            return;
+    // ---- 点击翻页（使用捕获阶段监听，防止子元素或外部框架 stopPropagation 拦截）----
+    const onDocumentClick = (e) => {
+        // 若 400ms 内已由触摸 touchend 完成点按翻页，跳过重复 click 事件
+        if (Date.now() - lastPageTurnTime < 400) return;
+        const handled = handlePageFlip(e.clientX, e.target, getSettings());
+        if (handled) {
+            lastPageTurnTime = Date.now();
         }
+    };
 
-        const chat = getChat();
-        if (!chat?.contains(e.target)) return;
+    document.addEventListener('click', onDocumentClick, true);
 
-        // 专门处理点击加载更多历史消息按钮
-        const showMoreClicked = e.target.closest('#show_more_messages');
-        if (showMoreClicked) {
-            e.preventDefault();
-            e.stopPropagation();
-            triggerLoadMoreMessages(false);
-            return;
+    try {
+        if (window.parent && window.parent.document && window.parent.document !== document) {
+            window.parent.document.addEventListener('click', onDocumentClick, true);
         }
-
-        // 装饰层穿透修复：若 e.target 的 pointer-events 计算值为 none，
-        // 说明它是美化主题中的装饰性容器（如 .mesAvatarWrapper），
-        // 其伪元素（::before/::after）虽拦截了点击，但父容器声明不接受事件，
-        // 此类点击应视为对空白区域的翻页意图，跳过交互元素检测。
-        let skipInteractiveCheck = false;
-        try {
-            if (getComputedStyle(e.target).pointerEvents === 'none') skipInteractiveCheck = true;
-        } catch { /* ignore */ }
-
-        if (!skipInteractiveCheck) {
-            // Tool Call 区域防误触
-            if (settings?.toolCallPreventFlip !== false) {
-                const tcSel = settings?.toolCallSelector?.trim() || '.mes.toolCall, .mes[is_system="true"].toolCall';
-                try {
-                    if (e.target.closest(tcSel) || e.target.closest('.twt-toolcall-mes')) return;
-                } catch {
-                    if (e.target.closest('.mes.toolCall') || e.target.closest('.twt-toolcall-mes')) return;
-                }
-            }
-
-            // 生图拓展防误触：ST-BaiBai-Image（柏宝绘）生图卡片区域与宿主点击不触发翻页
-            try {
-                if (e.target.closest('div[data-bbi-slot], [data-bbi-slot], .bbi-figure, #bbi-app-host')) return;
-            } catch { /* ignore */ }
-
-            // 交互元素判断
-            const baseSelector = 'button, a, input, textarea, select, label, summary, [onclick], [role="button"], [tabindex], .mes_button, .swipe-button, .ch_name, .avatar, img, .svg-icon';
-            let interactive = false;
-            if (settings.customWhitelist?.trim()) {
-                try { interactive = !!e.target.closest(settings.customWhitelist.trim()); }
-                catch { /* 无效选择器忽略 */ }
-            }
-            if (!interactive) interactive = !!e.target.closest(baseSelector);
-            if (!interactive) {
-                try {
-                    const cur = getComputedStyle(e.target).cursor;
-                    interactive = (cur === 'pointer' || cur === 'zoom-in' || cur === 'zoom-out');
-                } catch { /* ignore */ }
-            }
-
-            // Shadow DOM / 组合事件路径穿透判定（针对由 ShadowRoot 内部触发并被浏览器重定向 target 的点击事件）
-            if (!interactive && typeof e.composedPath === 'function') {
-                try {
-                    const path = e.composedPath();
-                    for (let i = 0; i < path.length; i++) {
-                        const node = path[i];
-                        if (!node || !(node instanceof Element)) continue;
-                        if (node.matches?.('div[data-bbi-slot], [data-bbi-slot], .bbi-figure, [class*="bbi-"]') || node.dataset?.bbiSlot !== undefined) {
-                            interactive = true;
-                            break;
-                        }
-                        if (node.matches?.(baseSelector)) {
-                            interactive = true;
-                            break;
-                        }
-                        const cur = getComputedStyle(node).cursor;
-                        if (cur === 'pointer' || cur === 'zoom-in' || cur === 'zoom-out') {
-                            interactive = true;
-                            break;
-                        }
-                    }
-                } catch { /* ignore */ }
-            }
-
-            if (interactive) return;
-        }
-
-        // 有文字选区时不翻页
-        if (window.getSelection().toString().length > 0) return;
-
-        const cw = getColWidth(chat);
-        if (cw <= 0) return;
-
-        const ratio = e.clientX / window.innerWidth;
-        if (ratio < 0.3) {
-            unlockReadingPosition();
-            if (lastUserPage <= 0 && document.getElementById('show_more_messages')) {
-                triggerLoadMoreMessages(true);
-                return;
-            }
-            scrollToPage(chat, lastUserPage - 1, cw);
-        } else if (ratio > 0.7) {
-            unlockReadingPosition();
-            scrollToPage(chat, lastUserPage + 1, cw);
-        }
-    });
+    } catch {}
 
     // 初次绑定 #chat 上的 scroll / touch 事件
     bindScrollEvents(getSettings);
@@ -2010,7 +2030,7 @@ function bindScrollEvents(getSettings) {
         }, 150);
     }, { signal });
 
-    // ---- 触摸滑动翻页 ----
+    // ---- 触摸滑动与点按翻页 ----
     let touchStartX = 0;
     let touchStartY = 0;
     let touchStartLeft = 0;
@@ -2018,6 +2038,7 @@ function bindScrollEvents(getSettings) {
     let touchIsHorizontal = null; // null=未判定, true=横, false=纵
     let touchStartPage = 0;
     let touchMaxScroll = 0;
+    let touchMoved = false;
 
     chat.addEventListener('touchstart', e => {
         if (!document.body.classList.contains('twt-reading-mode')) return;
@@ -2029,12 +2050,13 @@ function bindScrollEvents(getSettings) {
             return;
         }
         const settings = getSettings();
-        if (!settings?.enabled || !settings.swipeEnabled) return;
+        if (!settings?.enabled) return;
 
         clearTimeout(snapTimer);
         unlockReadingPosition();
         isTouching = true;
         isScrolling = false;
+        touchMoved = false;
 
         touchStartX    = e.touches[0].clientX;
         touchStartY    = e.touches[0].clientY;
@@ -2056,10 +2078,16 @@ function bindScrollEvents(getSettings) {
             return;
         }
         const settings = getSettings();
-        if (!settings?.enabled || !settings.swipeEnabled) return;
+        if (!settings?.enabled) return;
 
         const adx = Math.abs(e.touches[0].clientX - touchStartX);
         const ady = Math.abs(e.touches[0].clientY - touchStartY);
+
+        if (adx > 8 || ady > 8) {
+            touchMoved = true;
+        }
+
+        if (!settings.swipeEnabled) return;
 
         // 方向判定（首次移动 8px 以上才判定）
         if (touchIsHorizontal === null) {
@@ -2076,70 +2104,84 @@ function bindScrollEvents(getSettings) {
         if (!isTouching) return;
 
         const wasHorizontal = touchIsHorizontal;
+        const didMove = touchMoved;
         touchIsHorizontal = null;
+        touchMoved = false;
 
-        if (!document.body.classList.contains('twt-reading-mode')) {
-            isTouching = false; return;
-        }
-        if (document.body.classList.contains('twt-paragraph-editing')) {
-            isTouching = false; return;
-        }
-        if (document.body.classList.contains('twt-excerpt-active')) {
+        if (!document.body.classList.contains('twt-reading-mode') ||
+            document.body.classList.contains('twt-paragraph-editing') ||
+            document.body.classList.contains('twt-excerpt-active')) {
             isTouching = false; return;
         }
         const settings = getSettings();
-        if (!settings?.enabled || !settings.swipeEnabled) {
+        if (!settings?.enabled) {
             isTouching = false; return;
         }
 
-        if (!wasHorizontal) {
-            isTouching = false;
+        const touchEndX = e.changedTouches?.[0]?.clientX ?? touchStartX;
+        const touchEndY = e.changedTouches?.[0]?.clientY ?? touchStartY;
+        const dt = Date.now() - touchStartTime;
+        const dist = Math.hypot(touchEndX - touchStartX, touchEndY - touchStartY);
+
+        // 1. 横向滑动翻页处理
+        if (wasHorizontal && settings.swipeEnabled) {
+            const cw = getColWidth(chat);
+            if (cw <= 0) { isTouching = false; return; }
+
+            const dx        = touchEndX - touchStartX;
+            const fastSwipe = dt < 300 && Math.abs(dx) > 30;
+            const longSwipe = Math.abs(dx) > cw * 0.25;
+
+            let targetPage;
+            if (fastSwipe || longSwipe) {
+                targetPage = dx > 0 ? touchStartPage - 1 : touchStartPage + 1;
+            } else {
+                // 未超阈值：吸附到最近整页（但限制在 startPage ± 1）
+                const nearest = Math.round(chat.scrollLeft / cw);
+                targetPage = Math.max(touchStartPage - 1, Math.min(touchStartPage + 1, nearest));
+            }
+
+            if (targetPage < 0) {
+                if (document.getElementById('show_more_messages')) {
+                    isTouching = false;
+                    isScrolling = false;
+                    triggerLoadMoreMessages(true);
+                    return;
+                }
+            }
+
+            scrollToPage(chat, targetPage, cw);
+
+            // 双重保险解除 isTouching：scrollend 事件（优先）+ 600ms 超时兜底（唯一，不重复）
+            const cleanup = () => {
+                isTouching  = false;
+                isScrolling = false;
+                clearTimeout(fallback);
+                updateActiveReadingAnchor();
+            };
+            const fallback = setTimeout(cleanup, 600);
+            // 无论是否支持 scrollend，fallback 始终兜底；支持时 scrollend 可提前触发
+            if (supportsScrollend) chat.addEventListener('scrollend', cleanup, { once: true, signal });
             return;
         }
 
-        const cw = getColWidth(chat);
-        if (cw <= 0) { isTouching = false; return; }
+        isTouching = false;
 
-        const dx        = e.changedTouches[0].clientX - touchStartX;
-        const dt        = Date.now() - touchStartTime;
-        const fastSwipe = dt < 300 && Math.abs(dx) > 30;
-        const longSwipe = Math.abs(dx) > cw * 0.25;
-
-        let targetPage;
-        if (fastSwipe || longSwipe) {
-            targetPage = dx > 0 ? touchStartPage - 1 : touchStartPage + 1;
-        } else {
-            // 未超阈值：吸附到最近整页（但限制在 startPage ± 1）
-            const nearest = Math.round(chat.scrollLeft / cw);
-            targetPage = Math.max(touchStartPage - 1, Math.min(touchStartPage + 1, nearest));
-        }
-
-        if (targetPage < 0) {
-            if (document.getElementById('show_more_messages')) {
-                isTouching = false;
-                isScrolling = false;
-                triggerLoadMoreMessages(true);
-                return;
+        // 2. 点按翻页判定（Tap Detection）：
+        // 当触碰时间短（< 400ms）、位移微小（< 15px）且未触发横向滚动时，视为直接点按翻页
+        if (!wasHorizontal && !didMove && dt < 400 && dist < 15) {
+            const targetEl = e.target || document.elementFromPoint(touchEndX, touchEndY);
+            const handled = handlePageFlip(touchEndX, targetEl, settings);
+            if (handled) {
+                lastPageTurnTime = Date.now();
             }
         }
-
-        scrollToPage(chat, targetPage, cw);
-
-        // 双重保险解除 isTouching：scrollend 事件（优先）+ 600ms 超时兜底（唯一，不重复）
-        const cleanup = () => {
-            isTouching  = false;
-            isScrolling = false;
-            clearTimeout(fallback);
-            updateActiveReadingAnchor();
-        };
-        const fallback = setTimeout(cleanup, 600);
-        // 无论是否支持 scrollend，fallback 始终兜底；支持时 scrollend 可提前触发
-        if (supportsScrollend) chat.addEventListener('scrollend', cleanup, { once: true, signal });
     }, { passive: true, signal });
 
     chat.addEventListener('touchcancel', () => {
-        isTouching    = false;
-        isScrolling   = false;
+        isTouching        = false;
+        isScrolling       = false;
         touchIsHorizontal = null;
+        touchMoved        = false;
     }, { passive: true, signal });
 }
