@@ -115,29 +115,12 @@ body.twt-reading-mode #chat > #show_more_messages:hover {
 /* 消息主体 */
 body.twt-reading-mode #chat .mes {
     width: 100% !important;
-    max-width: 100% !important;
     box-sizing: border-box;
     overflow: visible !important; 
     break-inside: auto !important; 
     page-break-inside: auto !important;
     -webkit-column-break-inside: auto !important;
     /* 不在每个 .mes 上单独提升合成层，避免 column layout 下合成层碎片化 */
-}
-
-/* 气泡拼接美化横向收容：防止顶/底拼接装饰图超出单列视口宽度撑爆 scrollWidth */
-body.twt-reading-mode #chat .mes::before,
-body.twt-reading-mode #chat .mes::after {
-    max-width: 100% !important;
-    box-sizing: border-box !important;
-}
-
-/* 防御性收容：防止时间戳、计数器等内部绝对定位小组件以超宽尺寸向右溢出多列容器 */
-body.twt-reading-mode #chat .mes .timestamp,
-body.twt-reading-mode #chat .mes .tokenCounterDisplay,
-body.twt-reading-mode #chat .mes .mesIDDisplay,
-body.twt-reading-mode #chat .mes .mes_timer {
-    max-width: 100% !important;
-    box-sizing: border-box !important;
 }
 
 /* 默认使用 block 与 clearfix 收容浮动 avatar，消除 flow-root 在多列排版下阻碍跨列自然分割的性能瓶颈 */
