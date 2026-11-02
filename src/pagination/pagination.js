@@ -741,11 +741,7 @@ export function getColStep(chat) {
     if (!chat) return 0;
     if (stableColWidth > 0) return stableColWidth;
     const rawWidth = chat.getBoundingClientRect().width || chat.clientWidth;
-    if (rawWidth <= 0) return 0;
-    const scrollW = chat.scrollWidth;
-    if (scrollW <= 0) return rawWidth;
-    const n = Math.max(1, Math.round(scrollW / rawWidth));
-    return scrollW / n;
+    return rawWidth > 0 ? rawWidth : 0;
 }
 
 function getColWidth(chat) {
@@ -813,13 +809,9 @@ function updateColWidth() {
         // Use precise floating-point viewport width so column-width matches the real viewport
         chat.style.setProperty('--twt-col-width', `${rawW}px`, 'important');
         containOversizedElements();
-        // Attempt to immediately rebuild stable step cache
-        const sw = chat.scrollWidth;
-        if (sw > 0) {
-            const n = Math.max(1, Math.round(sw / rawW));
-            stableColWidth = sw / n;
-            lastKnownScrollWidth = sw;
-        }
+        // 直接使用精确视口宽度作为稳定步长，杜绝 scrollWidth 被美化溢出撑大引发的步长膨胀与逐页左移
+        stableColWidth = rawW;
+        lastKnownScrollWidth = chat.scrollWidth;
     }
 }
 
@@ -848,12 +840,8 @@ function updateColWidthWhenReady(retries = 3, interval = 80) {
         containOversizedElements();
         // Layout verified stable: establish precise step cache
         {
-            const sw = chat.scrollWidth;
-            if (sw > 0) {
-                const n = Math.max(1, Math.round(sw / rawW));
-                stableColWidth = sw / n;
-                lastKnownScrollWidth = sw;
-            }
+            stableColWidth = rawW;
+            lastKnownScrollWidth = chat.scrollWidth;
         }
         // ③ layout stable: restore reading position (P1 core)
         const shouldRestore = extension_settings?.twt?.autoRestoreReadingPosition !== false;
@@ -1734,8 +1722,7 @@ export function realignPagination(verbose = true) {
 
     const newSw = chat.scrollWidth;
     if (newSw > 0 && rawW > 0) {
-        const n = Math.max(1, Math.round(newSw / rawW));
-        stableColWidth = newSw / n;
+        stableColWidth = rawW;
         lastKnownScrollWidth = newSw;
     }
 
