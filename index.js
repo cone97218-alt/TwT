@@ -2322,6 +2322,284 @@ function bindUI() {
         }
     });
 
+    // ============================================================
+    // 视觉模块：按细分模块采集并生成生效 CSS
+    // ============================================================
+    function getModuleCssMap() {
+        const settings = extension_settings?.twt || {};
+        const currentPreset = settings.currentPreset || 'custom';
+        const cssMap = {
+            all: '',
+            layout: '',
+            typography: '',
+            font: '',
+            patches: '',
+            bubble: ''
+        };
+        const titleMap = {
+            all: '全部生效 CSS',
+            layout: '页面边距设置',
+            typography: '文本排版设置',
+            font: '字体设置',
+            patches: '自定义 CSS 优化补丁',
+            bubble: '气泡拼接美化自适应补丁'
+        };
+
+        // 1. 字体
+        const fontFamily = settings.fontFamily;
+        if (fontFamily && fontFamily !== 'inherit') {
+            const fontBlocks = [];
+            if (typeof BUILTIN_FONTS !== 'undefined' && BUILTIN_FONTS[fontFamily]?.url) {
+                fontBlocks.push(`@import url("${BUILTIN_FONTS[fontFamily].url}");`);
+            }
+            if (typeof getValidCustomFonts === 'function') {
+                const customFonts = getValidCustomFonts();
+                if (customFonts[fontFamily]) {
+                    const fontData = customFonts[fontFamily];
+                    if (fontData.url) fontBlocks.push(`@import url("${fontData.url}");`);
+                    else if (fontData.css) fontBlocks.push(fontData.css.trim());
+                }
+            }
+
+            const cleanFont = String(fontFamily).replace(/['"]/g, '').trim();
+            const isSerif = /mincho|serif|song|ming|kai|明朝|宋体|楷体/i.test(cleanFont);
+            const fallback = isSerif
+                ? '"Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", serif'
+                : '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif';
+            const fullFontStack = `"${cleanFont}", ${fallback}`;
+
+            fontBlocks.push(`:root {\n    --twt-global-font-family: ${fullFontStack};\n}`);
+            fontBlocks.push(`body #chat, body #chat .mes_text {\n    --twt-font-family: ${fullFontStack} !important;\n    font-family: ${fullFontStack} !important;\n}`);
+            cssMap.font = `/* === [TwT 字体设置: ${fontFamily}] === */\n${fontBlocks.join('\n\n')}`;
+        } else {
+            cssMap.font = `/* 当前使用系统默认字体，未配置独立自定义字体 */`;
+        }
+
+        // 2. 页面边距
+        const pTop = settings.paddingTop ?? 0;
+        const pBottom = settings.paddingBottom ?? 60;
+        const pLeft = settings.paddingLeft ?? 15;
+        const pRight = settings.paddingRight ?? 15;
+        cssMap.layout = [
+            `/* === [TwT 页面边距设置] === */`,
+            `#chat {`,
+            `    --twt-padding-top: ${pTop}px !important;`,
+            `    --twt-padding-bottom: ${pBottom}px !important;`,
+            `    --twt-padding-left: ${pLeft}px !important;`,
+            `    --twt-padding-right: ${pRight}px !important;`,
+            `    padding-top: ${pTop}px !important;`,
+            `    padding-bottom: ${pBottom}px !important;`,
+            `}`,
+            `#chat .mes_text {`,
+            `    padding-left: ${Math.max(0, pLeft)}px !important;`,
+            `    padding-right: ${Math.max(0, pRight)}px !important;`,
+            `    margin-left: ${Math.min(0, pLeft)}px !important;`,
+            `    margin-right: ${Math.min(0, pRight)}px !important;`,
+            `}`
+        ].join('\n');
+
+        // 3. 文本排版
+        const fSize = settings.fontSize ?? 16;
+        const lHeight = settings.lineHeight ?? 1.6;
+        const tIndent = settings.textIndent ?? 0;
+        const tAlign = settings.textAlign || 'left';
+        const pSpacing = Number(settings.paragraphSpacing) || 0;
+        const lSpacing = settings.letterSpacing ?? 0;
+        const fWeight = settings.fontWeight || 'normal';
+        cssMap.typography = [
+            `/* === [TwT 文本排版设置] === */`,
+            `#chat {`,
+            `    --twt-font-size: ${fSize}px !important;`,
+            `    --twt-line-height: ${lHeight} !important;`,
+            `    --twt-text-indent: ${tIndent}em !important;`,
+            `    --twt-text-align: ${tAlign} !important;`,
+            ...(pSpacing > 0 ? [`    --twt-paragraph-spacing: ${pSpacing}px !important;`] : []),
+            `    --twt-letter-spacing: ${lSpacing}px !important;`,
+            `    --twt-font-weight: ${fWeight} !important;`,
+            `}`,
+            `#chat .mes_text {`,
+            `    font-size: ${fSize}px !important;`,
+            `    line-height: ${lHeight} !important;`,
+            `    text-align: ${tAlign} !important;`,
+            `    letter-spacing: ${lSpacing}px !important;`,
+            `    font-weight: ${fWeight} !important;`,
+            `}`,
+            `#chat .mes_text p {`,
+            `    font-size: inherit !important;`,
+            `    line-height: inherit !important;`,
+            `    letter-spacing: inherit !important;`,
+            `    font-weight: ${fWeight} !important;`,
+            `    text-indent: ${tIndent}em;`,
+            ...(pSpacing > 0 ? [`    margin-bottom: ${pSpacing}px !important;`] : []),
+            `}`
+        ].join('\n');
+
+        // 4. 自定义 CSS 优化补丁
+        const patches = settings.optimizePatches || {};
+        const activePatches = [];
+        for (const [name, patch] of Object.entries(patches)) {
+            if (patch && patch.active && patch.code && typeof patch.code === 'string' && patch.code.trim().length > 0) {
+                activePatches.push({ name, folder: patch.folder || '默认', code: patch.code.trim() });
+            }
+        }
+        if (activePatches.length > 0) {
+            cssMap.patches = `/* === [TwT 自定义 CSS 优化补丁 (共 ${activePatches.length} 个启用)] === */\n\n` +
+                activePatches.map(p => `/* --- 补丁: ${p.name} (分类: ${p.folder}) --- */\n${p.code}`).join('\n\n');
+        } else {
+            cssMap.patches = `/* 当前没有处于启用状态的自定义 CSS 优化补丁 */`;
+        }
+
+        // 5. 气泡拼接自适应
+        if (settings.autoBubbleThemeEnabled !== false && typeof generateBubbleThemePatchCss === 'function') {
+            try {
+                const bubbleCss = generateBubbleThemePatchCss();
+                if (bubbleCss && bubbleCss.trim().length > 0) {
+                    cssMap.bubble = `/* === [TwT 气泡拼接美化智能自适应补丁] === */\n${bubbleCss.trim()}`;
+                } else {
+                    cssMap.bubble = `/* 当前未检测到需要坐标重构的负外边距气泡拼接美化 */`;
+                }
+            } catch (e) {
+                cssMap.bubble = `/* 气泡拼接自适应计算暂不可用 */`;
+            }
+        } else {
+            cssMap.bubble = `/* 气泡拼接美化智能自适应未开启 */`;
+        }
+
+        // 6. 全部汇总
+        const sectionsAll = [
+            cssMap.font,
+            cssMap.layout,
+            cssMap.typography,
+            activePatches.length > 0 ? cssMap.patches : '',
+            settings.autoBubbleThemeEnabled !== false && !cssMap.bubble.includes('未开启') && !cssMap.bubble.includes('未检测到') ? cssMap.bubble : ''
+        ].filter(s => s && s.trim().length > 0 && !s.startsWith('/* 当前使用系统默认字体'));
+
+        const headerAll = [
+            `/* ============================================================`,
+            ` * TwT 视觉模块生效 CSS 汇总导出`,
+            ` * 导出时间: ${new Date().toLocaleString()}`,
+            ` * 当前预设: ${currentPreset}`,
+            ` * ============================================================ */`
+        ].join('\n');
+
+        cssMap.all = `${headerAll}\n\n${sectionsAll.join('\n\n')}\n`;
+
+        return { cssMap, titleMap, activePatchesCount: activePatches.length };
+    }
+
+    let currentSelectedCssTab = 'all';
+
+    function renderVisualCssModal(tab = 'all') {
+        currentSelectedCssTab = tab;
+        const { cssMap, titleMap } = getModuleCssMap();
+        const content = cssMap[tab] || '';
+        const lines = content.trim() ? content.split('\n').length : 0;
+
+        // 更新 Tab 按钮激活高亮
+        $('.twt-css-tab-btn').each(function() {
+            const t = $(this).attr('data-tab');
+            if (t === tab) {
+                $(this).css({
+                    'background': 'var(--SmartThemeUnderlineColor, #007aff)',
+                    'color': '#fff',
+                    'font-weight': 'bold'
+                });
+            } else {
+                $(this).css({
+                    'background': 'rgba(255,255,255,0.08)',
+                    'color': 'inherit',
+                    'font-weight': 'normal'
+                });
+            }
+        });
+
+        // 更新提示与文本框
+        const tabTitle = titleMap[tab] || 'CSS 样式';
+        $('#twt_visual_css_hint_text').html(`<i class="fa-solid fa-layer-group"></i> 当前查看：<b>${tabTitle}</b>`);
+        $('#twt_visual_css_lines_count').text(`共 ${lines} 行`);
+        $('#twt_visual_css_preview_text').val(content);
+
+        // 更新复制按钮标签
+        if (tab === 'all') {
+            $('#twt_visual_css_copy_cur_label').text('复制当前项');
+        } else {
+            const shortName = tab === 'layout' ? '边距' : (tab === 'typography' ? '排版' : (tab === 'font' ? '字体' : (tab === 'patches' ? '补丁' : '气泡')));
+            $('#twt_visual_css_copy_cur_label').text(`复制${shortName}`);
+        }
+    }
+
+    // 点击小图标按钮：打开预览弹窗
+    $('#twt_visual_copy_all_css').on('click', function() {
+        renderVisualCssModal('all');
+        $('#twt-visual-css-preview-modal').fadeIn(150);
+    });
+
+    // 切换 Tab 分类
+    $(document).on('click', '.twt-css-tab-btn', function() {
+        const tab = $(this).attr('data-tab');
+        renderVisualCssModal(tab);
+    });
+
+    function closeVisualCssPreviewModal() {
+        $('#twt-visual-css-preview-modal').fadeOut(150);
+    }
+
+    $('#twt_visual_css_preview_close, #twt_visual_css_cancel_btn').on('click', closeVisualCssPreviewModal);
+
+    $('#twt-visual-css-preview-modal').on('click', function(e) {
+        if (e.target === this) closeVisualCssPreviewModal();
+    });
+
+    function execCopyToClipboard(text, successMsg) {
+        if (!text || !text.trim()) {
+            if (typeof toastr !== 'undefined') toastr.warning('当前模块无可用 CSS 代码', '提示');
+            return;
+        }
+
+        const onDone = () => {
+            if (typeof toastr !== 'undefined') {
+                toastr.success(successMsg, '复制成功');
+            } else {
+                alert(successMsg);
+            }
+            closeVisualCssPreviewModal();
+        };
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(onDone).catch(() => {
+                fallbackCopy(text, onDone);
+            });
+        } else {
+            fallbackCopy(text, onDone);
+        }
+    }
+
+    function fallbackCopy(text, cb) {
+        const $ta = $('#twt_visual_css_preview_text');
+        $ta.focus().select();
+        try {
+            document.execCommand('copy');
+            cb();
+        } catch (e) {
+            alert('复制失败，请手动在文本框中全选复制。');
+        }
+    }
+
+    // 复制当前分类项
+    $('#twt_visual_css_copy_cur_btn').on('click', function() {
+        const { cssMap, titleMap } = getModuleCssMap();
+        const text = cssMap[currentSelectedCssTab] || '';
+        const title = titleMap[currentSelectedCssTab] || '当前项';
+        execCopyToClipboard(text, `已复制「${title}」到剪贴板！`);
+    });
+
+    // 复制全部
+    $('#twt_visual_css_copy_all_btn').on('click', function() {
+        const { cssMap } = getModuleCssMap();
+        const text = cssMap.all || '';
+        execCopyToClipboard(text, '已复制「全部生效 CSS」到剪贴板！');
+    });
+
     // 导出视觉设置/预设
     $('#twt_visual_export').on('click', function() {
         const currentPreset = extension_settings.twt.currentPreset || 'custom';
