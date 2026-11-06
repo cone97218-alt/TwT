@@ -70,15 +70,16 @@ async function restorePaginationPosition() {
         if (handle) {
             const meta = await handle.metadata.get();
             const saved = meta?.extensions?.[TT_NS];
-            if (saved && typeof saved.lastPage === 'number') return Math.max(0, saved.lastPage);
+            if (saved && typeof saved.lastPage === 'number' && saved.lastPage >= 0) return saved.lastPage;
         }
         if (typeof chat_metadata !== 'undefined' && chat_metadata?.[TT_NS]?.lastPage !== undefined) {
-            return Math.max(0, Number(chat_metadata[TT_NS].lastPage) || 0);
+            const val = Number(chat_metadata[TT_NS].lastPage);
+            if (!isNaN(val) && val >= 0) return val;
         }
-        return 0;
+        return null;
     } catch (e) {
         console.warn('[TwT] Failed to restore reading position:', e);
-        return 0;
+        return null;
     }
 }
 
@@ -89,6 +90,7 @@ let lastUserPage = 0;           // 用户当前所在页（唯一权威来源）
 let isScrolling = false;        // 正在执行程序化 scrollTo，屏蔽 snap 校正
 let isTouching = false;         // 手指正在触摸屏幕
 let isGenerating = false;       // 正在进行 AI 流式生成，抑制高频后台排版扫描
+let lastChatSwitchTime = 0;   // 聊天切换时间戳，用于防抖保护
 
 /** 判断用户当前是否在输入框打字（此时应全面暂停后台排版与重试计算，避免打字卡顿） */
 export function isInputFocused() {
@@ -368,6 +370,7 @@ export function handleGenerationEnded() {
 
 export async function triggerLoadMoreMessages(isFlippingBackwards = false) {
     if (isLoadingMoreMessages) return;
+    if (Date.now() - lastChatSwitchTime < 500) return;
     const chat = getChat();
     if (!chat || !document.body.classList.contains('twt-reading-mode')) return;
     const showMoreBtn = document.getElementById('show_more_messages');
@@ -850,22 +853,34 @@ function updateColWidthWhenReady(retries = 3, interval = 80) {
             restorePaginationPosition().then(savedPage => {
                 requestAnimationFrame(() => {
                     if (!document.body.classList.contains('twt-reading-mode')) return;
-                    const restoredPage = savedPage > 0 ? savedPage : lastUserPage;
-                    if (restoredPage > 0) {
-                        const cw = stableColWidth > 0 ? stableColWidth : getColWidth(chat);
-                        const total = Math.round(chat.scrollWidth / cw);
-                        const page = Math.min(restoredPage, total - 1);
-                        lastUserPage = page;
-                        chat.scrollLeft = page * cw;
+                    const cw = stableColWidth > 0 ? stableColWidth : getColWidth(chat);
+                    if (cw <= 0) return;
+                    const total = Math.max(1, Math.round(chat.scrollWidth / cw));
+
+                    let targetPage;
+                    if (typeof savedPage === 'number' && savedPage >= 0) {
+                        targetPage = Math.min(savedPage, total - 1);
+                    } else {
+                        // 首次进入/无阅读记录的聊天档：默认定位到最新消息所在的最末页（与酒馆原生 scrollChatToBottom 行为保持一致）
+                        // 彻底杜绝停留在第 0 页导致 #show_more_messages 被误触并连环向前跳页至 0 楼的问题
+                        targetPage = total - 1;
                     }
+
+                    lastUserPage = targetPage;
+                    chat.scrollLeft = targetPage * cw;
                     setTimeout(updateActiveReadingAnchor, 100);
                 });
             });
         } else {
             requestAnimationFrame(() => {
                 if (!document.body.classList.contains('twt-reading-mode')) return;
-                lastUserPage = 0;
-                chat.scrollLeft = 0;
+                const cw = stableColWidth > 0 ? stableColWidth : getColWidth(chat);
+                if (cw > 0) {
+                    const total = Math.max(1, Math.round(chat.scrollWidth / cw));
+                    const targetPage = total - 1;
+                    lastUserPage = targetPage;
+                    chat.scrollLeft = targetPage * cw;
+                }
                 setTimeout(updateActiveReadingAnchor, 100);
             });
         }
@@ -1779,11 +1794,7 @@ export function realignPagination(verbose = true) {
 import { invalidateMuluStoreCache } from '../mulu/mulu.js';
 
 export function resetPaginationBinding(getSettings) {
-    // ① 切换前：抓取并保存旧聊天的阅读位置
-    const oldPage = lastUserPage;
-    if (oldPage > 0) {
-        savePaginationPosition(oldPage);
-    }
+    lastChatSwitchTime = Date.now();
     invalidateMuluStoreCache();
 
     // 中止旧事件
