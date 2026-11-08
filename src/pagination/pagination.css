@@ -35,60 +35,59 @@ body.twt-reading-mode #chat {
     contain: none !important;
 }
 
-/* 切换聊天室时的首帧过渡遮罩与排版加载动画 */
+/* 切换聊天室时的首帧过渡遮罩，杜绝酒馆清屏瞬间将第 0 页 (#show_more_messages) 闪现给用户 */
 body.twt-reading-mode.twt-chat-switching #chat,
 body.twt-reading-mode #chat.twt-chat-switching {
     opacity: 0 !important;
     pointer-events: none !important;
 }
 
-/* TwT 原生风格加载遮罩层 (与 SillyTavern 风格一致) */
+/* 进场静默加载蒙层与极简齿轮动画 */
 #twt-loading-overlay {
     position: fixed;
     top: 0;
     left: 0;
     width: 100vw;
     height: 100vh;
-    background: rgba(0, 0, 0, 0.45);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
-    z-index: 99999;
+    z-index: 9999;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    pointer-events: all;
+    gap: 14px;
+    background: var(--SmartThemeBlurTintColor, rgba(18, 18, 22, 0.75));
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     opacity: 0;
-    visibility: hidden;
-    transition: opacity 0.2s ease, visibility 0.2s ease;
+    pointer-events: none;
+    transition: opacity 0.22s ease-out;
 }
 
-#twt-loading-overlay.active {
+body.twt-reading-mode.twt-chat-switching #twt-loading-overlay {
     opacity: 1;
-    visibility: visible;
+    pointer-events: auto;
 }
 
-.twt-loading-box {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 12px;
-    padding: 14px 22px;
-    background: var(--SmartThemeBlurTintColor, rgba(30, 30, 30, 0.9));
-    border: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.15));
-    border-radius: 10px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-    color: var(--SmartThemeBodyColor, #e0e0e0);
+#twt-loading-overlay .twt-loading-spinner {
+    width: 36px;
+    height: 36px;
+    color: var(--SmartThemeQuoteColor, #88c0d0);
+    animation: twt-spin-gear 2.4s linear infinite;
+    filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.35));
 }
 
-.twt-loading-box i.fa-spinner {
-    font-size: 20px;
-    color: var(--SmartThemeQuoteColor, #4a9eff);
+#twt-loading-overlay .twt-loading-text {
+    font-size: 13px;
+    letter-spacing: 0.5px;
+    color: rgba(255, 255, 255, 0.7);
+    font-family: inherit;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    user-select: none;
 }
 
-.twt-loading-text {
-    font-size: 14px;
-    font-weight: 500;
+@keyframes twt-spin-gear {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
 }
 
 /* 防护消息块的离屏隔离（避免使用通用选择器 * 以防止大规模 CSS 匹配降级） */
