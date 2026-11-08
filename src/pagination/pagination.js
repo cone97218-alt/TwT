@@ -1258,9 +1258,12 @@ export function handleNewMessageRendered(messageId, settings = extension_setting
         const total = Math.max(1, Math.round(chat.scrollWidth / step));
         let targetPage = total - 1;
 
-        if (messageId !== undefined && messageId !== null) {
-            const targetMes = chat.querySelector(`.mes[mesid="${messageId}"]`);
-            if (targetMes) {
+        const allMes = chat.querySelectorAll(':scope > .mes');
+        const lastMes = allMes.length > 0 ? allMes[allMes.length - 1] : null;
+        const targetMes = (messageId !== undefined && messageId !== null)
+            ? chat.querySelector(`.mes[mesid="${messageId}"]`)
+            : lastMes;
+        if (targetMes && (targetMes.offsetWidth > 0 || targetMes.offsetHeight > 0)) {
                 const chatRect = chat.getBoundingClientRect();
                 const rect = targetMes.getBoundingClientRect();
                 const absLeft = rect.left - chatRect.left + chat.scrollLeft;
@@ -1276,7 +1279,6 @@ export function handleNewMessageRendered(messageId, settings = extension_setting
 
                 // 首次自动翻页进入新楼层：对齐到新楼层的第一页（起始位置），方便自上而下阅读，而不是跳到结尾
                 targetPage = mesStartPage;
-            }
         }
 
         scrollToPage(chat, targetPage, step);
@@ -1628,7 +1630,17 @@ function applyRestoreTarget(chat, cw) {
     let targetPage = total - 1;
 
     if (chatRestoreTarget.mode === 'end') {
-        targetPage = total - 1;
+        const allMes = chat.querySelectorAll(':scope > .mes');
+        const lastMes = allMes.length > 0 ? allMes[allMes.length - 1] : null;
+        if (lastMes && (lastMes.offsetWidth > 0 || lastMes.offsetHeight > 0)) {
+            const chatRect = chat.getBoundingClientRect();
+            const rect = lastMes.getBoundingClientRect();
+            const absLeft = rect.left - chatRect.left + chat.scrollLeft;
+            const mesStartPage = Math.max(0, Math.floor((absLeft + 2) / cw));
+            targetPage = Math.min(mesStartPage, total - 1);
+        } else {
+            targetPage = total - 1;
+        }
     } else if (chatRestoreTarget.mode === 'anchor' && chatRestoreTarget.mesId !== null && chatRestoreTarget.mesId !== undefined) {
         const anchorEl = chat.querySelector(`.mes[mesid="${chatRestoreTarget.mesId}"]`);
         if (anchorEl && (anchorEl.offsetWidth > 0 || anchorEl.offsetHeight > 0)) {

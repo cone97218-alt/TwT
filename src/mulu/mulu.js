@@ -610,8 +610,17 @@ async function scrollToMessageEdge(edge) {
                 setLastUserPage(0);
             } else {
                 const maxPage = Math.max(0, Math.ceil(chatContainer.scrollWidth / step) - 1);
-                chatContainer.scrollLeft = maxPage * step;
-                setLastUserPage(maxPage);
+                const allMes = chatContainer.querySelectorAll('.mes');
+                const lastMes = allMes.length > 0 ? allMes[allMes.length - 1] : null;
+                let targetPage = maxPage;
+                if (lastMes && (lastMes.offsetWidth > 0 || lastMes.offsetHeight > 0)) {
+                    const chatRect = chatContainer.getBoundingClientRect();
+                    const rect = lastMes.getBoundingClientRect();
+                    const absLeft = rect.left - chatRect.left + chatContainer.scrollLeft;
+                    targetPage = Math.max(0, Math.min(maxPage, Math.floor((absLeft + 2) / step)));
+                }
+                chatContainer.scrollLeft = targetPage * step;
+                setLastUserPage(targetPage);
             }
             chatContainer.scrollTop = 0;
             if (typeof updateActiveReadingAnchor === 'function') updateActiveReadingAnchor();
@@ -765,8 +774,17 @@ function scrollToAbsoluteEdge(edge) {
             setLastUserPage(0);
         } else {
             const maxPage = Math.max(0, Math.ceil(chatContainer.scrollWidth / step) - 1);
-            chatContainer.scrollLeft = maxPage * step;
-            setLastUserPage(maxPage);
+            const allMes = chatContainer.querySelectorAll('.mes');
+            const lastMes = allMes.length > 0 ? allMes[allMes.length - 1] : null;
+            let targetPage = maxPage;
+            if (lastMes && (lastMes.offsetWidth > 0 || lastMes.offsetHeight > 0)) {
+                const chatRect = chatContainer.getBoundingClientRect();
+                const rect = lastMes.getBoundingClientRect();
+                const absLeft = rect.left - chatRect.left + chatContainer.scrollLeft;
+                targetPage = Math.max(0, Math.min(maxPage, Math.floor((absLeft + 2) / step)));
+            }
+            chatContainer.scrollLeft = targetPage * step;
+            setLastUserPage(targetPage);
         }
         chatContainer.scrollTop = 0;
         if (typeof updateActiveReadingAnchor === 'function') updateActiveReadingAnchor();
