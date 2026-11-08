@@ -1,9 +1,9 @@
 // @ts-nocheck
 import { extension_settings, getContext } from '../../../../extensions.js';
-import { jumpToStart, jumpToEnd, openMuluModal } from './mulu/mulu.js?v=1.0.21';
-import { toggleHtmlAppPopup } from './html_popup/html_popup.js?v=1.0.21';
-import { realignPagination } from './pagination/pagination.js?v=1.0.21';
-import { applyFullscreenMode } from './menu/menu.js?v=1.0.21';
+import { jumpToStart, jumpToEnd, openMuluModal } from './mulu/mulu.js?v=1.0.22';
+import { toggleHtmlAppPopup } from './html_popup/html_popup.js?v=1.0.22';
+import { realignPagination } from './pagination/pagination.js?v=1.0.22';
+import { applyFullscreenMode } from './menu/menu.js?v=1.0.22';
 
 function parseUnnamedArg(unnamedArgs) {
     if (Array.isArray(unnamedArgs)) {

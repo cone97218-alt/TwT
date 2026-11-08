@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { extension_settings } from '../../../../../extensions.js';
 import { showMoreMessages } from '../../../../../../script.js';
-import { hideMessageHtmlAppsSync } from '../html_popup/html_popup.js?v=1.0.21';
+import { hideMessageHtmlAppsSync } from '../html_popup/html_popup.js?v=1.0.22';
 
 // ============================================================
 // P1：TauriTavern API 接入层 — 阅读位置记忆
@@ -128,6 +128,18 @@ let userInteractedSinceSwitch = false; // 用户在进入聊天后是否已主�
 let userExplicitlyFocusedInput = false; // 用户是否通过真实手势点击/触摸了输入框（杜绝酒馆 getChat 结束后自动 focus #send_textarea 导致移动端永久锁死）
 
 /** 判断用户当前是否在输入框打字（此时应全面暂停后台排版与重试计算，避免打字卡顿） */
+/** 实时探测酒馆是否正在真实流式生成回复 */
+export function checkIsActuallyGenerating() {
+    if (!isGenerating) return false;
+    const doc = document;
+    const isPress = doc.body.classList.contains('is_send_press');
+    const hasStop = doc.body.classList.contains('mes_stop') || !!doc.querySelector('.mes_stop');
+    if (!isPress && !hasStop) {
+        isGenerating = false;
+    }
+    return isGenerating;
+}
+
 export function isInputFocused() {
     if (!userExplicitlyFocusedInput) return false;
     const el = document.activeElement;
@@ -149,9 +161,10 @@ let lastKnownScrollWidth = 0;   // Last scrollWidth seen by MutationObserver, fo
 let stableColWidthTimer = null; // Timer to rebuild stableColWidth after streaming ends
 
 // ============================================================
-// 界面级翻页诊断日志系统（TwT On-Screen Diagnostic Logger v1.0.21）
+// 界面级翻页诊断日志系统（TwT Zero-Overhead Diagnostic Logger v1.0.22）
+// 严禁在日常高频日志中调用 chat.scrollWidth 或 elementFromPoint，彻底消除强制同步重排 (Layout Thrashing)
 // ============================================================
-const TWT_DIAG_MAX_LOGS = 250;
+const TWT_DIAG_MAX_LOGS = 600;
 const twtDiagLogs = [];
 let twtDiagEpoch = Date.now();
 let twtDiagLastTime = Date.now();
@@ -160,6 +173,7 @@ let twtDiagPanelExpanded = false;
 let twtDiagLastJsSetSL = null;
 let twtDiagLastObservedSL = 0;
 let lastInteractiveMatchReason = '';
+let twtDiagUiRafId = null;
 
 function describeEl(el) {
     if (!el) return 'null';
@@ -167,40 +181,11 @@ function describeEl(el) {
     if (!node || !node.tagName) return 'unknown';
     let s = node.tagName.toLowerCase();
     if (node.id) s += '#' + node.id;
-    if (node.className && typeof node.className === 'string') {
-        const cls = node.className.trim().split(/\s+/).slice(0, 3).join('.');
-        if (cls) s += '.' + cls;
-    }
     const mes = node.closest?.('.mes');
     if (mes) {
-        s += `[mesid=${mes.getAttribute('mesid')}]`;
+        s += `[#${mes.getAttribute('mesid') || '?'}]`;
     }
     return s;
-}
-
-function getVisibleMesSummary(chat) {
-    if (!chat) return 'no-chat';
-    try {
-        const chatRect = chat.getBoundingClientRect();
-        if (chatRect.width <= 0) return 'w=0';
-        const allMes = chat.querySelectorAll('.mes');
-        const firstId = allMes.length > 0 ? allMes[0].getAttribute('mesid') : '-';
-        const lastId = allMes.length > 0 ? allMes[allMes.length - 1].getAttribute('mesid') : '-';
-        let hitMesId = '?';
-        const pts = [[0.5, 0.5], [0.25, 0.35], [0.75, 0.65], [0.2, 0.7]];
-        for (let i = 0; i < pts.length; i++) {
-            const hit = document.elementFromPoint(chatRect.left + chatRect.width * pts[i][0], chatRect.top + chatRect.height * pts[i][1]);
-            const m = hit?.closest?.('.mes');
-            if (m) {
-                hitMesId = m.getAttribute('mesid');
-                break;
-            }
-        }
-        const hasShowMore = !!document.getElementById('show_more_messages');
-        return `vis=#${hitMesId} dom=[${firstId}..${lastId}](${allMes.length})${hasShowMore ? '+SM' : ''}`;
-    } catch {
-        return 'err';
-    }
 }
 
 export function twtDiagLog(tag, detail = '') {
@@ -212,20 +197,20 @@ export function twtDiagLog(tag, detail = '') {
         twtDiagSeq++;
 
         const chat = document.getElementById('chat');
-        const cw = stableColWidth > 0 ? stableColWidth : (chat ? (chat.getBoundingClientRect().width || chat.clientWidth || 0) : 0);
-        const sl = chat ? Math.round(chat.scrollLeft) : -1;
-        const sw = chat ? Math.round(chat.scrollWidth) : -1;
+        const cw = stableColWidth > 0 ? stableColWidth : 0;
+        const sl = twtDiagLastObservedSL || (chat ? Math.round(chat.scrollLeft) : 0);
+        const sw = lastKnownScrollWidth || 0;
         const realP = cw > 0 && sl >= 0 ? (sl / cw).toFixed(1) : '-';
         const maxP = cw > 0 && sw > 0 ? Math.max(0, Math.round(sw / cw) - 1) : '-';
-        const mesInfo = chat ? getVisibleMesSummary(chat) : 'no-chat';
+        const curMes = activeReadingAnchor?.mesId ? `#${activeReadingAnchor.mesId}` : '?';
         const flags = `R${isChatRestoring ? 1 : 0}I${userInteractedSinceSwitch ? 1 : 0}T${isTouching ? 1 : 0}S${isScrolling ? 1 : 0}G${isGenerating ? 1 : 0}F${isInputFocused() ? 1 : 0}`;
 
-        const line = `[${twtDiagSeq}] +${rel}ms (Δ${delta}ms) [${tag}] ${detail} | uP=${lastUserPage} realP=${realP}/${maxP} sl=${sl} sw=${sw} cw=${Math.round(cw)} | ${mesInfo} | ${flags}`;
+        const line = `[${twtDiagSeq}] +${rel}ms (Δ${delta}ms) [${tag}] ${detail} | uP=${lastUserPage} realP=${realP}/${maxP} sl=${sl} sw=${sw} cw=${Math.round(cw)} | mes=${curMes} | ${flags}`;
         twtDiagLogs.push(line);
         if (twtDiagLogs.length > TWT_DIAG_MAX_LOGS) {
             twtDiagLogs.shift();
         }
-        updateDiagPanelUI(realP, maxP, mesInfo);
+        scheduleDiagPanelUI(realP, maxP, curMes);
     } catch (e) {
         console.warn('[TwT Diag Error]', e);
     }
@@ -245,9 +230,9 @@ function ensureDiagPanel() {
         'right: 6px',
         'max-width: 480px',
         'z-index: 2147483647',
-        'background: rgba(15, 23, 42, 0.92)',
+        'background: rgba(15, 23, 42, 0.94)',
         'color: #f8fafc',
-        'border: 1px solid rgba(56, 189, 248, 0.6)',
+        'border: 1px solid rgba(56, 189, 248, 0.7)',
         'border-radius: 8px',
         'padding: 5px 8px',
         'font-family: monospace, sans-serif',
@@ -261,7 +246,7 @@ function ensureDiagPanel() {
 
     panel.innerHTML = `
         <div id="twt-diag-header" style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;">
-            <span id="twt-diag-status" style="font-weight:bold;color:#38bdf8;font-size:11px;">📊 TwT v1.0.21 诊断就绪</span>
+            <span id="twt-diag-status" style="font-weight:bold;color:#38bdf8;font-size:11px;">📊 TwT v1.0.22 诊断就绪</span>
             <div style="display:flex;gap:5px;align-items:center;">
                 <button id="twt-diag-copy-btn" type="button" style="background:#0284c7;color:#fff;border:none;border-radius:4px;padding:3px 7px;font-size:11px;cursor:pointer;font-weight:bold;">📋 复制日志</button>
                 <button id="twt-diag-clear-btn" type="button" style="background:#475569;color:#fff;border:none;border-radius:4px;padding:3px 6px;font-size:11px;cursor:pointer;">清空</button>
@@ -271,10 +256,7 @@ function ensureDiagPanel() {
         <textarea id="twt-diag-body" readonly style="display:none;width:100%;height:190px;margin-top:6px;background:#090d16;color:#a7f3d0;border:1px solid #334155;border-radius:4px;padding:5px;font-family:monospace;font-size:10px;line-height:1.35;box-sizing:border-box;white-space:pre;overflow:auto;user-select:text;-webkit-user-select:text;"></textarea>
     `;
 
-    // 阻止面板上的任何点击/触摸事件穿透到 #chat 触发翻页
-    const stopAll = (e) => {
-        e.stopPropagation();
-    };
+    const stopAll = (e) => e.stopPropagation();
     ['click', 'mousedown', 'mouseup', 'touchstart', 'touchmove', 'touchend', 'pointerdown', 'pointerup'].forEach(evt => {
         panel.addEventListener(evt, stopAll, false);
     });
@@ -291,7 +273,7 @@ function ensureDiagPanel() {
         e.stopPropagation();
         twtDiagLog('USER_COPY_LOGS', '用户点击复制日志按钮');
         const headerInfo = [
-            `=== TwT Pagination Diagnostic Report (v1.0.21) ===`,
+            `=== TwT Pagination Diagnostic Report (v1.0.22) ===`,
             `Time: ${new Date().toISOString()}`,
             `UA: ${navigator.userAgent}`,
             `Viewport: ${window.innerWidth}x${window.innerHeight} (dpr=${window.devicePixelRatio})`,
@@ -335,7 +317,6 @@ function ensureDiagPanel() {
                 copyBtn.style.background = '#0284c7';
             }, 2000);
         } else {
-            // 若 WebView 禁止自动剪贴板写入，自动展开文本框并全选方便手动复制
             twtDiagPanelExpanded = true;
             if (bodyEl) {
                 bodyEl.style.display = 'block';
@@ -374,25 +355,28 @@ function ensureDiagPanel() {
     return panel;
 }
 
-function updateDiagPanelUI(realP, maxP, mesInfo) {
-    const panel = ensureDiagPanel();
-    if (!panel) return;
-    const isReading = document.body.classList.contains('twt-reading-mode');
-    panel.style.display = isReading ? 'block' : 'none';
-    const statusEl = panel.querySelector('#twt-diag-status');
-    if (statusEl) {
-        statusEl.textContent = `📊 页:${lastUserPage}(${realP}/${maxP}) | ${mesInfo} | ${twtDiagLogs.length}条`;
-    }
-    if (twtDiagPanelExpanded) {
-        const bodyEl = panel.querySelector('#twt-diag-body');
-        if (bodyEl) {
-            bodyEl.value = twtDiagLogs.join('\n');
-            bodyEl.scrollTop = bodyEl.scrollHeight;
+function scheduleDiagPanelUI(realP, maxP, curMes) {
+    if (twtDiagUiRafId) return;
+    twtDiagUiRafId = requestAnimationFrame(() => {
+        twtDiagUiRafId = null;
+        const panel = ensureDiagPanel();
+        if (!panel) return;
+        const isReading = document.body.classList.contains('twt-reading-mode');
+        panel.style.display = isReading ? 'block' : 'none';
+        const statusEl = panel.querySelector('#twt-diag-status');
+        if (statusEl) {
+            statusEl.textContent = `📊 页:${lastUserPage}(${realP}/${maxP}) | 楼层:${curMes} | ${twtDiagLogs.length}条`;
         }
-    }
+        if (twtDiagPanelExpanded) {
+            const bodyEl = panel.querySelector('#twt-diag-body');
+            if (bodyEl) {
+                bodyEl.value = twtDiagLogs.join('\n');
+                bodyEl.scrollTop = bodyEl.scrollHeight;
+            }
+        }
+    });
 }
 
-// 启动主线程卡顿阻塞探测器（检测 >120ms 的帧间隔阻塞）
 let lagDetectorStarted = false;
 function startLagDetector() {
     if (lagDetectorStarted) return;
@@ -401,7 +385,7 @@ function startLagDetector() {
     function checkFrame(now) {
         const gap = Math.round(now - lastFrameTime);
         lastFrameTime = now;
-        if (gap > 160 && document.body?.classList?.contains('twt-reading-mode') && !document.hidden) {
+        if (gap > 220 && document.body?.classList?.contains('twt-reading-mode') && !document.hidden) {
             twtDiagLog('⚠️MAIN_THREAD_LAG', `主线程阻塞帧间隔 ${gap}ms`);
         }
         requestAnimationFrame(checkFrame);
@@ -452,13 +436,8 @@ export function lockChatScrollTop(chat) {
                     twtDiagLastObservedSL = after;
                     // 手指连续跟手滑动(isTouching)期间不刷屏记录每一帧 setter，其余任何时刻写入 scrollLeft 均记录调用栈与钳制对比
                     if (!isTouching && document.body.classList.contains('twt-reading-mode')) {
-                        let caller = '';
-                        try {
-                            const lines = (new Error().stack || '').split('\n').slice(2, 5);
-                            caller = lines.map(l => l.trim().replace(/^at\s+/, '').split(' ')[0]).join('<-');
-                        } catch {}
                         const clampedNote = Math.abs(after - val) > 2 ? ` ⚠️CLAMPED(req=${Math.round(val)}->actual=${Math.round(after)})` : '';
-                        twtDiagLog('SET_SL', `${Math.round(prev)}->${Math.round(after)} (req=${Math.round(val)})${clampedNote} by [${caller}]`);
+                        twtDiagLog('SET_SL', `${Math.round(prev)}->${Math.round(after)} (req=${Math.round(val)})${clampedNote}`);
                     }
                 },
                 configurable: true
@@ -1158,7 +1137,7 @@ let scrollUnlockTimer = null;
 function getSyncedCurrentPage(chat, cw) {
     const step = cw || getColStep(chat);
     if (!chat || step <= 0) return lastUserPage;
-    const sw = chat.scrollWidth;
+    const sw = lastKnownScrollWidth > 0 ? lastKnownScrollWidth : (chat.scrollWidth || step);
     lastKnownScrollWidth = sw;
     const maxPage = Math.max(0, Math.round(sw / step) - 1);
     const actualPage = Math.max(0, Math.min(maxPage, Math.round(chat.scrollLeft / step)));
@@ -1173,7 +1152,7 @@ function scrollToPage(chat, page, cw, knownTotal = 0) {
     if (!chat) return;
     const step = cw || getColStep(chat);
     if (step <= 0) return;
-    const sw = knownTotal > 0 ? (knownTotal * step) : chat.scrollWidth;
+    const sw = knownTotal > 0 ? (knownTotal * step) : (lastKnownScrollWidth > 0 ? lastKnownScrollWidth : (chat.scrollWidth || step));
     lastKnownScrollWidth = sw;
     const total = Math.max(1, Math.round(sw / step));
     const reqPage = page;
@@ -1192,7 +1171,6 @@ function scrollToPage(chat, page, cw, knownTotal = 0) {
     }, 60);
 
     twtDiagLog('SCROLL_TO_PAGE', `p: ${prevPage}->${page} (req=${reqPage}, total=${total})`);
-    // 在上百页的大型多列排版下，必须使用即时位移，杜绝 browser smooth scroll 逐帧插值引起的灾难级掉帧与重绘堆积
     chat.scrollLeft = targetScrollLeft;
 }
 
@@ -2375,7 +2353,7 @@ export function realignPagination(verbose = true) {
 // ============================================================
 // resetPaginationBinding：切换聊天时重置并重绑定
 // ============================================================
-import { invalidateMuluStoreCache } from '../mulu/mulu.js?v=1.0.21';
+import { invalidateMuluStoreCache } from '../mulu/mulu.js?v=1.0.22';
 
 export function resetPaginationBinding(getSettings) {
     twtDiagEpoch = Date.now();
@@ -2535,9 +2513,18 @@ function isInteractiveTarget(targetEl, settings, chat) {
     return false;
 }
 
+const PAGE_FLIP_COOLDOWN_MS = 220;
+
 function handlePageFlip(clientX, targetEl, settings) {
     if (!settings?.enabled) return false;
     if (!document.body.classList.contains('twt-reading-mode')) return false;
+
+    // 关键防线：杜绝手机端主线程卡顿/丢帧后操作系统事件队列暴风骤雨式瞬间释放排队触摸事件（曾导致 13ms 连击跨越 20 页狂跳）
+    const now = Date.now();
+    if (now - lastPageTurnTime < PAGE_FLIP_COOLDOWN_MS) {
+        twtDiagLog('FLIP_DROP_BURST', `丢弃冷却期内连击/排队事件 gap=${now - lastPageTurnTime}ms`);
+        return false;
+    }
     if (targetEl?.closest?.('#twt-diag-panel')) return false;
     if (document.body.classList.contains('twt-paragraph-editing')) {
         twtDiagLog('FLIP_REJECT', 'reason=paragraph-editing');
@@ -2811,7 +2798,7 @@ function bindScrollEvents(getSettings) {
         touchIsHorizontal = null;
 
         const cw = stableColWidth > 0 ? stableColWidth : getColWidth(chat);
-        const sw = chat.scrollWidth;
+        const sw = lastKnownScrollWidth > 0 ? lastKnownScrollWidth : (chat.scrollWidth || (cw * touchTotalPages));
         if (sw > 0) lastKnownScrollWidth = sw;
         touchTotalPages = cw > 0 ? Math.max(1, Math.round(sw / cw)) : 1;
         touchStartPage = cw > 0 ? getSyncedCurrentPage(chat, cw) : 0;
@@ -2899,6 +2886,10 @@ function bindScrollEvents(getSettings) {
         // 移动端拇指点击屏幕边缘翻页时常伴随 8~24px 的微小滚动，若总位移 < 24px 且触碰时间 < 450ms，一律优先作为点按翻页处理！
         if (dt < 450 && dist < 24) {
             isTouching = false;
+            if (Date.now() - lastPageTurnTime < PAGE_FLIP_COOLDOWN_MS) {
+                twtDiagLog('TAP_DROP_BURST', `丢弃冷却期内点击 gap=${Date.now() - lastPageTurnTime}ms`);
+                return;
+            }
             const targetEl = e.target || document.elementFromPoint(touchEndX, touchEndY);
             const handled = handlePageFlip(touchEndX, targetEl, settings);
             if (handled) {
