@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { extension_settings } from '../../../../../extensions.js';
 import { showMoreMessages } from '../../../../../../script.js';
+import { hideMessageHtmlAppsSync } from '../html_popup/html_popup.js?v=1.0.20';
 
 // ============================================================
 // P1：TauriTavern API 接入层 — 阅读位置记忆
@@ -360,19 +361,26 @@ export function realignToActiveAnchor() {
     const anchorEl = chat.querySelector(`.mes[mesid="${activeReadingAnchor.mesId}"]`);
     if (!anchorEl || (anchorEl.offsetWidth === 0 && anchorEl.offsetHeight === 0)) return false;
 
+    const sw = chat.scrollWidth;
+    lastKnownScrollWidth = sw;
+    const total = Math.max(1, Math.round(sw / step));
     const chatRect = chat.getBoundingClientRect();
-    const currentVisualLeft = anchorEl.getBoundingClientRect().left - chatRect.left;
-    const shift = currentVisualLeft - (activeReadingAnchor.visualLeft || 0);
+    const rect = anchorEl.getBoundingClientRect();
+    const absLeft = rect.left - chatRect.left + chat.scrollLeft;
+    const mesStartPage = Math.max(0, Math.floor((absLeft + 2) / step));
+    const mesEndPage = Math.max(mesStartPage, Math.floor((absLeft + rect.width - 2) / step));
+    const offsetPages = Math.max(0, Number(activeReadingAnchor.pageOffsetInMes) || 0);
+    const targetPage = Math.min(total - 1, Math.min(mesEndPage, mesStartPage + offsetPages));
 
-    if (Math.abs(shift) > 1) {
-        const total = Math.max(1, Math.round(chat.scrollWidth / step));
-        const rawScrollLeft = chat.scrollLeft + shift;
-        const targetPage = Math.max(0, Math.min(total - 1, Math.round(rawScrollLeft / step)));
-        chat.scrollLeft = targetPage * step;
-        chat.scrollTop = 0;
-        lastUserPage = targetPage;
-        activeReadingAnchor.visualLeft = anchorEl.getBoundingClientRect().left - chatRect.left;
-    }
+    isScrolling = true;
+    lastUserPage = targetPage;
+    chat.scrollLeft = targetPage * step;
+    chat.scrollTop = 0;
+    activeReadingAnchor.visualLeft = anchorEl.getBoundingClientRect().left - chatRect.left;
+    clearTimeout(scrollUnlockTimer);
+    scrollUnlockTimer = setTimeout(() => {
+        isScrolling = false;
+    }, 60);
     return true;
 }
 
@@ -854,11 +862,30 @@ function getColWidth(chat) {
 
 let scrollUnlockTimer = null;
 
+/**
+ * 实时同步并获取当前真实物理页码：
+ * 当 html_popup 异步隐藏代码块或图片完成布局导致 scrollWidth 缩水、浏览器自动钳制 (clamp) scrollLeft 后，
+ * 确保 lastUserPage 立即与当前视口真实页码对齐，彻底解决“在最新楼层首次点击向前翻页无反应”的问题。
+ */
+function getSyncedCurrentPage(chat, cw) {
+    const step = cw || getColStep(chat);
+    if (!chat || step <= 0) return lastUserPage;
+    const sw = chat.scrollWidth;
+    lastKnownScrollWidth = sw;
+    const maxPage = Math.max(0, Math.round(sw / step) - 1);
+    const actualPage = Math.max(0, Math.min(maxPage, Math.round(chat.scrollLeft / step)));
+    if (lastUserPage > maxPage || Math.abs(actualPage - lastUserPage) >= 1) {
+        lastUserPage = actualPage;
+    }
+    return lastUserPage;
+}
+
 function scrollToPage(chat, page, cw, knownTotal = 0) {
     if (!chat) return;
     const step = cw || getColStep(chat);
     if (step <= 0) return;
-    const sw = knownTotal > 0 ? (knownTotal * step) : (lastKnownScrollWidth > 0 && !isGenerating ? lastKnownScrollWidth : chat.scrollWidth);
+    const sw = knownTotal > 0 ? (knownTotal * step) : chat.scrollWidth;
+    lastKnownScrollWidth = sw;
     const total = Math.max(1, Math.round(sw / step));
     page = Math.max(0, Math.min(page, total - 1));
     const targetScrollLeft = page * step;
@@ -869,6 +896,7 @@ function scrollToPage(chat, page, cw, knownTotal = 0) {
     clearTimeout(scrollUnlockTimer);
     scrollUnlockTimer = setTimeout(() => {
         isScrolling = false;
+        updateActiveReadingAnchor(true);
         debouncedSavePaginationPosition();
     }, 60);
 
@@ -877,33 +905,43 @@ function scrollToPage(chat, page, cw, knownTotal = 0) {
 }
 
 // ============================================================
-// snap 校正（scroll 结束后对齐到最近整页）
+// snap 校正（scroll 结束后对齐到权威整页，拦截非预期的浏览器跳页）
 // ============================================================
 function doSnap(chat) {
-    if (isTouching || isScrolling || isInputFocused() || isGenerating) return;
+    if (isTouching || isScrolling || isInputFocused() || isGenerating || isLoadingMoreMessages) return;
     if (!document.body.classList.contains('twt-reading-mode')) return;
     if (document.body.classList.contains('twt-paragraph-editing')) return;
-
-    // 若刚进入聊天且用户尚未触摸翻页，严禁被原生清空/重绘事件误吸附到前序楼层
-    if (!userInteractedSinceSwitch && !isGenerating && !isLoadingMoreMessages && chatRestoreTarget) {
-        const cw = stableColWidth > 0 ? stableColWidth : (chat.clientWidth || 0);
-        if (cw > 0) applyRestoreTarget(chat, cw);
-        return;
-    }
 
     const cw = stableColWidth > 0 ? stableColWidth : (chat.clientWidth || 0);
     if (cw <= 0) return;
 
-    const nearest = Math.round(chat.scrollLeft / cw);
-    const expected = nearest * cw;
-
-    if (Math.abs(chat.scrollLeft - expected) > 1) {
-        chat.scrollLeft = expected;
+    // 若刚进入聊天且用户尚未触摸翻页，严禁被原生清空/重绘事件误吸附到前序楼层
+    if (!userInteractedSinceSwitch && chatRestoreTarget) {
+        applyRestoreTarget(chat, cw);
+        return;
     }
-    lastUserPage = nearest;
-    isScrolling = false;
-    clearTimeout(scrollUnlockTimer);
-    updateActiveReadingAnchor(true);
+
+    // 用户已交互后：非触摸(isTouching=false)且非程序翻页(isScrolling=false)期间发生的任何 scroll 偏移，
+    // 均属于浏览器因 DOM 变动/焦点高亮产生的异常跳页或总宽缩水钳制。
+    // 此时必须以 lastUserPage（收敛在合法 [0, maxPage] 内）为唯一权威回写 scrollLeft，绝不采信异常的 scrollLeft！
+    const sw = chat.scrollWidth;
+    lastKnownScrollWidth = sw;
+    const maxPage = Math.max(0, Math.round(sw / cw) - 1);
+    const authoritativePage = Math.max(0, Math.min(lastUserPage, maxPage));
+    const expected = authoritativePage * cw;
+
+    lastUserPage = authoritativePage;
+    if (Math.abs(chat.scrollLeft - expected) > 1) {
+        isScrolling = true;
+        chat.scrollLeft = expected;
+        clearTimeout(scrollUnlockTimer);
+        scrollUnlockTimer = setTimeout(() => {
+            isScrolling = false;
+            updateActiveReadingAnchor(true);
+        }, 60);
+    } else {
+        updateActiveReadingAnchor(true);
+    }
 }
 
 /**
@@ -998,6 +1036,7 @@ function updateColWidth() {
     stableColWidth = 0; // Invalidate cache; layout is changing
     const chat = getChat();
     if (!chat || !document.body.classList.contains('twt-reading-mode')) return;
+    hideMessageHtmlAppsSync(true, false);
     autoNormalizeBubbleTheme();
     const rawW = chat.getBoundingClientRect().width || chat.clientWidth;
     if (rawW > 0) {
@@ -1021,7 +1060,8 @@ function updateColWidthWhenReady(retries = 4, interval = 60) {
         return;
     }
 
-    // 1. 立即同步设置列宽与基础收容，避免首帧使用旧列宽或停留在第 0 页 (#show_more_messages)
+    // 1. 先同步隐藏正文中的 HTML/Iframe 大代码块，避免测算出虚高的未折叠总页数（如 120 页而非真实 25 页）导致首次向前翻页失效！
+    hideMessageHtmlAppsSync(true, false);
     autoNormalizeBubbleTheme();
     chat.style.setProperty('--twt-col-width', `${rawW}px`, 'important');
     containOversizedElements();
@@ -1029,14 +1069,13 @@ function updateColWidthWhenReady(retries = 4, interval = 60) {
 
     const sw1 = chat.scrollWidth;
     lastKnownScrollWidth = sw1;
-    const initTotal = Math.max(1, Math.round(sw1 / rawW));
 
-    // 2. 永远直接同步定位在最新楼层末尾（如 94 楼最后一页），彻底杜绝“先跳到 94 楼再异步回跳到 74 楼”的二次跳页 Bug！
+    // 2. 直接同步定位在最新楼层末尾，一步到位锁定真实尾页！
     isChatRestoring = true;
     chatRestoreTarget = { mode: 'end' };
     applyRestoreTarget(chat, rawW);
 
-    // 3. 启动切入聊天稳定期守护（持续吸收后续 html_popup 隐藏代码块、图片加载、字体渲染引发的列数变动）
+    // 3. 启动切入聊天稳定期守护（持续吸收后续图片加载、字体渲染引发的列数变动）
     clearTimeout(chatRestoreSettleTimer);
     chatRestoreSettleTimer = setTimeout(() => {
         isChatRestoring = false;
@@ -1045,10 +1084,11 @@ function updateColWidthWhenReady(retries = 4, interval = 60) {
         if (!userInteractedSinceSwitch && document.body.classList.contains('twt-reading-mode')) {
             const cw = stableColWidth > 0 ? stableColWidth : getColWidth(chat);
             if (cw > 0 && chatRestoreTarget) {
+                hideMessageHtmlAppsSync(true, false);
                 applyRestoreTarget(chat, cw);
             }
         }
-    }, 1000);
+    }, 600);
 }
 
 // ============================================================
@@ -1083,7 +1123,9 @@ function initMutationObserver() {
                             if (node.nodeType === 1) {
                                 if (node.id === 'show_more_messages') addedShowMore = true;
                                 if (node.classList?.contains('last_mes')) addedLastMes = true;
-                                if (!node.classList?.contains('twt-comment-badge') && !node.classList?.contains('twt-toolcall-floor-badge')) {
+                                if (!node.classList?.contains('twt-comment-badge') &&
+                                    !node.classList?.contains('twt-toolcall-floor-badge') &&
+                                    !node.classList?.contains('twt-app-placeholder')) {
                                     hasMeaningfulDomChange = true;
                                 }
                             }
@@ -1092,7 +1134,9 @@ function initMutationObserver() {
                     if (m.removedNodes && m.removedNodes.length > 0) {
                         for (let j = 0; j < m.removedNodes.length; j++) {
                             const node = m.removedNodes[j];
-                            if (node.nodeType === 1 && !node.classList?.contains('twt-comment-badge')) {
+                            if (node.nodeType === 1 &&
+                                !node.classList?.contains('twt-comment-badge') &&
+                                !node.classList?.contains('twt-app-placeholder')) {
                                 hasMeaningfulDomChange = true;
                             }
                         }
@@ -1101,7 +1145,8 @@ function initMutationObserver() {
             }
         }
 
-        if (chat.children.length <= 1 || (addedShowMore && addedLastMes && !isLoadingMoreMessages && !isGenerating)) {
+        const isInitialBatchMount = addedShowMore && addedLastMes && !isLoadingMoreMessages && !isGenerating;
+        if (chat.children.length <= 1 || isInitialBatchMount) {
             isChatRestoring = true;
             userInteractedSinceSwitch = false;
             lastChatSwitchTime = Date.now();
@@ -1109,122 +1154,47 @@ function initMutationObserver() {
             if (chat.children.length <= 1) {
                 document.body.classList.add("twt-chat-switching");
                 chat.classList.add("twt-chat-switching");
-            }
-        }
-
-        // 若正处于切入聊天阶段且 #chat 已挂载消息，在微任务阶段（浏览器首帧绘制前）直接同步将 scrollLeft 推到末尾页，0 帧闪现熊猫 message！
-        if ((isChatRestoring || !userInteractedSinceSwitch) && !isGenerating && !isLoadingMoreMessages && chat.children.length > 1) {
-            const rawW = stableColWidth > 0 ? stableColWidth : (chat.getBoundingClientRect().width || chat.clientWidth);
-            if (rawW > 0) {
-                if (!stableColWidth) {
-                    chat.style.setProperty('--twt-col-width', `${rawW}px`, 'important');
-                    stableColWidth = rawW;
+            } else if (isInitialBatchMount) {
+                // 在微任务阶段（浏览器首帧绘制前）先同步隐藏 HTML/Iframe 代码块，再直接将 scrollLeft 推到真实末尾页，0 帧闪现熊猫 message 且页码一步到位！
+                hideMessageHtmlAppsSync(true, false);
+                const rawW = stableColWidth > 0 ? stableColWidth : (chat.getBoundingClientRect().width || chat.clientWidth);
+                if (rawW > 0) {
+                    if (!stableColWidth) {
+                        chat.style.setProperty('--twt-col-width', `${rawW}px`, 'important');
+                        stableColWidth = rawW;
+                    }
+                    applyRestoreTarget(chat, rawW);
                 }
-                if (!chatRestoreTarget) chatRestoreTarget = { mode: 'end' };
-                applyRestoreTarget(chat, rawW);
             }
         }
 
         if (!hasMeaningfulDomChange) return;
-        if (isInputFocused()) return;
-
-        // 检查是否有消息元素在“当前阅读锚点之前”被添加或移除（仅在用户已主动交互翻页后才启用前置锚点补偿）
-        let hasFrontChanges = false;
-        if (userInteractedSinceSwitch && !isChatRestoring && mutations && mutations.length > 0 && activeReadingAnchor && activeReadingAnchor.mesId !== undefined) {
-            const anchorMesId = Number(activeReadingAnchor.mesId);
-            for (let i = 0; i < mutations.length; i++) {
-                const m = mutations[i];
-                if (m.type === 'childList') {
-                    if (m.removedNodes && m.removedNodes.length > 0) {
-                        for (let j = 0; j < m.removedNodes.length; j++) {
-                            const node = m.removedNodes[j];
-                            if (node.nodeType === 1) {
-                                if (node.id === 'show_more_messages') {
-                                    hasFrontChanges = true;
-                                    break;
-                                }
-                                if (node.classList?.contains('mes')) {
-                                    const mesId = Number(node.getAttribute('mesid'));
-                                    if (isNaN(mesId) || isNaN(anchorMesId) || mesId <= anchorMesId) {
-                                        hasFrontChanges = true;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if (m.addedNodes && m.addedNodes.length > 0) {
-                        for (let j = 0; j < m.addedNodes.length; j++) {
-                            const node = m.addedNodes[j];
-                            if (node.nodeType === 1) {
-                                if (node.id === 'show_more_messages') {
-                                    hasFrontChanges = true;
-                                    break;
-                                }
-                                if (node.classList?.contains('mes')) {
-                                    const mesId = Number(node.getAttribute('mesid'));
-                                    if (isNaN(mesId) || isNaN(anchorMesId) || mesId < anchorMesId) {
-                                        hasFrontChanges = true;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                if (hasFrontChanges) break;
-            }
-        }
-
-        // 视口相对锚点零误差对齐：若顶部发生增删，立刻在微任务阶段补偿 scrollLeft 位移，彻底消除跳动
-        // 关键防护：若正在进行历史消息加载 (isLoadingMoreMessages)，由 handleMoreMessagesLoaded 统一执行位移补偿，杜绝提前介入导致双重位移叠加！
-        if (hasFrontChanges && userInteractedSinceSwitch && !isChatRestoring && activeReadingAnchor && activeReadingAnchor.mesId && !isTouching && !isLoadingMoreMessages) {
-            const anchorEl = chat.querySelector(`.mes[mesid="${activeReadingAnchor.mesId}"]`);
-            if (anchorEl) {
-                const chatRect = chat.getBoundingClientRect();
-                const currentVisualLeft = anchorEl.getBoundingClientRect().left - chatRect.left;
-                const shift = currentVisualLeft - (activeReadingAnchor.visualLeft || 0);
-
-                if (Math.abs(shift) > 1) {
-                    chat.scrollLeft += shift;
-                    chat.scrollTop = 0;
-                    const step = getColStep(chat);
-                    if (step > 0) {
-                        lastUserPage = Math.round(chat.scrollLeft / step);
-                    }
-                    activeReadingAnchor.visualLeft = anchorEl.getBoundingClientRect().left - chatRect.left;
-                }
-            } else {
-                // 安全防线：锚点若暂时丢失或正在被重排，绝不直接将 scrollLeft 强行归零（防止瞬间跳到最开头的 #show_more_messages）！
-                // 仅进行合法视口边界收敛
-                const step = getColStep(chat);
-                if (step > 0) {
-                    const total = Math.max(1, Math.round(chat.scrollWidth / step));
-                    if (lastUserPage >= total) {
-                        lastUserPage = total - 1;
-                        chat.scrollLeft = lastUserPage * step;
-                    }
-                }
-                updateActiveReadingAnchor();
-            }
-        }
-
-        // 用户打字输入期间或 AI 正在流式生成输出期间，全面跳过背景重排与收容，彻底杜绝打字与生成卡顿
         if (isInputFocused() || isGenerating) return;
 
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
-            if (isTouching || isInputFocused() || isGenerating) return;
+            if (isTouching || isInputFocused() || isGenerating || isLoadingMoreMessages) return;
             mutationObserver.disconnect();
             try {
+                hideMessageHtmlAppsSync(false, false);
                 containOversizedElements();
                 tagToolCallMessages();
                 autoNormalizeBubbleTheme();
                 if (chat && stableColWidth > 0) {
-                    lastKnownScrollWidth = chat.scrollWidth;
-                    // 若用户进入高楼层聊天后尚未主动翻页，期间由 html_popup 隐藏代码块、段落评论挂载、图片加载等引起的列数增减，自动重新钉死到最新楼层末尾，彻底消除跨楼层反复横跳！
-                    if (!userInteractedSinceSwitch && !isGenerating && !isLoadingMoreMessages && chatRestoreTarget) {
+                    const sw = chat.scrollWidth;
+                    lastKnownScrollWidth = sw;
+                    if (!userInteractedSinceSwitch && chatRestoreTarget) {
                         applyRestoreTarget(chat, stableColWidth);
+                    } else if (userInteractedSinceSwitch && !isScrolling) {
+                        const maxPage = Math.max(0, Math.round(sw / stableColWidth) - 1);
+                        if (lastUserPage > maxPage) {
+                            lastUserPage = maxPage;
+                        }
+                        const expected = lastUserPage * stableColWidth;
+                        if (Math.abs(chat.scrollLeft - expected) > 1) {
+                            chat.scrollLeft = expected;
+                        }
+                        updateActiveReadingAnchor(true);
                     }
                 }
             } finally {
@@ -1260,6 +1230,8 @@ let lastObservedChatHeight = 0;
 function initResizeObserver() {
     const chat = getChat();
     if (!chat || resizeObserver) return;
+    lastObservedChatWidth = chat.getBoundingClientRect().width || chat.clientWidth || 0;
+    lastObservedChatHeight = chat.clientHeight || 0;
     resizeObserver = new ResizeObserver(() => {
         clearTimeout(resizeDebounceTimer);
         resizeDebounceTimer = setTimeout(() => {
@@ -1925,14 +1897,15 @@ export function scrollPageLeft() {
     if (!chat) return;
     const cw = stableColWidth > 0 ? stableColWidth : getColWidth(chat);
     if (cw <= 0) return;
+    const curPage = getSyncedCurrentPage(chat, cw);
     userInteractedSinceSwitch = true;
     isChatRestoring = false;
     clearTimeout(chatRestoreSettleTimer);
-    if (lastUserPage <= 0 && document.getElementById('show_more_messages')) {
+    if (curPage <= 0 && document.getElementById('show_more_messages')) {
         triggerLoadMoreMessages(true);
         return;
     }
-    scrollToPage(chat, lastUserPage - 1, cw);
+    scrollToPage(chat, curPage - 1, cw);
 }
 
 export function scrollPageRight() {
@@ -1944,10 +1917,11 @@ export function scrollPageRight() {
     if (!chat) return;
     const cw = stableColWidth > 0 ? stableColWidth : getColWidth(chat);
     if (cw <= 0) return;
+    const curPage = getSyncedCurrentPage(chat, cw);
     userInteractedSinceSwitch = true;
     isChatRestoring = false;
     clearTimeout(chatRestoreSettleTimer);
-    scrollToPage(chat, lastUserPage + 1, cw);
+    scrollToPage(chat, curPage + 1, cw);
 }
 
 export function setLastUserPage(page) {
@@ -1955,6 +1929,13 @@ export function setLastUserPage(page) {
     userInteractedSinceSwitch = true;
     isChatRestoring = false;
     clearTimeout(chatRestoreSettleTimer);
+    isScrolling = true;
+    clearTimeout(scrollUnlockTimer);
+    scrollUnlockTimer = setTimeout(() => {
+        isScrolling = false;
+        updateActiveReadingAnchor(true);
+        debouncedSavePaginationPosition();
+    }, 60);
 }
 
 /**
@@ -2088,7 +2069,7 @@ export function realignPagination(verbose = true) {
 // ============================================================
 // resetPaginationBinding：切换聊天时重置并重绑定
 // ============================================================
-import { invalidateMuluStoreCache } from '../mulu/mulu.js?v=1.0.19';
+import { invalidateMuluStoreCache } from '../mulu/mulu.js?v=1.0.20';
 
 export function resetPaginationBinding(getSettings) {
     lastChatSwitchTime = Date.now();
@@ -2161,6 +2142,7 @@ export function resetPaginationBinding(getSettings) {
 // 点按 / 点击翻页判断与处理引擎
 // ============================================================
 let lastPageTurnTime = 0;
+let lastTouchEndTime = 0;
 
 function isInteractiveTarget(targetEl, settings, chat) {
     if (!targetEl || !chat) return false;
@@ -2266,26 +2248,28 @@ function handlePageFlip(clientX, targetEl, settings) {
             const active = document.activeElement;
             if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) active.blur();
         }
+        const curPage = getSyncedCurrentPage(chat, cw);
         userInteractedSinceSwitch = true;
         isChatRestoring = false;
         clearTimeout(chatRestoreSettleTimer);
         unlockReadingPosition();
-        if (lastUserPage <= 0 && document.getElementById('show_more_messages')) {
+        if (curPage <= 0 && document.getElementById('show_more_messages')) {
             triggerLoadMoreMessages(true);
             return true;
         }
-        scrollToPage(chat, lastUserPage - 1, cw);
+        scrollToPage(chat, curPage - 1, cw);
         return true;
     } else if (ratio > 0.7) {
         if (isInputFocused()) {
             const active = document.activeElement;
             if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) active.blur();
         }
+        const curPage = getSyncedCurrentPage(chat, cw);
         userInteractedSinceSwitch = true;
         isChatRestoring = false;
         clearTimeout(chatRestoreSettleTimer);
         unlockReadingPosition();
-        scrollToPage(chat, lastUserPage + 1, cw);
+        scrollToPage(chat, curPage + 1, cw);
         return true;
     }
     return false;
@@ -2318,10 +2302,25 @@ export function initPaginationEvent(getSettings) {
         }
     } catch {}
 
+    // ---- 监听 html_popup 异步隐藏代码块完成事件，实时同步页数与视口 ----
+    window.addEventListener('twt:html-apps-hidden', () => {
+        const chat = getChat();
+        if (!chat || !document.body.classList.contains('twt-reading-mode')) return;
+        const cw = stableColWidth > 0 ? stableColWidth : getColStep(chat);
+        if (cw <= 0) return;
+        if (!userInteractedSinceSwitch && !isGenerating && !isLoadingMoreMessages && chatRestoreTarget) {
+            applyRestoreTarget(chat, cw);
+        } else {
+            getSyncedCurrentPage(chat, cw);
+            updateActiveReadingAnchor(true);
+        }
+    });
+
     // ---- 点击翻页（使用捕获阶段监听，防止子元素或外部框架 stopPropagation 拦截）----
     const onDocumentClick = (e) => {
-        // 若 400ms 内已由触摸 touchend 完成点按翻页，跳过重复 click 事件
-        if (Date.now() - lastPageTurnTime < 400) return;
+        // 若近期已触发过触摸 touchend 或刚完成翻页，彻底忽略移动端浏览器延迟合成的 click 事件
+        const now = Date.now();
+        if (now - lastPageTurnTime < 450 || now - lastTouchEndTime < 800) return;
         const handled = handlePageFlip(e.clientX, e.target, getSettings());
         if (handled) {
             lastPageTurnTime = Date.now();
@@ -2357,41 +2356,29 @@ function bindScrollEvents(getSettings) {
 
     if (supportsScrollend) {
         chat.addEventListener('scrollend', () => {
-            if (isTouching) return;
+            if (isTouching || isScrolling) return;
             doSnap(chat);
         }, { signal });
     }
 
-    let scrollRafId = null;
-
     chat.addEventListener('scroll', () => {
         if (document.body.classList.contains('twt-paragraph-editing')) return;
         if (isInputFocused()) return;
-        if (isScrolling) return;
-        // 手指跟手拖拽期间无需在 scroll 事件内重复启动 rAF 和 150ms snapTimer，由 touchend 统一结算，大幅降低移动端高刷屏拖拽开销
-        if (isTouching) return;
-        // 切入聊天稳定期内且用户未操作时，忽略浏览器原生清屏/重排触发的 scroll(0) 事件，防止把 lastUserPage 污染为 0
-        if (isChatRestoring && !userInteractedSinceSwitch) return;
-
-        // 使用 rAF 节流，彻底杜绝在 120Hz/60Hz 高频滚动中重复读取引起布局重排
-        if (!scrollRafId) {
-            scrollRafId = requestAnimationFrame(() => {
-                scrollRafId = null;
-                if (isScrolling || isTouching || (isChatRestoring && !userInteractedSinceSwitch)) return;
-                const cw = stableColWidth > 0 ? stableColWidth : (chat.clientWidth || 0);
-                if (cw > 0) {
-                    lastUserPage = Math.round(chat.scrollLeft / cw);
-                }
-            });
+        if (isScrolling || isTouching || isGenerating || isLoadingMoreMessages) return;
+        // 切入聊天且用户尚未操作时，若发生非预期的原生滚动，立即拉回恢复目标
+        if (!userInteractedSinceSwitch && chatRestoreTarget) {
+            const cw = stableColWidth > 0 ? stableColWidth : (chat.clientWidth || 0);
+            if (cw > 0) applyRestoreTarget(chat, cw);
+            return;
         }
 
         clearTimeout(snapTimer);
-        // 防抖 snap：150ms 无滚动动作后进行 doSnap 检查
+        // 防抖 snap：80ms 后校验并拦截非触摸/非程序翻页引起的浏览器异常跳页
         snapTimer = setTimeout(() => {
             if (!isTouching && !isScrolling) {
                 doSnap(chat);
             }
-        }, 150);
+        }, 80);
     }, { signal });
 
     // ---- 触摸滑动与点按翻页 ----
@@ -2453,10 +2440,11 @@ function bindScrollEvents(getSettings) {
         touchIsHorizontal = null;
 
         const cw = stableColWidth > 0 ? stableColWidth : getColWidth(chat);
-        const sw = (lastKnownScrollWidth > 0 && !isGenerating) ? lastKnownScrollWidth : chat.scrollWidth;
+        const sw = chat.scrollWidth;
         if (sw > 0) lastKnownScrollWidth = sw;
         touchTotalPages = cw > 0 ? Math.max(1, Math.round(sw / cw)) : 1;
-        touchStartPage = cw > 0 ? Math.round(touchStartLeft / cw) : 0;
+        touchStartPage = cw > 0 ? getSyncedCurrentPage(chat, cw) : 0;
+        touchStartLeft = touchStartPage * cw;
         touchMaxScroll = Math.max(0, sw - (cw > 0 ? cw : (chat.clientWidth || 100)));
     }, { passive: true, signal });
 
@@ -2505,6 +2493,7 @@ function bindScrollEvents(getSettings) {
     }, { passive: true, signal });
 
     chat.addEventListener('touchend', e => {
+        lastTouchEndTime = Date.now();
         if (!isTouching) return;
 
         if (touchMoveRafId) {

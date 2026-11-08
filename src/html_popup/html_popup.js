@@ -954,11 +954,113 @@ function injectStyles() {
  */
 let hideScheduled = false;
 
+export function hideMessageHtmlAppsSync(forceHide = false, notify = true) {
+    const settings = extension_settings?.twt;
+    if (!settings || settings.htmlPopupEnabled === false) return 0;
+
+    // 流式输出中且用户设置了不在生成时隐藏，跳过（避免 AI 生成时 iframe 闪烁消失）
+    if (!forceHide && settings.htmlPopupHideInStream === false) {
+        const doc = getDoc();
+        if (doc.body.classList.contains('is_send_press') ||
+            doc.body.classList.contains('mes_stop')) return 0;
+    }
+
+    const selector = settings.htmlPopupSelector || 'iframe, .twt-custom-app, [data-app-container], .rendered-html-app';
+    const doc = getDoc();
+    const chat = doc.getElementById('chat');
+    if (!chat) return 0;
+
+    const modal = doc.getElementById(MODAL_ID);
+    let count = 0;
+
+    try {
+        // 1. 匹配标准 DOM 元素选择器
+        const selList = selector.split(',').map(s => s.trim()).filter(Boolean);
+        const fullSelector = selList.map(s => `.mes_text ${s}`).join(', ');
+        const matchingElements = Array.from(chat.querySelectorAll(fullSelector));
+
+        // 2. 匹配未渲染的 HTML / Iframe 代码块 (PRE)（按需在打开弹窗时再提取源码，避免切入高楼层聊天时同步解码几十个大代码块阻塞主线程）
+        chat.querySelectorAll('.mes_text pre').forEach((pre) => {
+            if (isHtmlAppCodeBlock(pre)) {
+                if (!matchingElements.includes(pre)) {
+                    matchingElements.push(pre);
+                }
+            }
+        });
+
+        // 恢复之前被隐藏但现在匹配白名单的元素
+        chat.querySelectorAll('.twt-app-hidden').forEach((hiddenEl) => {
+            if (isElementWhitelisted(hiddenEl)) {
+                hiddenEl.classList.remove('twt-app-hidden');
+                hiddenEl.style.display = '';
+                hiddenEl.style.visibility = '';
+                if (hiddenEl.parentElement && hiddenEl.parentElement.classList.contains('twt-app-hidden')) {
+                    hiddenEl.parentElement.classList.remove('twt-app-hidden');
+                    hiddenEl.parentElement.style.display = '';
+                }
+            }
+        });
+
+        matchingElements.forEach((el) => {
+            if (el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')) return;
+            if (currentlyMovedEl === el) return;
+            if (modal && modal.contains(el)) return; // modal 内的活跃节点不隐藏
+
+            if (isElementWhitelisted(el)) {
+                // 白名单元素：在文本流中正常显示
+                if (el.classList.contains('twt-app-hidden')) {
+                    el.classList.remove('twt-app-hidden');
+                    el.style.display = '';
+                    el.style.visibility = '';
+                }
+                if (el.parentElement && el.parentElement.classList.contains('twt-app-hidden')) {
+                    el.parentElement.classList.remove('twt-app-hidden');
+                    el.parentElement.style.display = '';
+                }
+                return;
+            }
+
+            if (!el.classList.contains('twt-app-hidden')) {
+                el.classList.add('twt-app-hidden');
+                count++;
+            }
+
+            // 如果外层包裹容器（如 <p> 或代码块包装 div）仅包含此应用节点，同时隐藏外层容器，彻底消除留白
+            const parent = el.parentElement;
+            if (parent && !parent.classList.contains('mes_text')) {
+                const nonHiddenSiblings = Array.from(parent.childNodes).filter(node => {
+                    if (node === el) return false;
+                    if (node.nodeType === Node.TEXT_NODE && node.textContent.trim() === '') return false;
+                    if (node.nodeType === Node.ELEMENT_NODE && (node.tagName === 'BR' || node.classList?.contains('twt-app-hidden') || node.classList?.contains('twt-app-placeholder'))) return false;
+                    return true;
+                });
+                if (nonHiddenSiblings.length === 0 && !parent.classList.contains('twt-app-hidden')) {
+                    parent.classList.add('twt-app-hidden');
+                    count++;
+                }
+            }
+        });
+
+        if (count > 0) {
+            if (!modal) {
+                updateQrBadge(true);
+            }
+            if (notify) {
+                try {
+                    window.dispatchEvent(new CustomEvent('twt:html-apps-hidden', { detail: { count } }));
+                } catch {}
+            }
+        }
+    } catch (err) {
+        console.error(`[TwT HtmlPopup] 隐藏匹配元素失败:`, err);
+    }
+    return count;
+}
+
 export function hideMessageHtmlApps(forceHide = false) {
     const settings = extension_settings?.twt;
     if (!settings || settings.htmlPopupEnabled === false) return;
 
-    // 流式输出中且用户设置了不在生成时隐藏，跳过（避免 AI 生成时 iframe 闪烁消失）
     if (!forceHide && settings.htmlPopupHideInStream === false) {
         const doc = getDoc();
         if (doc.body.classList.contains('is_send_press') ||
@@ -970,90 +1072,7 @@ export function hideMessageHtmlApps(forceHide = false) {
 
     requestAnimationFrame(() => {
         hideScheduled = false;
-        const selector = settings.htmlPopupSelector || 'iframe, .twt-custom-app, [data-app-container], .rendered-html-app';
-        const doc = getDoc();
-        const chat = doc.getElementById('chat');
-        if (!chat) return;
-
-        const modal = doc.getElementById(MODAL_ID);
-
-        try {
-            // 1. 匹配标准 DOM 元素选择器
-            const selList = selector.split(',').map(s => s.trim()).filter(Boolean);
-            const fullSelector = selList.map(s => `.mes_text ${s}`).join(', ');
-            const matchingElements = Array.from(chat.querySelectorAll(fullSelector));
-
-            // 2. 匹配未渲染的 HTML / Iframe 代码块 (PRE)（按需在打开弹窗时再提取源码，避免切入高楼层聊天时同步解码几十个大代码块阻塞主线程）
-            chat.querySelectorAll('.mes_text pre').forEach((pre) => {
-                if (isHtmlAppCodeBlock(pre)) {
-                    if (!matchingElements.includes(pre)) {
-                        matchingElements.push(pre);
-                    }
-                }
-            });
-
-            // 恢复之前被隐藏但现在匹配白名单的元素
-            chat.querySelectorAll('.twt-app-hidden').forEach((hiddenEl) => {
-                if (isElementWhitelisted(hiddenEl)) {
-                    hiddenEl.classList.remove('twt-app-hidden');
-                    hiddenEl.style.display = '';
-                    hiddenEl.style.visibility = '';
-                    if (hiddenEl.parentElement && hiddenEl.parentElement.classList.contains('twt-app-hidden')) {
-                        hiddenEl.parentElement.classList.remove('twt-app-hidden');
-                        hiddenEl.parentElement.style.display = '';
-                    }
-                }
-            });
-
-            let count = 0;
-
-            matchingElements.forEach((el) => {
-                if (el.closest('.thought-block, .mes_reasoning_details, .mes_reasoning_details_body')) return;
-                if (currentlyMovedEl === el) return;
-                if (modal && modal.contains(el)) return; // modal 内的活跃节点不隐藏
-
-                if (isElementWhitelisted(el)) {
-                    // 白名单元素：在文本流中正常显示
-                    if (el.classList.contains('twt-app-hidden')) {
-                        el.classList.remove('twt-app-hidden');
-                        el.style.display = '';
-                        el.style.visibility = '';
-                    }
-                    if (el.parentElement && el.parentElement.classList.contains('twt-app-hidden')) {
-                        el.parentElement.classList.remove('twt-app-hidden');
-                        el.parentElement.style.display = '';
-                    }
-                    return;
-                }
-
-                if (!el.classList.contains('twt-app-hidden')) {
-                    el.classList.add('twt-app-hidden');
-                    count++;
-                }
-
-                // 如果外层包裹容器（如 <p> 或代码块包装 div）仅包含此应用节点，同时隐藏外层容器，彻底消除留白
-                const parent = el.parentElement;
-                if (parent && !parent.classList.contains('mes_text')) {
-                    const nonHiddenSiblings = Array.from(parent.childNodes).filter(node => {
-                        if (node === el) return false;
-                        if (node.nodeType === Node.TEXT_NODE && node.textContent.trim() === '') return false;
-                        if (node.nodeType === Node.ELEMENT_NODE && (node.tagName === 'BR' || node.classList?.contains('twt-app-hidden') || node.classList?.contains('twt-app-placeholder'))) return false;
-                        return true;
-                    });
-                    if (nonHiddenSiblings.length === 0) {
-                        parent.classList.add('twt-app-hidden');
-                    }
-                }
-            });
-
-            if (count > 0) {
-                if (!modal) {
-                    updateQrBadge(true);
-                }
-            }
-        } catch (err) {
-            console.error(`[TwT HtmlPopup] 隐藏匹配元素失败:`, err);
-        }
+        hideMessageHtmlAppsSync(forceHide, true);
     });
 }
 
@@ -1746,9 +1765,10 @@ export function registerHtmlPopupEvents(context) {
         closeHtmlAppModal();
         updateQrBadge(false);
 
-        hideMessageHtmlApps();
+        hideMessageHtmlAppsSync(true, true);
+        hideMessageHtmlApps(true);
         clearTimeout(resetHideTimer);
-        resetHideTimer = setTimeout(hideMessageHtmlApps, 200);
+        resetHideTimer = setTimeout(() => hideMessageHtmlAppsSync(true, true), 200);
     };
 
     const onMessageChangedOrSwiped = (mesId) => {
