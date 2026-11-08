@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { extension_settings } from '../../../../../extensions.js';
+import { extension_settings, getContext } from '../../../../../extensions.js';
 import { showMoreMessages } from '../../../../../../script.js';
 import { hideMessageHtmlAppsSync } from '../html_popup/html_popup.js?v=1.0.25';
 
@@ -271,6 +271,35 @@ export function twtDiagLog(tag, detail = '') {
     }
 }
 
+
+export function isDiagEnabled(settings) {
+    if (settings && typeof settings.diagLogEnabled !== 'undefined') {
+        return !!settings.diagLogEnabled;
+    }
+    try {
+        return !!(extension_settings?.twt?.diagLogEnabled);
+    } catch {
+        return false;
+    }
+}
+
+export function updateDiagPanelVisibility(settings) {
+    const enabled = isDiagEnabled(settings);
+    const panel = document.getElementById('twt-diag-panel');
+    if (!enabled) {
+        if (panel) panel.style.display = 'none';
+        return;
+    }
+    const isReading = document.body.classList.contains('twt-reading-mode');
+    if (isReading) {
+        const p = ensureDiagPanel();
+        if (p) {
+            p.style.display = 'block';
+            scheduleDiagPanelUI();
+        }
+    }
+}
+
 function ensureDiagPanel() {
     let panel = document.getElementById('twt-diag-panel');
     if (panel) return panel;
@@ -307,6 +336,7 @@ function ensureDiagPanel() {
                 <button id="twt-diag-copy-btn" type="button" style="background:#0284c7;color:#fff;border:none;border-radius:4px;padding:3px 7px;font-size:11px;cursor:pointer;font-weight:bold;">📋 复制日志</button>
                 <button id="twt-diag-clear-btn" type="button" style="background:#475569;color:#fff;border:none;border-radius:4px;padding:3px 6px;font-size:11px;cursor:pointer;">清空</button>
                 <button id="twt-diag-toggle-btn" type="button" style="background:#334155;color:#fff;border:none;border-radius:4px;padding:3px 6px;font-size:11px;cursor:pointer;">展开</button>
+                <button id="twt-diag-close-btn" type="button" style="background:#dc2626;color:#fff;border:none;border-radius:4px;padding:3px 6px;font-size:11px;cursor:pointer;" title="关闭诊断浮窗 (可在阅读设置中重新开启)">✕</button>
             </div>
         </div>
         <textarea id="twt-diag-body" readonly style="display:none;width:100%;height:190px;margin-top:6px;background:#090d16;color:#a7f3d0;border:1px solid #334155;border-radius:4px;padding:5px;font-family:monospace;font-size:10px;line-height:1.35;box-sizing:border-box;white-space:pre;overflow:auto;user-select:text;-webkit-user-select:text;"></textarea>
@@ -318,11 +348,30 @@ function ensureDiagPanel() {
     });
 
     document.body.appendChild(panel);
+    panel.style.display = (isDiagEnabled() && document.body.classList.contains('twt-reading-mode')) ? 'block' : 'none';
 
     const copyBtn = panel.querySelector('#twt-diag-copy-btn');
     const clearBtn = panel.querySelector('#twt-diag-clear-btn');
     const toggleBtn = panel.querySelector('#twt-diag-toggle-btn');
     const bodyEl = panel.querySelector('#twt-diag-body');
+    const closeBtn = panel.querySelector('#twt-diag-close-btn');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (extension_settings?.twt) {
+                extension_settings.twt.diagLogEnabled = false;
+                try {
+                    getContext()?.saveSettingsDebounced?.();
+                } catch {}
+            }
+            const chk1 = document.getElementById('twt_diag_enabled');
+            if (chk1) chk1.checked = false;
+            const chk2 = document.getElementById('twt_page_diag_enabled');
+            if (chk2) chk2.checked = false;
+            panel.style.display = 'none';
+        });
+    }
 
     copyBtn.addEventListener('click', async (e) => {
         e.preventDefault();
@@ -416,6 +465,11 @@ function ensureDiagPanel() {
 }
 
 function scheduleDiagPanelUI(realP, maxP, curMes, winInfo = '') {
+    if (!isDiagEnabled()) {
+        const panel = document.getElementById('twt-diag-panel');
+        if (panel) panel.style.display = 'none';
+        return;
+    }
     if (twtDiagUiRafId) return;
     twtDiagUiRafId = requestAnimationFrame(() => {
         twtDiagUiRafId = null;
@@ -2258,6 +2312,8 @@ body.twt-reading-mode #chat .mes .mes_timer {
 export function autoNormalizeBubbleTheme(settings = extension_settings?.twt) {
     if (!document.body.classList.contains('twt-reading-mode')) {
         cleanupBubbleThemeNormalization();
+        const diagPanel = document.getElementById('twt-diag-panel');
+        if (diagPanel) diagPanel.style.display = 'none';
         return;
     }
     if (settings?.autoBubbleThemeEnabled === false) {
@@ -2443,7 +2499,7 @@ body.twt-reading-mode #chat .mes .mes_timer {
 export function applyPaginationMode(enabled, settings) {
     if (enabled) {
         document.body.classList.add('twt-reading-mode');
-        ensureDiagPanel();
+        if (isDiagEnabled(settings)) ensureDiagPanel();
         startLagDetector();
         twtDiagLog('APPLY_PAGINATION', '翻页阅读模式已开启');
         const chat = getChat();
@@ -2476,6 +2532,8 @@ export function applyPaginationMode(enabled, settings) {
 
         if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null; }
         disconnectMutationObserver();
+        const diagPanel = document.getElementById('twt-diag-panel');
+        if (diagPanel) diagPanel.style.display = 'none';
 
         const chat = getChat();
         if (chat) unlockChatScrollTop(chat);

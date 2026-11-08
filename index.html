@@ -64,6 +64,14 @@
                     <div style="font-size: 0.85em; opacity: 0.6; margin-bottom: 5px; margin-top: -2px; padding-left: 2px;">
                         开启后将在输入框上方 QR 栏显示目录/翻转/应用按钮；关闭后不向 QR 栏注入任何按钮，仅使用斜杠命令（如 <code>/twt-toc</code>、<code>/twt-app</code>、<code>/twt-start</code> 等）或悬浮球召出。
                     </div>
+                    <div class="twt-setting-row"
+                        style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
+                        <label for="twt_diag_enabled">显示翻页诊断浮窗 (Debug)</label>
+                        <input type="checkbox" id="twt_diag_enabled" />
+                    </div>
+                    <div style="font-size: 0.85em; opacity: 0.6; margin-bottom: 5px; margin-top: -2px; padding-left: 2px;">
+                        开启后将在屏幕中央显示诊断状态悬浮窗与日志控制台，用于排查翻页、定位与历史加载日志；默认关闭。
+                    </div>
                 </div>
             </div>
 
@@ -223,9 +231,17 @@
                     <div style="font-size: 0.85em; opacity: 0.6; padding-left: 2px;">
                         * 提示：点击白名单内的选择器（如类名、ID等）对应的元素及其子元素，不会触发点击翻页。
                     </div>
+                    <div style="border-top: 1px dashed var(--SmartThemeBorderColor); padding-top: 10px; margin-top: 10px;">
+                    <div class="twt-setting-row"
+                        style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
+                        <label for="twt_page_diag_enabled">显示翻页诊断浮窗 (Debug)</label>
+                        <input type="checkbox" id="twt_page_diag_enabled" />
+                    </div>
+                    <div style="font-size: 0.85em; opacity: 0.6; margin-bottom: 5px; margin-top: -2px; padding-left: 2px;">
+                        开启后显示诊断悬浮窗，可实时查看当前页码、楼层并一键复制诊断日志；默认关闭。
+                    </div>
                 </div>
             </div>
-
             <!-- 菜单 Tab -->
             <div class="twt-tab-content" id="twt-tab-menu" style="display: none;">
                 <div class="twt-setting-row"

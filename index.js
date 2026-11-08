@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
-import { applyPaginationMode, initPaginationEvent, resetPaginationBinding, realignPagination, handleMoreMessagesLoaded, handleNewMessageRendered, updateActiveReadingAnchor, handleUserMessageSent, handleMessageSwiped, handleGenerationStarted, handleGenerationEnded, handleMessageDeleted, autoNormalizeBubbleTheme, cleanupBubbleThemeNormalization, generateBubbleThemePatchCss } from './src/pagination/pagination.js?v=1.0.25';
+import { applyPaginationMode, initPaginationEvent, resetPaginationBinding, realignPagination, handleMoreMessagesLoaded, handleNewMessageRendered, updateActiveReadingAnchor, handleUserMessageSent, handleMessageSwiped, handleGenerationStarted, handleGenerationEnded, handleMessageDeleted, autoNormalizeBubbleTheme, cleanupBubbleThemeNormalization, generateBubbleThemePatchCss, updateDiagPanelVisibility } from './src/pagination/pagination.js?v=1.0.25';
 import { applyVisualMode } from './src/visual/visual.js?v=1.0.25';
 import { saveFontToStorage, getFontBlobUrl, deleteFontFromStorage } from './src/visual/font_storage.js?v=1.0.25';
 import { initMulu, applyMuluSettings } from './src/mulu/mulu.js?v=1.0.25';
@@ -117,6 +117,7 @@ const extensionName = 'TwT';
 
 const defaultSettings = {
     enabled: true,
+    diagLogEnabled: false,
     qrInjectEnabled: true,
     swipeEnabled: true,
     messagePageEnabled: false,
@@ -1612,6 +1613,7 @@ function initThemeLinkListener() {
 // ============================================================
 function bindUI() {
     const $enabled = $('#twt_enabled');
+    const $diagEnabled = $('#twt_diag_enabled, #twt_page_diag_enabled');
     const $qrInjectEnabled = $('#twt_qr_inject_enabled');
     const $swipeEnabled = $('#twt_swipe_enabled');
     const $messagePageEnabled = $('#twt_message_page_enabled');
@@ -1683,6 +1685,7 @@ function bindUI() {
 
     // UI初始化
     $enabled.prop('checked', extension_settings.twt.enabled);
+    $diagEnabled.prop('checked', extension_settings.twt.diagLogEnabled === true);
     $qrInjectEnabled.prop('checked', extension_settings.twt.qrInjectEnabled !== false);
     $swipeEnabled.prop('checked', extension_settings.twt.swipeEnabled);
     $messagePageEnabled.prop('checked', extension_settings.twt.messagePageEnabled);
@@ -3247,6 +3250,15 @@ function bindUI() {
     };
 
     // 开关相关
+    
+    $diagEnabled.on('change', function () {
+        const val = $(this).prop('checked');
+        extension_settings.twt.diagLogEnabled = val;
+        $diagEnabled.prop('checked', val);
+        getContext().saveSettingsDebounced();
+        updateDiagPanelVisibility(extension_settings.twt);
+    });
+
     $enabled.on('change', function () {
         extension_settings.twt.enabled = $(this).prop('checked');
         getContext().saveSettingsDebounced();
