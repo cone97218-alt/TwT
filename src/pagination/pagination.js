@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { extension_settings } from '../../../../../extensions.js';
 import { showMoreMessages } from '../../../../../../script.js';
-import { hideMessageHtmlAppsSync } from '../html_popup/html_popup.js?v=1.0.23';
+import { hideMessageHtmlAppsSync } from '../html_popup/html_popup.js?v=1.0.25';
 
 // ============================================================
 // P1：TauriTavern API 接入层 — 阅读位置记忆
@@ -195,6 +195,27 @@ function hideLoadingOverlay() {
     const chat = getChat();
     if (chat) chat.classList.remove('twt-chat-switching');
 }
+
+/**
+ * 切入聊天稳定期防抖调度：持续吸收后续历史消息加载(MORE_MESSAGES_LOADED)、图片加载、字体渲染引发的列数变动
+ * 只要持续有消息注入或重排，就会不断推迟，直到完全稳定后才撤除遮罩并释放保护锁
+ */
+export function scheduleRestoreSettle(delay = 600) {
+    if (userInteractedSinceSwitch) return;
+    clearTimeout(chatRestoreSettleTimer);
+    chatRestoreSettleTimer = setTimeout(() => {
+        isChatRestoring = false;
+        hideLoadingOverlay();
+        if (!userInteractedSinceSwitch && document.body.classList.contains('twt-reading-mode')) {
+            const chat = getChat();
+            const cw = stableColWidth > 0 ? stableColWidth : (chat ? getColWidth(chat) : 0);
+            if (chat && cw > 0 && chatRestoreTarget) {
+                hideMessageHtmlAppsSync(true, false);
+                applyRestoreTarget(chat, cw);
+            }
+        }
+    }, delay);
+}
 // 严禁在日常高频日志中调用 chat.scrollWidth 或 elementFromPoint，彻底消除强制同步重排 (Layout Thrashing)
 // ============================================================
 const TWT_DIAG_MAX_LOGS = 600;
@@ -281,7 +302,7 @@ function ensureDiagPanel() {
 
     panel.innerHTML = `
         <div id="twt-diag-header" style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;">
-            <span id="twt-diag-status" style="font-weight:bold;color:#38bdf8;font-size:11px;">📊 TwT v1.0.24 诊断就绪</span>
+            <span id="twt-diag-status" style="font-weight:bold;color:#38bdf8;font-size:11px;">📊 TwT v1.0.25 诊断就绪</span>
             <div style="display:flex;gap:5px;align-items:center;">
                 <button id="twt-diag-copy-btn" type="button" style="background:#0284c7;color:#fff;border:none;border-radius:4px;padding:3px 7px;font-size:11px;cursor:pointer;font-weight:bold;">📋 复制日志</button>
                 <button id="twt-diag-clear-btn" type="button" style="background:#475569;color:#fff;border:none;border-radius:4px;padding:3px 6px;font-size:11px;cursor:pointer;">清空</button>
@@ -1090,8 +1111,10 @@ export async function handleMoreMessagesLoaded(isExplicitJump = isExplicitJumpLo
 
     // 关键加固：若用户切入聊天后尚未主动翻页/触摸（!userInteractedSinceSwitch），
     // 此时后台分批补全历史楼层（20->40->60->95）绝对不可跳往 'start' 或依据未初始化锚点计算位移！
-    // 严格锁定在末尾窗口 'end'，彻底杜绝逐楼跳跃！
+    // 保持遮罩覆盖、严格锁定在末尾窗口 'end'，彻底杜绝跳页与中间态暴露！
     if (!userInteractedSinceSwitch && (!chatRestoreTarget || chatRestoreTarget.mode === 'end')) {
+        showLoadingOverlay();
+        isChatRestoring = true;
         activateWindowForMessage('end');
         containOversizedElements();
         tagToolCallMessages();
@@ -1100,6 +1123,7 @@ export async function handleMoreMessagesLoaded(isExplicitJump = isExplicitJumpLo
             applyRestoreTarget(chat, step);
         }
         pendingFlipBackwards = false;
+        scheduleRestoreSettle(600);
         return;
     }
 
@@ -1673,19 +1697,8 @@ function updateColWidthWhenReady(retries = 4, interval = 60) {
     chatRestoreTarget = { mode: 'end' };
     applyRestoreTarget(chat, rawW);
 
-    // 3. 启动切入聊天稳定期守护（持续吸收后续图片加载、字体渲染引发的列数变动）
-    clearTimeout(chatRestoreSettleTimer);
-    chatRestoreSettleTimer = setTimeout(() => {
-        isChatRestoring = false;
-        hideLoadingOverlay();
-        if (!userInteractedSinceSwitch && document.body.classList.contains('twt-reading-mode')) {
-            const cw = stableColWidth > 0 ? stableColWidth : getColWidth(chat);
-            if (cw > 0 && chatRestoreTarget) {
-                hideMessageHtmlAppsSync(true, false);
-                applyRestoreTarget(chat, cw);
-            }
-        }
-    }, 450);
+    // 3. 启动切入聊天稳定期守护（持续吸收后续历史消息加载、图片加载、字体渲染引发的列数变动）
+    scheduleRestoreSettle(600);
 }
 
 // ============================================================
@@ -1787,6 +1800,7 @@ function initMutationObserver() {
                     twtDiagLog('MUT_DEBOUNCE', `hidden=${hiddenCnt} cost=${cost}ms`);
                     if (!userInteractedSinceSwitch && chatRestoreTarget) {
                         applyRestoreTarget(chat, stableColWidth);
+                        scheduleRestoreSettle(600);
                     } else if (userInteractedSinceSwitch && !isScrolling) {
                         const maxPage = Math.max(0, Math.round(sw / stableColWidth) - 1);
                         if (lastUserPage > maxPage) {
@@ -2512,6 +2526,7 @@ export function scrollPageLeft() {
     userInteractedSinceSwitch = true;
     isChatRestoring = false;
     clearTimeout(chatRestoreSettleTimer);
+    hideLoadingOverlay();
     slideFloorWindowIfNeeded(chat, cw, 'left');
     const curPage = getSyncedCurrentPage(chat, cw);
     if (curPage <= 0 && winStartIdx <= 0 && document.getElementById('show_more_messages')) {
@@ -2533,6 +2548,7 @@ export function scrollPageRight() {
     userInteractedSinceSwitch = true;
     isChatRestoring = false;
     clearTimeout(chatRestoreSettleTimer);
+    hideLoadingOverlay();
     slideFloorWindowIfNeeded(chat, cw, 'right');
     const curPage = getSyncedCurrentPage(chat, cw);
     scrollToPage(chat, curPage + 1, cw);
@@ -2543,6 +2559,7 @@ export function setLastUserPage(page) {
     userInteractedSinceSwitch = true;
     isChatRestoring = false;
     clearTimeout(chatRestoreSettleTimer);
+    hideLoadingOverlay();
     isScrolling = true;
     clearTimeout(scrollUnlockTimer);
     scrollUnlockTimer = setTimeout(() => {
@@ -2683,7 +2700,7 @@ export function realignPagination(verbose = true) {
 // ============================================================
 // resetPaginationBinding：切换聊天时重置并重绑定
 // ============================================================
-import { invalidateMuluStoreCache } from '../mulu/mulu.js?v=1.0.23';
+import { invalidateMuluStoreCache } from '../mulu/mulu.js?v=1.0.25';
 
 export function resetPaginationBinding(getSettings) {
     twtDiagEpoch = Date.now();
@@ -2924,6 +2941,7 @@ function handlePageFlip(clientX, targetEl, settings) {
         userInteractedSinceSwitch = true;
         isChatRestoring = false;
         clearTimeout(chatRestoreSettleTimer);
+        hideLoadingOverlay();
         unlockReadingPosition();
         slideFloorWindowIfNeeded(chat, cw, 'left');
         const curPage = getSyncedCurrentPage(chat, cw);
@@ -2942,6 +2960,7 @@ function handlePageFlip(clientX, targetEl, settings) {
         userInteractedSinceSwitch = true;
         isChatRestoring = false;
         clearTimeout(chatRestoreSettleTimer);
+        hideLoadingOverlay();
         unlockReadingPosition();
         slideFloorWindowIfNeeded(chat, cw, 'right');
         const curPage = getSyncedCurrentPage(chat, cw);
@@ -3171,6 +3190,7 @@ function bindScrollEvents(getSettings) {
         userInteractedSinceSwitch = true;
         isChatRestoring = false;
         clearTimeout(chatRestoreSettleTimer);
+        hideLoadingOverlay();
 
         const dx = e.touches[0].clientX - touchStartX;
         pendingTouchScrollLeft = Math.max(0, Math.min(touchMaxScroll, touchStartLeft - dx));

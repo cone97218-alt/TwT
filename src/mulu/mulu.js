@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { extension_settings, getContext } from '../../../../../extensions.js';
 import { showMoreMessages } from '../../../../../../script.js';
-import { setLastUserPage, realignPagination, getColStep, setExplicitJumpLoading, updateActiveReadingAnchor, activateWindowForMessage } from '../pagination/pagination.js?v=1.0.24';
+import { setLastUserPage, realignPagination, getColStep, setExplicitJumpLoading, updateActiveReadingAnchor, activateWindowForMessage } from '../pagination/pagination.js?v=1.0.25';
 
 // ============================================================
 // P2 & P3：TauriTavern Store & Search API 接入层

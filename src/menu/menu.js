@@ -2,8 +2,8 @@
 import { getContext } from '../../../../../extensions.js';
 import { hideChatMessageRange } from '../../../../../chats.js';
 import { updateViewMessageIds, refreshSwipeButtons, closeMessageEditor } from '../../../../../../script.js';
-import { openParagraphEditor } from '../paragraph/paragraph.js?v=1.0.24';
-import { scrollPageLeft, scrollPageRight, realignPagination } from '../pagination/pagination.js?v=1.0.24';
+import { openParagraphEditor } from '../paragraph/paragraph.js?v=1.0.25';
+import { scrollPageLeft, scrollPageRight, realignPagination } from '../pagination/pagination.js?v=1.0.25';
 
 /**
  * High-performance batch message deletion.
