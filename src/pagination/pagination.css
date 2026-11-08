@@ -35,10 +35,60 @@ body.twt-reading-mode #chat {
     contain: none !important;
 }
 
-/* 切换聊天室时的首帧过渡遮罩，杜绝酒馆清屏瞬间将第 0 页 (#show_more_messages) 闪现给用户 */
+/* 切换聊天室时的首帧过渡遮罩与排版加载动画 */
 body.twt-reading-mode.twt-chat-switching #chat,
 body.twt-reading-mode #chat.twt-chat-switching {
     opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+/* TwT 原生风格加载遮罩层 (与 SillyTavern 风格一致) */
+#twt-loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 99999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: all;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+#twt-loading-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.twt-loading-box {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 22px;
+    background: var(--SmartThemeBlurTintColor, rgba(30, 30, 30, 0.9));
+    border: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.15));
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    color: var(--SmartThemeBodyColor, #e0e0e0);
+}
+
+.twt-loading-box i.fa-spinner {
+    font-size: 20px;
+    color: var(--SmartThemeQuoteColor, #4a9eff);
+}
+
+.twt-loading-text {
+    font-size: 14px;
+    font-weight: 500;
 }
 
 /* 防护消息块的离屏隔离（避免使用通用选择器 * 以防止大规模 CSS 匹配降级） */

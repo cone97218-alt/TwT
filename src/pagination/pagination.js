@@ -375,7 +375,7 @@ function scheduleDiagPanelUI(realP, maxP, curMes, winInfo = '') {
         const statusEl = panel.querySelector('#twt-diag-status');
         if (statusEl) {
             const wStr = winInfo || `${winStartIdx}..${winEndIdx}/${totalDomMesCount}`;
-            statusEl.textContent = `📊 页:${lastUserPage}(${realP}/${maxP}) | 楼:${curMes}[${wStr}] | ${twtDiagLogs.length}条`;
+            statusEl.textContent = `📊 v1.0.24 页:${lastUserPage}(${realP}/${maxP}) | 楼:${curMes}[${wStr}] | ${twtDiagLogs.length}条`;
         }
         if (twtDiagPanelExpanded) {
             const bodyEl = panel.querySelector('#twt-diag-body');
@@ -401,6 +401,43 @@ function startLagDetector() {
         requestAnimationFrame(checkFrame);
     }
     requestAnimationFrame(checkFrame);
+}
+
+// ============================================================
+// 朴素原生风格排版加载动画 (SillyTavern 原生 Loading 遮罩)
+// ============================================================
+let twtLoadingHideTimer = null;
+
+export function showPaginationLoadingOverlay(text = '正在排版，请稍候...') {
+    if (!document.body || !document.body.classList.contains('twt-reading-mode')) return;
+    clearTimeout(twtLoadingHideTimer);
+    let overlay = document.getElementById('twt-loading-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'twt-loading-overlay';
+        overlay.innerHTML = `
+            <div class="twt-loading-box">
+                <i class="fa-solid fa-spinner fa-spin"></i>
+                <span class="twt-loading-text">${text}</span>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+    } else {
+        const textEl = overlay.querySelector('.twt-loading-text');
+        if (textEl) textEl.textContent = text;
+    }
+    void overlay.offsetWidth;
+    overlay.classList.add('active');
+}
+
+export function hidePaginationLoadingOverlay(delay = 120) {
+    clearTimeout(twtLoadingHideTimer);
+    twtLoadingHideTimer = setTimeout(() => {
+        const overlay = document.getElementById('twt-loading-overlay');
+        if (overlay) {
+            overlay.classList.remove('active');
+        }
+    }, delay);
 }
 
 // ============================================================
@@ -1057,8 +1094,23 @@ export async function handleMoreMessagesLoaded(isExplicitJump = isExplicitJumpLo
         return;
     }
 
+    // 关键加固：如果读者刚进入聊天室且尚未主动触摸/翻页（!userInteractedSinceSwitch），
+    // 无论后台由于其他插件或截断机制加载了多少批历史消息，始终将视口严格钉死在最新楼层末尾！
+    // 绝不回退到 'start'，也绝不计算 shift 偏移，彻底杜绝首屏 20->40->60 批次加载引发的反复跳页！
+    if (!userInteractedSinceSwitch && (!chatRestoreTarget || chatRestoreTarget.mode === 'end')) {
+        activateWindowForMessage('end');
+        containOversizedElements();
+        tagToolCallMessages();
+        const step = stableColWidth > 0 ? stableColWidth : getColStep(chat);
+        if (step > 0) {
+            applyRestoreTarget(chat, step);
+        }
+        pendingFlipBackwards = false;
+        return;
+    }
+
     // 2. 仅激活锚点附近的楼层窗口，杜绝一次性排版全部新增历史消息引发卡顿
-    activateWindowForMessage(activeReadingAnchor?.mesId || 'start');
+    activateWindowForMessage(activeReadingAnchor?.mesId || 'end');
 
     // 3. 等待浏览器完成多列排版计算 (双帧等待)
     await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
@@ -1644,6 +1696,7 @@ function updateColWidthWhenReady(retries = 4, interval = 60) {
                 applyRestoreTarget(chat, cw);
             }
         }
+        hidePaginationLoadingOverlay(150);
     }, 600);
 }
 
@@ -1707,6 +1760,7 @@ function initMutationObserver() {
             userInteractedSinceSwitch = false;
             lastChatSwitchTime = Date.now();
             chatRestoreTarget = { mode: 'end' };
+            showPaginationLoadingOverlay('正在排版，请稍候...');
             if (chat.children.length <= 1) {
                 document.body.classList.add("twt-chat-switching");
                 chat.classList.add("twt-chat-switching");
@@ -2644,7 +2698,7 @@ export function realignPagination(verbose = true) {
 // ============================================================
 // resetPaginationBinding：切换聊天时重置并重绑定
 // ============================================================
-import { invalidateMuluStoreCache } from '../mulu/mulu.js?v=1.0.23';
+import { invalidateMuluStoreCache } from '../mulu/mulu.js?v=1.0.24';
 
 export function resetPaginationBinding(getSettings) {
     twtDiagEpoch = Date.now();
@@ -2658,6 +2712,7 @@ export function resetPaginationBinding(getSettings) {
     document.body.classList.add("twt-chat-switching");
     const currentChat = getChat();
     if (currentChat) currentChat.classList.add("twt-chat-switching");
+    showPaginationLoadingOverlay('正在排版，请稍候...');
     chatRestoreTarget = { mode: 'end' };
     clearTimeout(chatRestoreSettleTimer);
     clearTimeout(savePositionTimer);
@@ -2935,6 +2990,7 @@ export function initPaginationEvent(getSettings) {
             document.body.classList.add('twt-chat-switching');
             const chatEl = getChat();
             if (chatEl) chatEl.classList.add('twt-chat-switching');
+            showPaginationLoadingOverlay('正在排版，请稍候...');
             twtDiagLog('NAV_CLICK', `点击切换聊天/角色 target=${describeEl(t)}`);
         }
     };
