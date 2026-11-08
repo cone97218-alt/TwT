@@ -1,12 +1,12 @@
 // @ts-nocheck
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
-import { applyPaginationMode, initPaginationEvent, resetPaginationBinding, realignPagination, handleMoreMessagesLoaded, handleNewMessageRendered, updateActiveReadingAnchor, handleUserMessageSent, handleMessageSwiped, handleGenerationStarted, handleGenerationEnded, handleMessageDeleted, autoNormalizeBubbleTheme, cleanupBubbleThemeNormalization, generateBubbleThemePatchCss } from './src/pagination/pagination.js?v=1.0.18';
-import { applyVisualMode } from './src/visual/visual.js';
-import { saveFontToStorage, getFontBlobUrl, deleteFontFromStorage } from './src/visual/font_storage.js';
-import { initMulu, applyMuluSettings } from './src/mulu/mulu.js';
-import { initMenu, applyMenuMode, applyFullscreenMode } from './src/menu/menu.js';
-import { initHtmlPopup, applyHtmlPopupSettings, registerHtmlPopupEvents } from './src/html_popup/html_popup.js';
-import { registerSlashCommands } from './src/slash_commands.js';
+import { applyPaginationMode, initPaginationEvent, resetPaginationBinding, realignPagination, handleMoreMessagesLoaded, handleNewMessageRendered, updateActiveReadingAnchor, handleUserMessageSent, handleMessageSwiped, handleGenerationStarted, handleGenerationEnded, handleMessageDeleted, autoNormalizeBubbleTheme, cleanupBubbleThemeNormalization, generateBubbleThemePatchCss } from './src/pagination/pagination.js?v=1.0.19';
+import { applyVisualMode } from './src/visual/visual.js?v=1.0.19';
+import { saveFontToStorage, getFontBlobUrl, deleteFontFromStorage } from './src/visual/font_storage.js?v=1.0.19';
+import { initMulu, applyMuluSettings } from './src/mulu/mulu.js?v=1.0.19';
+import { initMenu, applyMenuMode, applyFullscreenMode } from './src/menu/menu.js?v=1.0.19';
+import { initHtmlPopup, applyHtmlPopupSettings, registerHtmlPopupEvents } from './src/html_popup/html_popup.js?v=1.0.19';
+import { registerSlashCommands } from './src/slash_commands.js?v=1.0.19';
 
 let parentDoc = document;
 try {
@@ -122,7 +122,7 @@ const defaultSettings = {
     messagePageEnabled: false,
     autoBubbleThemeEnabled: true,
     autoScrollNewMessage: true,
-    autoRestoreReadingPosition: true,
+    autoRestoreReadingPosition: false,
     htmlPageBreakEnabled: true,
     htmlPopupEnabled: true,
     htmlPopupTriggerMode: 'qr',
@@ -5049,9 +5049,14 @@ jQuery(async () => {
                 updateCustomFontsStyle();
             };
 
+            // 聊天切换与加载更多历史消息时仅需同步 #chat 容器上的 CSS 变量，无需重复读取 IndexedDB 字体或重写全局 <style> 标签，彻底避免移动端主线程阻塞与字体重新解析引起的二次排版跳页
+            const reapplyChatVisualVarsOnly = () => {
+                ensureSettingsInitialized();
+                applyVisualMode(extension_settings.twt?.visualEnabled, extension_settings.twt);
+            };
+
             ctx.eventSource.on(ctx.eventTypes.CHAT_CHANGED, () => {
-                // 先恢复视觉美化、字号行距与自定义 CSS，再测量列宽与初始化翻页，避免先用旧样式算列宽再重排跳页
-                reapplyVisualAndStyles();
+                reapplyChatVisualVarsOnly();
                 if (extension_settings.twt?.enabled) {
                     resetPaginationBinding(() => extension_settings.twt);
                 }
@@ -5059,7 +5064,7 @@ jQuery(async () => {
 
             if (ctx.eventTypes.MORE_MESSAGES_LOADED) {
                 ctx.eventSource.on(ctx.eventTypes.MORE_MESSAGES_LOADED, () => {
-                    reapplyVisualAndStyles();
+                    reapplyChatVisualVarsOnly();
                     if (extension_settings.twt?.enabled) {
                         handleMoreMessagesLoaded();
                     }

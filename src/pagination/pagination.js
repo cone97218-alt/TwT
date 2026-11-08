@@ -55,7 +55,7 @@ function buildReadingPositionPayload(targetPage = lastUserPage) {
  * 保存当前阅读位置到 TauriTavern metadata
  */
 export async function savePaginationPosition(targetPage = lastUserPage) {
-    if (targetPage < 0 || isChatRestoring) return;
+    if (targetPage < 0 || isChatRestoring || !userInteractedSinceSwitch) return;
     try {
         const payload = buildReadingPositionPayload(targetPage);
         const handle = await getTTHandle();
@@ -74,11 +74,12 @@ export async function savePaginationPosition(targetPage = lastUserPage) {
 }
 
 export function debouncedSavePaginationPosition() {
-    if (isChatRestoring) return;
+    if (isChatRestoring || !userInteractedSinceSwitch) return;
     clearTimeout(savePositionTimer);
     savePositionTimer = setTimeout(() => {
+        updateActiveReadingAnchor(true);
         savePaginationPosition(lastUserPage);
-    }, 500);
+    }, 450);
 }
 
 /**
@@ -123,15 +124,13 @@ let isChatRestoring = false;    // 聊天刚切入、正在等待多轮排版稳
 let chatRestoreSettleTimer = null; // 聊天切入稳定期定时器
 let chatRestoreTarget = null;   // 切入聊天时的目标锁定描述：{ mode: 'end' | 'anchor' | 'page', mesId, pageOffsetInMes, page }
 let userInteractedSinceSwitch = false; // 用户在进入聊天后是否已主动翻页/触摸
+let userExplicitlyFocusedInput = false; // 用户是否通过真实手势点击/触摸了输入框（杜绝酒馆 getChat 结束后自动 focus #send_textarea 导致移动端永久锁死）
 
 /** 判断用户当前是否在输入框打字（此时应全面暂停后台排版与重试计算，避免打字卡顿） */
 export function isInputFocused() {
+    if (!userExplicitlyFocusedInput) return false;
     const el = document.activeElement;
     if (!el) return false;
-    // 刚切入聊天的 800ms 内，忽略酒馆 getChat() 在 100ms 自动执行的 $('#send_textarea').trigger('focus')
-    if (!userInteractedSinceSwitch && (Date.now() - lastChatSwitchTime < 800)) {
-        return false;
-    }
     const tag = el.tagName;
     return (tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable) && !el.classList.contains('twt-p-textarea');
 }
@@ -212,6 +211,23 @@ export function captureReadingAnchor() {
     if (!chat || !document.body.classList.contains('twt-reading-mode')) return null;
     const chatRect = chat.getBoundingClientRect();
     if (chatRect.width <= 0) return null;
+
+    // 关键防护：若用户刚进入聊天室尚未主动翻页，且恢复目标为最新楼层末尾（mode === 'end'），
+    // 直接锚定最后一条可见消息，彻底杜绝因移动端侧栏关闭动画遮挡 elementFromPoint 或多列异步重排而误抓取第 1 条渲染消息（如 74 楼）！
+    if (!userInteractedSinceSwitch && (!chatRestoreTarget || chatRestoreTarget.mode === 'end')) {
+        const allNodes = chat.querySelectorAll('.mes');
+        for (let i = allNodes.length - 1; i >= 0; i--) {
+            const m = allNodes[i];
+            if (m.offsetWidth > 0 || m.offsetHeight > 0) {
+                const mesId = m.getAttribute('mesid');
+                const mesRect = m.getBoundingClientRect();
+                const visualLeft = mesRect.left - chatRect.left;
+                const step = getColStep(chat);
+                const pageOffsetInMes = step > 0 ? Math.max(0, Math.round(-visualLeft / step)) : 0;
+                return { mesId, visualLeft, pageOffsetInMes };
+            }
+        }
+    }
 
     let visibleMes = null;
 
@@ -333,8 +349,8 @@ export function realignToActiveAnchor() {
     const step = getColStep(chat);
     if (step <= 0) return false;
 
-    // 若处于刚进入聊天室的排版稳定保护期，优先钉死在恢复目标（如最新楼层末尾）
-    if (isChatRestoring && !userInteractedSinceSwitch && chatRestoreTarget) {
+    // 若用户进入聊天室后尚未主动翻页/触摸，始终钉死在恢复目标（最新楼层末尾），杜绝被慢速加载的字体、代码块或主题重排拽回前序楼层
+    if (!userInteractedSinceSwitch && !isGenerating && !isLoadingMoreMessages && chatRestoreTarget) {
         applyRestoreTarget(chat, step);
         return true;
     }
@@ -853,9 +869,8 @@ function scrollToPage(chat, page, cw, knownTotal = 0) {
     clearTimeout(scrollUnlockTimer);
     scrollUnlockTimer = setTimeout(() => {
         isScrolling = false;
-        updateActiveReadingAnchor(true);
         debouncedSavePaginationPosition();
-    }, 80);
+    }, 60);
 
     // 在上百页的大型多列排版下，必须使用即时位移，杜绝 browser smooth scroll 逐帧插值引起的灾难级掉帧与重绘堆积
     chat.scrollLeft = targetScrollLeft;
@@ -869,8 +884,8 @@ function doSnap(chat) {
     if (!document.body.classList.contains('twt-reading-mode')) return;
     if (document.body.classList.contains('twt-paragraph-editing')) return;
 
-    // 若刚进入聊天且用户尚未触摸翻页，严禁在第 0 页被原生清空/重绘事件误吸附锁死到第 0 页
-    if (isChatRestoring && !userInteractedSinceSwitch && chatRestoreTarget) {
+    // 若刚进入聊天且用户尚未触摸翻页，严禁被原生清空/重绘事件误吸附到前序楼层
+    if (!userInteractedSinceSwitch && !isGenerating && !isLoadingMoreMessages && chatRestoreTarget) {
         const cw = stableColWidth > 0 ? stableColWidth : (chat.clientWidth || 0);
         if (cw > 0) applyRestoreTarget(chat, cw);
         return;
@@ -1016,40 +1031,24 @@ function updateColWidthWhenReady(retries = 4, interval = 60) {
     lastKnownScrollWidth = sw1;
     const initTotal = Math.max(1, Math.round(sw1 / rawW));
 
-    // 2. 默认永远直接同步定位在最新楼层末尾，杜绝首屏闪现与向中间回跳！
+    // 2. 永远直接同步定位在最新楼层末尾（如 94 楼最后一页），彻底杜绝“先跳到 94 楼再异步回跳到 74 楼”的二次跳页 Bug！
     isChatRestoring = true;
     chatRestoreTarget = { mode: 'end' };
     applyRestoreTarget(chat, rawW);
 
-    // 3. 仅在用户明确开启了 autoRestoreReadingPosition 且确有合法未读锚点时，才尝试恢复上次阅读位置
-    // （默认直接定位在最新楼层末尾，对齐所有常规阅读软件行为，杜绝跨楼层反复横跳）
-    const shouldRestore = extension_settings?.twt?.autoRestoreReadingPosition === true;
-    if (shouldRestore) {
-        restorePaginationPosition().then(asyncSaved => {
-            if (!document.body.classList.contains('twt-reading-mode') || userInteractedSinceSwitch) return;
-            if (asyncSaved && asyncSaved.anchorMesId && !asyncSaved.isAtEnd) {
-                const cw = stableColWidth > 0 ? stableColWidth : getColWidth(chat);
-                if (cw <= 0) return;
-                const curTotal = Math.max(1, Math.round(chat.scrollWidth / cw));
-                const target = resolveRestoreTargetFromSaved(asyncSaved, curTotal);
-                if (target && target.mode !== 'end') {
-                    chatRestoreTarget = target;
-                    applyRestoreTarget(chat, cw);
-                }
-            }
-        });
-    }
-
-    // 4. 启动切入聊天稳定期守护（持续吸收后续 html_popup 隐藏代码块、图片加载、字体渲染引发的列数变动）
+    // 3. 启动切入聊天稳定期守护（持续吸收后续 html_popup 隐藏代码块、图片加载、字体渲染引发的列数变动）
     clearTimeout(chatRestoreSettleTimer);
     chatRestoreSettleTimer = setTimeout(() => {
         isChatRestoring = false;
         document.body.classList.remove("twt-chat-switching");
         chat.classList.remove("twt-chat-switching");
         if (!userInteractedSinceSwitch && document.body.classList.contains('twt-reading-mode')) {
-            updateActiveReadingAnchor(true);
+            const cw = stableColWidth > 0 ? stableColWidth : getColWidth(chat);
+            if (cw > 0 && chatRestoreTarget) {
+                applyRestoreTarget(chat, cw);
+            }
         }
-    }, 950);
+    }, 1000);
 }
 
 // ============================================================
@@ -1065,18 +1064,73 @@ function initMutationObserver() {
         if (!document.body.classList.contains('twt-reading-mode')) return;
         if (document.body.classList.contains('twt-paragraph-editing')) return;
 
-        // 若发现 #chat 正在被酒馆清空或仅剩加载条，立即打上过渡遮罩
-        if (chat.children.length <= 1) {
-            document.body.classList.add("twt-chat-switching");
-            chat.classList.add("twt-chat-switching");
+        // 1. 检测酒馆 clearChat() 清空聊天或 printMessages() 初次批量挂载消息（此时 CHAT_CHANGED 尚未触发！）
+        // 在微任务阶段立即进入切入恢复态并直接同步将 scrollLeft 钉死到最新楼层末尾，彻底消灭首屏先闪现 #show_more_messages（熊猫message）！
+        let addedShowMore = false;
+        let addedLastMes = false;
+        let hasMeaningfulDomChange = false;
+        if (mutations && mutations.length > 0) {
+            for (let i = 0; i < mutations.length; i++) {
+                const m = mutations[i];
+                if (m.type === 'attributes') {
+                    hasMeaningfulDomChange = true;
+                    continue;
+                }
+                if (m.type === 'childList') {
+                    if (m.addedNodes && m.addedNodes.length > 0) {
+                        for (let j = 0; j < m.addedNodes.length; j++) {
+                            const node = m.addedNodes[j];
+                            if (node.nodeType === 1) {
+                                if (node.id === 'show_more_messages') addedShowMore = true;
+                                if (node.classList?.contains('last_mes')) addedLastMes = true;
+                                if (!node.classList?.contains('twt-comment-badge') && !node.classList?.contains('twt-toolcall-floor-badge')) {
+                                    hasMeaningfulDomChange = true;
+                                }
+                            }
+                        }
+                    }
+                    if (m.removedNodes && m.removedNodes.length > 0) {
+                        for (let j = 0; j < m.removedNodes.length; j++) {
+                            const node = m.removedNodes[j];
+                            if (node.nodeType === 1 && !node.classList?.contains('twt-comment-badge')) {
+                                hasMeaningfulDomChange = true;
+                            }
+                        }
+                    }
+                }
+            }
         }
 
+        if (chat.children.length <= 1 || (addedShowMore && addedLastMes && !isLoadingMoreMessages && !isGenerating)) {
+            isChatRestoring = true;
+            userInteractedSinceSwitch = false;
+            lastChatSwitchTime = Date.now();
+            chatRestoreTarget = { mode: 'end' };
+            if (chat.children.length <= 1) {
+                document.body.classList.add("twt-chat-switching");
+                chat.classList.add("twt-chat-switching");
+            }
+        }
+
+        // 若正处于切入聊天阶段且 #chat 已挂载消息，在微任务阶段（浏览器首帧绘制前）直接同步将 scrollLeft 推到末尾页，0 帧闪现熊猫 message！
+        if ((isChatRestoring || !userInteractedSinceSwitch) && !isGenerating && !isLoadingMoreMessages && chat.children.length > 1) {
+            const rawW = stableColWidth > 0 ? stableColWidth : (chat.getBoundingClientRect().width || chat.clientWidth);
+            if (rawW > 0) {
+                if (!stableColWidth) {
+                    chat.style.setProperty('--twt-col-width', `${rawW}px`, 'important');
+                    stableColWidth = rawW;
+                }
+                if (!chatRestoreTarget) chatRestoreTarget = { mode: 'end' };
+                applyRestoreTarget(chat, rawW);
+            }
+        }
+
+        if (!hasMeaningfulDomChange) return;
         if (isInputFocused()) return;
 
-        // 检查是否有消息元素在“当前阅读锚点之前”被添加或移除（如酒馆历史截断移除最旧楼层，或在顶部插入历史消息）
-        // 尾部追加新消息（AI回复/用户发送）绝不属于前置变动，严禁对当前锚点补偿位移导致视口错位
+        // 检查是否有消息元素在“当前阅读锚点之前”被添加或移除（仅在用户已主动交互翻页后才启用前置锚点补偿）
         let hasFrontChanges = false;
-        if (mutations && mutations.length > 0 && activeReadingAnchor && activeReadingAnchor.mesId !== undefined) {
+        if (userInteractedSinceSwitch && !isChatRestoring && mutations && mutations.length > 0 && activeReadingAnchor && activeReadingAnchor.mesId !== undefined) {
             const anchorMesId = Number(activeReadingAnchor.mesId);
             for (let i = 0; i < mutations.length; i++) {
                 const m = mutations[i];
@@ -1124,7 +1178,7 @@ function initMutationObserver() {
 
         // 视口相对锚点零误差对齐：若顶部发生增删，立刻在微任务阶段补偿 scrollLeft 位移，彻底消除跳动
         // 关键防护：若正在进行历史消息加载 (isLoadingMoreMessages)，由 handleMoreMessagesLoaded 统一执行位移补偿，杜绝提前介入导致双重位移叠加！
-        if (hasFrontChanges && !isChatRestoring && activeReadingAnchor && activeReadingAnchor.mesId && !isTouching && !isLoadingMoreMessages) {
+        if (hasFrontChanges && userInteractedSinceSwitch && !isChatRestoring && activeReadingAnchor && activeReadingAnchor.mesId && !isTouching && !isLoadingMoreMessages) {
             const anchorEl = chat.querySelector(`.mes[mesid="${activeReadingAnchor.mesId}"]`);
             if (anchorEl) {
                 const chatRect = chat.getBoundingClientRect();
@@ -1168,8 +1222,8 @@ function initMutationObserver() {
                 autoNormalizeBubbleTheme();
                 if (chat && stableColWidth > 0) {
                     lastKnownScrollWidth = chat.scrollWidth;
-                    // 若处于刚进入高楼层聊天的稳定期（0~950ms内），期间由 html_popup 隐藏代码块、段落评论挂载、图片加载等引起的列数增减，自动重新钉死到目标页（最新楼层或恢复锚点），彻底消除跨楼层反复横跳！
-                    if (isChatRestoring && !userInteractedSinceSwitch && chatRestoreTarget) {
+                    // 若用户进入高楼层聊天后尚未主动翻页，期间由 html_popup 隐藏代码块、段落评论挂载、图片加载等引起的列数增减，自动重新钉死到最新楼层末尾，彻底消除跨楼层反复横跳！
+                    if (!userInteractedSinceSwitch && !isGenerating && !isLoadingMoreMessages && chatRestoreTarget) {
                         applyRestoreTarget(chat, stableColWidth);
                     }
                 }
@@ -1257,11 +1311,26 @@ function initVirtualKeyboardGuard() {
     if (keyboardGuardInit) return;
     keyboardGuardInit = true;
 
+    // 仅当用户通过真实触摸/鼠标点击输入框时才标记为“用户主动聚焦输入”，彻底免疫酒馆 getChat 异步延时触发的 $('#send_textarea').trigger('focus')
+    const onPointerDownTrackInput = (e) => {
+        if (!e.isTrusted) return;
+        const t = e.target;
+        if (t && t.closest && t.closest('input, textarea, [contenteditable="true"]')) {
+            userExplicitlyFocusedInput = true;
+        } else {
+            userExplicitlyFocusedInput = false;
+        }
+    };
+    document.addEventListener('pointerdown', onPointerDownTrackInput, true);
+    document.addEventListener('touchstart', onPointerDownTrackInput, { capture: true, passive: true });
+    document.addEventListener('mousedown', onPointerDownTrackInput, true);
+
     // 当输入框失焦（键盘收起）时，仅在视口列宽实际因软键盘收起而改变时才重新校准，防止酒馆自动聚焦 #send_textarea 后点击聊天区触发错误的锚点回跳
     document.addEventListener('focusout', e => {
         if (!document.body.classList.contains('twt-reading-mode')) return;
         const t = e.target;
         if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) {
+            userExplicitlyFocusedInput = false;
             setTimeout(() => {
                 if (!isInputFocused() && !isTouching && !isScrolling) {
                     const chat = getChat();
@@ -2019,11 +2088,12 @@ export function realignPagination(verbose = true) {
 // ============================================================
 // resetPaginationBinding：切换聊天时重置并重绑定
 // ============================================================
-import { invalidateMuluStoreCache } from '../mulu/mulu.js';
+import { invalidateMuluStoreCache } from '../mulu/mulu.js?v=1.0.19';
 
 export function resetPaginationBinding(getSettings) {
     lastChatSwitchTime = Date.now();
     userInteractedSinceSwitch = false;
+    userExplicitlyFocusedInput = false;
     isChatRestoring = true;
     document.body.classList.add("twt-chat-switching");
     const currentChat = getChat();
@@ -2033,7 +2103,7 @@ export function resetPaginationBinding(getSettings) {
     clearTimeout(savePositionTimer);
     invalidateMuluStoreCache();
 
-    // 关键防护：手机端切入聊天时立即强制失焦输入框并拦截初始自动聚焦，杜绝软键盘弹出折损视口高度导致列数翻倍、横跳与主线程卡死
+    // 关键防护：手机端切入聊天时立即强制失焦输入框并全天候拦截非用户主动点击的程序化自动聚焦（无论高楼层加载耗时多久）
     const active = document.activeElement;
     if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
         active.blur();
@@ -2044,7 +2114,7 @@ export function resetPaginationBinding(getSettings) {
         if (!sendTextarea.__twt_guard_attached__) {
             sendTextarea.__twt_guard_attached__ = true;
             sendTextarea.addEventListener('focus', (e) => {
-                if (document.body.classList.contains('twt-reading-mode') && !userInteractedSinceSwitch && (Date.now() - lastChatSwitchTime < 800)) {
+                if (document.body.classList.contains('twt-reading-mode') && !userExplicitlyFocusedInput) {
                     e.preventDefault();
                     sendTextarea.blur();
                 }
@@ -2230,7 +2300,12 @@ export function initPaginationEvent(getSettings) {
     const onNavClick = (e) => {
         if (!document.body.classList.contains('twt-reading-mode')) return;
         const t = e.target;
-        if (t && t.closest && t.closest('.character_select, .chat_select, [chat_id], [chid], #select_chat, #chat_list, .group_select, #rm_char_group_popup, .menu_button_chat, #dialogue_del_mes')) {
+        if (t && t.closest && t.closest('.character_select, .chat_select, .select_chat_block, .select_chat_block_wrapper, [chat_id], [chid], [data-chid], [data-grid], #select_chat, #chat_list, .group_select, #rm_char_group_popup, .menu_button_chat, #dialogue_del_mes')) {
+            isChatRestoring = true;
+            userInteractedSinceSwitch = false;
+            userExplicitlyFocusedInput = false;
+            lastChatSwitchTime = Date.now();
+            chatRestoreTarget = { mode: 'end' };
             document.body.classList.add('twt-chat-switching');
             const chatEl = getChat();
             if (chatEl) chatEl.classList.add('twt-chat-switching');
@@ -2399,15 +2474,15 @@ function bindScrollEvents(getSettings) {
         const adx = Math.abs(e.touches[0].clientX - touchStartX);
         const ady = Math.abs(e.touches[0].clientY - touchStartY);
 
-        if (adx > 8 || ady > 8) {
+        if (adx > 14 || ady > 14) {
             touchMoved = true;
         }
 
         if (!settings.swipeEnabled) return;
 
-        // 方向判定（首次移动 8px 以上才判定）
+        // 方向判定（首次移动 14px 以上才判定为拖拽滑动，避免手指点按微动误入滑动分支导致点击翻页失灵）
         if (touchIsHorizontal === null) {
-            if (adx > 8 || ady > 8) touchIsHorizontal = adx >= ady;
+            if (adx > 14 || ady > 14) touchIsHorizontal = adx >= ady;
             return;
         }
         if (!touchIsHorizontal) return;
@@ -2458,7 +2533,25 @@ function bindScrollEvents(getSettings) {
         const dt = Date.now() - touchStartTime;
         const dist = Math.hypot(touchEndX - touchStartX, touchEndY - touchStartY);
 
-        // 1. 横向滑动翻页处理
+        // 1. 点按翻页优先判定（Tap Detection）：
+        // 移动端拇指点击屏幕边缘翻页时常伴随 8~24px 的微小滚动，若总位移 < 24px 且触碰时间 < 450ms，一律优先作为点按翻页处理！
+        if (dt < 450 && dist < 24) {
+            isTouching = false;
+            const targetEl = e.target || document.elementFromPoint(touchEndX, touchEndY);
+            const handled = handlePageFlip(touchEndX, targetEl, settings);
+            if (handled) {
+                lastPageTurnTime = Date.now();
+                return;
+            }
+            // 若点击在中间非翻页区但 touchmove 产生了轻微偏移，复原到起始页
+            if (wasHorizontal && Math.abs(chat.scrollLeft - touchStartLeft) > 1) {
+                const cw = getColWidth(chat);
+                if (cw > 0) scrollToPage(chat, touchStartPage, cw, touchTotalPages);
+            }
+            return;
+        }
+
+        // 2. 横向滑动翻页处理
         if (wasHorizontal && settings.swipeEnabled) {
             userInteractedSinceSwitch = true;
             isChatRestoring = false;
@@ -2468,8 +2561,8 @@ function bindScrollEvents(getSettings) {
             if (cw <= 0) { isTouching = false; return; }
 
             const dx        = touchEndX - touchStartX;
-            const fastSwipe = dt < 300 && Math.abs(dx) > 30;
-            const longSwipe = Math.abs(dx) > cw * 0.25;
+            const fastSwipe = dt < 350 && Math.abs(dx) > 24;
+            const longSwipe = Math.abs(dx) > cw * 0.22;
 
             let targetPage;
             if (fastSwipe || longSwipe) {
@@ -2495,16 +2588,6 @@ function bindScrollEvents(getSettings) {
         }
 
         isTouching = false;
-
-        // 2. 点按翻页判定（Tap Detection）：
-        // 当触碰时间短（< 400ms）、位移微小（< 15px）且未触发横向滚动时，视为直接点按翻页
-        if (!wasHorizontal && !didMove && dt < 400 && dist < 15) {
-            const targetEl = e.target || document.elementFromPoint(touchEndX, touchEndY);
-            const handled = handlePageFlip(touchEndX, targetEl, settings);
-            if (handled) {
-                lastPageTurnTime = Date.now();
-            }
-        }
     }, { passive: true, signal });
 
     chat.addEventListener('touchcancel', () => {

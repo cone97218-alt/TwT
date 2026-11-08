@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { extension_settings, getContext } from '../../../../../extensions.js';
-import { scrollPageLeft, scrollPageRight } from '../pagination/pagination.js';
+import { scrollPageLeft, scrollPageRight } from '../pagination/pagination.js?v=1.0.19';
 import { getRegexedString, regex_placement } from '../../../../regex/engine.js';
 
 
@@ -1081,23 +1081,30 @@ function getMessageVisibleBlocks(message, settings) {
 
 export function renderCommentsForMessage(mesId) {
     const context = getContext();
-    const message = context.chat[mesId];
+    const message = context?.chat?.[mesId];
     if (!message) return;
 
-    const $mes = $(`.mes[mesid="${mesId}"]`);
-    if (!$mes.length) return;
+    const settings = extension_settings.twt || {};
+    const commentsList = message.extra?.twt_comments;
+    const hasComments = Boolean(settings.commentsEnabled && Array.isArray(commentsList) && commentsList.length > 0);
+
+    const mesEl = document.querySelector(`#chat .mes[mesid="${mesId}"]`);
+    if (!mesEl) return;
+
+    // 快速路径：若本条消息无段评，仅在确有残留角标时清理，彻底跳过 jQuery 包装与 DP 段落对齐计算
+    if (!hasComments) {
+        if (mesEl.querySelector('.twt-comment-badge')) {
+            mesEl.querySelectorAll('.twt-comment-badge').forEach(b => b.remove());
+        }
+        return;
+    }
+
+    const $mes = $(mesEl);
     const $mesText = $mes.find('.mes_text');
     if (!$mesText.length) return;
 
     // 清理旧的气泡角标
     $mesText.find('.twt-comment-badge').remove();
-
-    // 检查全局设置是否启用段评
-    const settings = extension_settings.twt || {};
-    if (!settings.commentsEnabled) return;
-
-    const commentsList = message.extra?.twt_comments || [];
-    if (commentsList.length === 0) return;
 
     // 对齐 DOM
     const $elements = getSelectableElements($mesText);
@@ -1800,14 +1807,16 @@ try {
         context.eventSource.on(context.eventTypes.CHARACTER_MESSAGE_RENDERED, (mesId) => {
             renderCommentsForMessage(mesId);
         });
-        context.eventSource.on(context.eventTypes.CHAT_CHANGED, () => {
-            renderCommentsForAllVisibleMessages();
-        });
-        context.eventSource.on(context.eventTypes.MORE_MESSAGES_LOADED, () => {
-            renderCommentsForAllVisibleMessages();
-        });
+        let commentsRenderTimer = null;
+        const scheduleRenderComments = () => {
+            clearTimeout(commentsRenderTimer);
+            commentsRenderTimer = setTimeout(() => {
+                renderCommentsForAllVisibleMessages();
+            }, 180);
+        };
+        context.eventSource.on(context.eventTypes.CHAT_CHANGED, scheduleRenderComments);
+        context.eventSource.on(context.eventTypes.MORE_MESSAGES_LOADED, scheduleRenderComments);
     }
-    setTimeout(renderCommentsForAllVisibleMessages, 1000);
 } catch (e) {
     console.error("TwT: Failed to register event listeners in paragraph.js", e);
 }

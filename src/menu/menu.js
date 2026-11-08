@@ -2,8 +2,8 @@
 import { getContext } from '../../../../../extensions.js';
 import { hideChatMessageRange } from '../../../../../chats.js';
 import { updateViewMessageIds, refreshSwipeButtons, closeMessageEditor } from '../../../../../../script.js';
-import { openParagraphEditor } from '../paragraph/paragraph.js';
-import { scrollPageLeft, scrollPageRight } from '../pagination/pagination.js';
+import { openParagraphEditor } from '../paragraph/paragraph.js?v=1.0.19';
+import { scrollPageLeft, scrollPageRight, realignPagination } from '../pagination/pagination.js?v=1.0.19';
 
 /**
  * High-performance batch message deletion.
@@ -1579,7 +1579,6 @@ export function openFullTextEditor(mesId) {
                 toastr.success('消息已保存', '全文编辑');
             }
             if (document.body.classList.contains('twt-reading-mode')) {
-                const { realignPagination } = await import('../pagination/pagination.js');
                 realignPagination(false);
             }
         }

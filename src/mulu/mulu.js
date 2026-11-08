@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { extension_settings, getContext } from '../../../../../extensions.js';
 import { showMoreMessages } from '../../../../../../script.js';
-import { setLastUserPage, realignPagination, getColStep, setExplicitJumpLoading, updateActiveReadingAnchor } from '../pagination/pagination.js';
+import { setLastUserPage, realignPagination, getColStep, setExplicitJumpLoading, updateActiveReadingAnchor } from '../pagination/pagination.js?v=1.0.19';
 
 // ============================================================
 // P2 & P3：TauriTavern Store & Search API 接入层
@@ -2521,10 +2521,20 @@ export function initMulu() {
     const doc = getDoc();
     const win = getWin();
     const MutationObserverClass = win.MutationObserver || win.parent?.MutationObserver || window.MutationObserver;
+    let muluObsTimer = null;
     const observer = new MutationObserverClass(() => {
-        if (doc.querySelector('#qr--bar .qr--buttons')) {
-            applyMuluSettings();
-        }
+        if (muluObsTimer) return;
+        muluObsTimer = setTimeout(() => {
+            muluObsTimer = null;
+            const settings = extension_settings?.twt;
+            if (!settings?.muluEnabled || settings.qrInjectEnabled === false) return;
+            const needsBtn = (settings.muluBtnToc && !doc.getElementById(BTN_TOC_ID)) ||
+                             (settings.muluBtnStart && !doc.getElementById(BTN_START_ID)) ||
+                             (settings.muluBtnEnd && !doc.getElementById(BTN_END_ID));
+            if (needsBtn && doc.querySelector('#qr--bar .qr--buttons')) {
+                applyMuluSettings();
+            }
+        }, 300);
     });
     observer.observe(doc.body, { childList: true, subtree: true });
     

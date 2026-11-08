@@ -97,6 +97,8 @@ function isHtmlAppCodeBlock(el) {
     const text = (codeEl?.textContent || pre?.textContent || '').trim();
     if (text.length < 15) return false;
 
+    if (el.__twt_is_html_app__ !== undefined) return el.__twt_is_html_app__;
+
     // 1. 明确标记为 HTML/XML/IFRAME 代码块
     const isHtmlLang = cls.includes('language-html') ||
                        cls.includes('language-xml') ||
@@ -108,7 +110,9 @@ function isHtmlAppCodeBlock(el) {
     const hasHtmlDoc = /<!DOCTYPE\s+html|<html[\s>]/i.test(text);
     const hasComplexHtml = /<(div|canvas|svg|style|script)[\s\S]*?>/i.test(text) && text.length > 50;
 
-    return isHtmlLang || hasIframe || hasHtmlDoc || (cls.includes('language-') && hasComplexHtml);
+    const result = Boolean(isHtmlLang || hasIframe || hasHtmlDoc || (cls.includes('language-') && hasComplexHtml));
+    el.__twt_is_html_app__ = result;
+    return result;
 }
 
 /**
@@ -602,6 +606,7 @@ export function getHtmlPopupDefaultSettings() {
 function injectStyles() {
     const doc = getDoc();
     let style = doc.getElementById('twt-html-popup-style');
+    if (style && style.textContent) return;
     if (!style) {
         style = doc.createElement('style');
         style.id = 'twt-html-popup-style';
@@ -978,14 +983,11 @@ export function hideMessageHtmlApps(forceHide = false) {
             const fullSelector = selList.map(s => `.mes_text ${s}`).join(', ');
             const matchingElements = Array.from(chat.querySelectorAll(fullSelector));
 
-            // 2. 匹配未渲染的 HTML / Iframe 代码块 (PRE) 并预热解析缓存
+            // 2. 匹配未渲染的 HTML / Iframe 代码块 (PRE)（按需在打开弹窗时再提取源码，避免切入高楼层聊天时同步解码几十个大代码块阻塞主线程）
             chat.querySelectorAll('.mes_text pre').forEach((pre) => {
                 if (isHtmlAppCodeBlock(pre)) {
                     if (!matchingElements.includes(pre)) {
                         matchingElements.push(pre);
-                    }
-                    if (!pre.__twt_extracted_html__) {
-                        extractHtmlFromCodeBlock(pre);
                     }
                 }
             });
@@ -1739,15 +1741,14 @@ export function registerHtmlPopupEvents(context) {
 
     const { eventSource, eventTypes } = context;
 
+    let resetHideTimer = null;
     const onChatResetOrSwitched = (reason) => {
-        console.log(`[TwT HtmlPopup] [对话状态重置/角色切换] 原因: ${reason}`);
         closeHtmlAppModal();
         updateQrBadge(false);
 
         hideMessageHtmlApps();
-        setTimeout(hideMessageHtmlApps, 100);
-        setTimeout(hideMessageHtmlApps, 350);
-        setTimeout(hideMessageHtmlApps, 800);
+        clearTimeout(resetHideTimer);
+        resetHideTimer = setTimeout(hideMessageHtmlApps, 200);
     };
 
     const onMessageChangedOrSwiped = (mesId) => {
@@ -2115,17 +2116,22 @@ export function initHtmlPopup() {
     const win = getWin();
     const MutationObserverClass = win.MutationObserver || win.parent?.MutationObserver || window.MutationObserver;
 
-    // 保持 Observer 监听，在 QR bar 或 DOM 发生变动时按需补全按钮或悬浮球
+    // 保持 Observer 监听，在 QR bar 或 DOM 发生变动时按需补全按钮或悬浮球（带节流，避免切入高楼层聊天时高频触发）
+    let popupObsTimer = null;
     const observer = new MutationObserverClass(() => {
-        const settings = extension_settings?.twt;
-        const enabled = settings?.htmlPopupEnabled !== false;
-        const triggerMode = settings?.htmlPopupTriggerMode || 'qr';
-        const qrInject = settings?.qrInjectEnabled !== false;
-        const needsQr = enabled && qrInject && (triggerMode === 'qr' || triggerMode === 'both') && !doc.getElementById(QR_BTN_ID) && doc.querySelector('#qr--bar');
-        const needsFloat = enabled && (triggerMode === 'float' || triggerMode === 'both') && !doc.getElementById(FLOAT_BTN_ID);
-        if (needsQr || needsFloat) {
-            applyHtmlPopupSettings();
-        }
+        if (popupObsTimer) return;
+        popupObsTimer = setTimeout(() => {
+            popupObsTimer = null;
+            const settings = extension_settings?.twt;
+            const enabled = settings?.htmlPopupEnabled !== false;
+            const triggerMode = settings?.htmlPopupTriggerMode || 'qr';
+            const qrInject = settings?.qrInjectEnabled !== false;
+            const needsQr = enabled && qrInject && (triggerMode === 'qr' || triggerMode === 'both') && !doc.getElementById(QR_BTN_ID) && doc.querySelector('#qr--bar');
+            const needsFloat = enabled && (triggerMode === 'float' || triggerMode === 'both') && !doc.getElementById(FLOAT_BTN_ID);
+            if (needsQr || needsFloat) {
+                applyHtmlPopupSettings();
+            }
+        }, 300);
     });
     observer.observe(doc.body, { childList: true, subtree: true });
 
