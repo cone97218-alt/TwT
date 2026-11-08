@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { extension_settings, getContext } from '../../../../../extensions.js';
-import { scrollPageLeft, scrollPageRight } from '../pagination/pagination.js?v=1.0.20';
+import { scrollPageLeft, scrollPageRight } from '../pagination/pagination.js?v=1.0.21';
 import { getRegexedString, regex_placement } from '../../../../regex/engine.js';
 
 
