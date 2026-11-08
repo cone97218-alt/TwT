@@ -1537,7 +1537,8 @@ function initThemeLinkListener() {
         }
 
         updateCommentsBgSolid();
-        cleanupBubbleThemeNormalization();
+        // 直接原地更新气泡自适应补丁，避免先 remove 再延时 100ms 重建造成多列排版二次剧烈重排与跳页
+        autoNormalizeBubbleTheme(extension_settings?.twt);
         setTimeout(() => autoNormalizeBubbleTheme(extension_settings?.twt), 100);
     };
 
@@ -5049,18 +5050,19 @@ jQuery(async () => {
             };
 
             ctx.eventSource.on(ctx.eventTypes.CHAT_CHANGED, () => {
+                // 先恢复视觉美化、字号行距与自定义 CSS，再测量列宽与初始化翻页，避免先用旧样式算列宽再重排跳页
+                reapplyVisualAndStyles();
                 if (extension_settings.twt?.enabled) {
                     resetPaginationBinding(() => extension_settings.twt);
                 }
-                reapplyVisualAndStyles();
             });
 
             if (ctx.eventTypes.MORE_MESSAGES_LOADED) {
                 ctx.eventSource.on(ctx.eventTypes.MORE_MESSAGES_LOADED, () => {
+                    reapplyVisualAndStyles();
                     if (extension_settings.twt?.enabled) {
                         handleMoreMessagesLoaded();
                     }
-                    reapplyVisualAndStyles();
                 });
             }
 
