@@ -214,6 +214,7 @@ export function scheduleRestoreSettle(delay = 600) {
                 applyRestoreTarget(chat, cw);
             }
         }
+        chatRestoreTarget = null;
     }, delay);
 }
 // 严禁在日常高频日志中调用 chat.scrollWidth 或 elementFromPoint，彻底消除强制同步重排 (Layout Thrashing)
@@ -228,6 +229,7 @@ let twtDiagLastJsSetSL = null;
 let twtDiagLastObservedSL = 0;
 let lastInteractiveMatchReason = '';
 let twtDiagUiRafId = null;
+let isAligningNewMessage = false;
 
 function describeEl(el) {
     if (!el) return 'null';
@@ -746,6 +748,7 @@ export function activateWindowForMessage(mesOrId) {
  */
 function slideFloorWindowIfNeeded(chat, cw, direction = 'auto') {
     if (!chat || !document.body.classList.contains('twt-reading-mode')) return false;
+    if (isAligningNewMessage || isGenerating) return false;
     const step = cw || getColStep(chat);
     if (step <= 0) return false;
 
@@ -1071,6 +1074,11 @@ export function handleMessageSwiped(mesId) {
  * 重roll场景下对齐到被重roll楼层第一页，防止继承旧回答末尾偏移
  */
 export function handleGenerationStarted(type) {
+    userInteractedSinceSwitch = true;
+    chatRestoreTarget = null;
+    isChatRestoring = false;
+    clearTimeout(chatRestoreSettleTimer);
+    hideLoadingOverlay();
     isGenerating = true;
     const isReroll = (type === 'swipe' || type === 'regenerate');
     if (isReroll) {
@@ -1087,6 +1095,11 @@ export function handleGenerationStarted(type) {
  * 用户发送新消息（MESSAGE_SENT）时的翻页调度
  */
 export function handleUserMessageSent() {
+    userInteractedSinceSwitch = true;
+    chatRestoreTarget = null;
+    isChatRestoring = false;
+    clearTimeout(chatRestoreSettleTimer);
+    hideLoadingOverlay();
     isGenerating = true;
     updateActiveReadingAnchor();
 }
@@ -1097,24 +1110,11 @@ export function handleUserMessageSent() {
 export function handleGenerationEnded() {
     isGenerating = false;
     updateActiveReadingAnchor();
-    // 生成彻底结束，稍作防抖等待 DOM 稳定后统一执行一次增量收容与工具调用打标
+    // 生成彻底结束，稍作防抖等待 DOM 稳定后统一执行一次增量收容与工具调用打标，绝不强制覆盖已有滚动对齐
     setTimeout(() => {
-        if (!isGenerating && !isTouching && !isScrolling && !isInputFocused()) {
-            const chat = getChat();
-            const savedPage = lastUserPage;
+        if (!isGenerating && !isTouching && !isScrolling && !isInputFocused() && !isAligningNewMessage) {
             containOversizedElements();
             tagToolCallMessages();
-            if (chat && savedPage >= 0) {
-                const step = getColStep(chat);
-                if (step > 0) {
-                    const total = Math.max(1, Math.round(chat.scrollWidth / step));
-                    const targetPage = Math.min(savedPage, total - 1);
-                    if (Math.abs(chat.scrollLeft - targetPage * step) > 1) {
-                        chat.scrollLeft = targetPage * step;
-                        lastUserPage = targetPage;
-                    }
-                }
-            }
             updateActiveReadingAnchor();
         }
     }, 250);
@@ -1226,6 +1226,12 @@ export function handleNewMessageRendered(messageId, settings = extension_setting
     const chat = getChat();
     if (!chat || !document.body.classList.contains('twt-reading-mode')) return;
 
+    userInteractedSinceSwitch = true;
+    chatRestoreTarget = null;
+    isChatRestoring = false;
+    clearTimeout(chatRestoreSettleTimer);
+    hideLoadingOverlay();
+
     chat.scrollTop = 0;
 
     const shouldAutoScroll = settings?.autoScrollNewMessage !== false;
@@ -1281,7 +1287,11 @@ export function handleNewMessageRendered(messageId, settings = extension_setting
                 targetPage = mesStartPage;
         }
 
+        isAligningNewMessage = true;
         scrollToPage(chat, targetPage, step);
+        setTimeout(() => {
+            isAligningNewMessage = false;
+        }, 250);
     });
 }
 
@@ -1566,7 +1576,9 @@ function scrollToPage(chat, page, cw, knownTotal = 0) {
     clearTimeout(scrollUnlockTimer);
     scrollUnlockTimer = setTimeout(() => {
         isScrolling = false;
-        slideFloorWindowIfNeeded(chat, step, 'auto');
+        if (!isAligningNewMessage && !isGenerating) {
+            slideFloorWindowIfNeeded(chat, step, 'auto');
+        }
         updateActiveReadingAnchor(true);
         debouncedSavePaginationPosition();
     }, 60);
@@ -1821,7 +1833,7 @@ function initMutationObserver() {
             }
         }
 
-        const isInitialBatchMount = (addedShowMore || addedLastMes) && !userInteractedSinceSwitch && !isLoadingMoreMessages && !isGenerating;
+        const isInitialBatchMount = (addedShowMore || addedLastMes) && isChatRestoring && chatRestoreTarget && !userInteractedSinceSwitch && !isLoadingMoreMessages && !isGenerating && (Date.now() - lastChatSwitchTime < 2500);
         if (chat.children.length <= 1 || isInitialBatchMount) {
             isChatRestoring = true;
             userInteractedSinceSwitch = false;
