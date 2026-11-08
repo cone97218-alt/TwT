@@ -974,13 +974,15 @@ export function hideMessageHtmlAppsSync(forceHide = false, notify = true) {
     let count = 0;
 
     try {
-        // 1. 匹配标准 DOM 元素选择器
+        // 1. 匹配标准 DOM 元素选择器（翻页阅读模式下仅扫描当前激活窗口内的楼层，窗口滑动时按需增量处理）
+        const isReading = doc.body.classList.contains('twt-reading-mode');
+        const mesScope = isReading ? '.mes:not(.twt-mes-window-hidden) ' : '';
         const selList = selector.split(',').map(s => s.trim()).filter(Boolean);
-        const fullSelector = selList.map(s => `.mes_text ${s}`).join(', ');
+        const fullSelector = selList.map(s => `${mesScope}.mes_text ${s}`).join(', ');
         const matchingElements = Array.from(chat.querySelectorAll(fullSelector));
 
         // 2. 匹配未渲染的 HTML / Iframe 代码块 (PRE)（按需在打开弹窗时再提取源码，避免切入高楼层聊天时同步解码几十个大代码块阻塞主线程）
-        chat.querySelectorAll('.mes_text pre').forEach((pre) => {
+        chat.querySelectorAll(`${mesScope}.mes_text pre`).forEach((pre) => {
             if (isHtmlAppCodeBlock(pre)) {
                 if (!matchingElements.includes(pre)) {
                     matchingElements.push(pre);
@@ -989,7 +991,7 @@ export function hideMessageHtmlAppsSync(forceHide = false, notify = true) {
         });
 
         // 恢复之前被隐藏但现在匹配白名单的元素
-        chat.querySelectorAll('.twt-app-hidden').forEach((hiddenEl) => {
+        chat.querySelectorAll(`${mesScope}.twt-app-hidden`).forEach((hiddenEl) => {
             if (isElementWhitelisted(hiddenEl)) {
                 hiddenEl.classList.remove('twt-app-hidden');
                 hiddenEl.style.display = '';
@@ -1191,10 +1193,16 @@ function fallbackToPreviousFloors(focusedMes, selector) {
     let targetAppEls = [];
     let targetMesIndex = -1;
 
+    const isExplicitlyHiddenMes = (mes) => {
+        if (mes.style.display === 'none') return true;
+        if (mes.classList.contains('twt-toolcall-mes') && doc.body.classList.contains('twt-toolcall-hide')) return true;
+        return false;
+    };
+
     const startIdx = focusedMesIndex >= 0 ? focusedMesIndex - 1 : allMessages.length - 1;
     for (let i = startIdx; i >= 0; i--) {
         const mes = allMessages[i];
-        if (getComputedStyle(mes).display === 'none') continue;
+        if (isExplicitlyHiddenMes(mes)) continue;
         const matchingInMes = getMessageAppElements(mes, selector);
         if (matchingInMes.length > 0) {
             targetMes = mes;
@@ -1207,7 +1215,7 @@ function fallbackToPreviousFloors(focusedMes, selector) {
     if (targetAppEls.length === 0) {
         for (let i = allMessages.length - 1; i >= 0; i--) {
             const mes = allMessages[i];
-            if (getComputedStyle(mes).display === 'none') continue;
+            if (isExplicitlyHiddenMes(mes)) continue;
             const matchingInMes = getMessageAppElements(mes, selector);
             if (matchingInMes.length > 0) {
                 targetMes = mes;
@@ -1764,10 +1772,15 @@ export function registerHtmlPopupEvents(context) {
     const onChatResetOrSwitched = (reason) => {
         closeHtmlAppModal();
         updateQrBadge(false);
+        clearTimeout(resetHideTimer);
+
+        // 翻页阅读模式下由 pagination.js 在激活末尾窗口后同步调用 hideMessageHtmlAppsSync，避免冗余异步定时器引发二次重排
+        if (getDoc().body?.classList?.contains('twt-reading-mode')) {
+            return;
+        }
 
         hideMessageHtmlAppsSync(true, true);
         hideMessageHtmlApps(true);
-        clearTimeout(resetHideTimer);
         resetHideTimer = setTimeout(() => hideMessageHtmlAppsSync(true, true), 200);
     };
 

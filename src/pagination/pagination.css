@@ -73,42 +73,23 @@ body.twt-reading-mode #chat > :not(.mes) {
     padding-bottom: 10px !important;
 }
 
-/* 酒馆“要渲染 # 条消息”截断机制下的加载更多历史消息按钮适配 */
+/* 酒馆“要渲染 # 条消息”截断机制下的加载更多历史消息按钮：
+   翻页阅读模式下在首层第 0 页向左翻页会自动触发 triggerLoadMoreMessages()，
+   因此将该按钮设为 display: none（保留在 DOM 中供 JS 探测，彻底消灭进入聊天时闪现 #show_more_messages 的问题） */
 body.twt-reading-mode #chat > #show_more_messages {
-    break-inside: avoid !important;
-    page-break-inside: avoid !important;
-    -webkit-column-break-inside: avoid !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    box-sizing: border-box !important;
-    margin: 0 0 10px 0 !important;
-    padding: 10px 16px !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    gap: 8px !important;
-    cursor: pointer !important;
-    text-align: center !important;
-    font-size: 0.9em !important;
-    border-radius: 8px !important;
-    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 80%, transparent) !important;
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #888) 40%, transparent) !important;
-    color: var(--SmartThemeBodyColor, inherit) !important;
-    transition: all 0.2s ease !important;
-    user-select: none !important;
+    display: none !important;
 }
 
-/* 开启独立消息分页时，show_more_messages 独占第一列，不与第 1 条消息混列 */
-body.twt-reading-mode.twt-message-page #chat > #show_more_messages {
-    break-after: column !important;
-    page-break-after: always !important;
-    -webkit-column-break-after: always !important;
+/* 窗口化按需分列排版：非当前活跃阅读窗口内的楼层完全脱离多列排版流（0ms 布局开销，支撑成千上万页） */
+body.twt-reading-mode #chat > .twt-mes-window-hidden {
+    display: none !important;
 }
 
-body.twt-reading-mode #chat > #show_more_messages:hover {
-    background: color-mix(in srgb, var(--SmartThemeUnderlineColor, #007aff) 25%, transparent) !important;
-    border-color: var(--SmartThemeUnderlineColor, #007aff) !important;
-    filter: brightness(1.1) !important;
+/* 切入聊天室首帧 CSS 硬件级预裁剪：在酒馆 printMessages 批量插入大量楼层 DOM 的同时，
+   无需等待 JS 回调即可自动隐藏前序楼层，仅对末尾最后 4 层进行排版，彻底杜绝进场全量重排阻塞 */
+body.twt-reading-mode.twt-chat-switching #chat > .mes:not(:nth-last-child(-n+4)),
+body.twt-reading-mode #chat.twt-chat-switching > .mes:not(:nth-last-child(-n+4)) {
+    display: none !important;
 }
 
 /* 消息元素默认重置外边距和内边距，但使用 :where 降低特异性，允许用户自定义美化主题进行覆盖 */
@@ -258,17 +239,17 @@ body.twt-reading-mode.twt-swipe-disabled #chat {
     overflow-x: hidden !important;
 }
 
-/* 启用消息分页：强制每条消息另起一列/一页 */
-body.twt-reading-mode.twt-message-page #chat .mes {
+/* 窗口化按需分列隔离：每条正文消息从新列起始，确保前序楼层动态显隐时绝对不改变当前楼层的内部分列断点 */
+body.twt-reading-mode #chat .mes {
     break-before: column !important;
     page-break-before: always !important;
     -webkit-column-break-before: always !important;
 }
 
-/* Tool Call 豁免独立分页：开启消息分页时，Tool Call 楼层不强制另起一列/一页 */
-body.twt-reading-mode.twt-message-page.twt-toolcall-no-break #chat .mes.toolCall,
-body.twt-reading-mode.twt-message-page.twt-toolcall-no-break #chat .mes[is_system="true"].toolCall,
-body.twt-reading-mode.twt-message-page.twt-toolcall-no-break #chat .mes.twt-toolcall-mes {
+/* Tool Call 豁免独立分页：开启 Tool Call 豁免时，Tool Call 楼层不强制另起一列/一页 */
+body.twt-reading-mode.twt-toolcall-no-break #chat .mes.toolCall,
+body.twt-reading-mode.twt-toolcall-no-break #chat .mes[is_system="true"].toolCall,
+body.twt-reading-mode.twt-toolcall-no-break #chat .mes.twt-toolcall-mes {
     break-before: auto !important;
     page-break-before: auto !important;
     -webkit-column-break-before: auto !important;

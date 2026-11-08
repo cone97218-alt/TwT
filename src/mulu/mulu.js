@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { extension_settings, getContext } from '../../../../../extensions.js';
 import { showMoreMessages } from '../../../../../../script.js';
-import { setLastUserPage, realignPagination, getColStep, setExplicitJumpLoading, updateActiveReadingAnchor } from '../pagination/pagination.js?v=1.0.22';
+import { setLastUserPage, realignPagination, getColStep, setExplicitJumpLoading, updateActiveReadingAnchor, activateWindowForMessage } from '../pagination/pagination.js?v=1.0.23';
 
 // ============================================================
 // P2 & P3：TauriTavern Store & Search API 接入层
@@ -434,7 +434,12 @@ function getWin() {
 async function ensureMessageLoaded(mesId) {
     const doc = getDoc();
     let targetMes = doc.querySelector(`#chat .mes[mesid="${mesId}"]`);
-    if (targetMes) return targetMes;
+    if (targetMes) {
+        if (doc.body.classList.contains('twt-reading-mode') && typeof activateWindowForMessage === 'function') {
+            activateWindowForMessage(mesId);
+        }
+        return targetMes;
+    }
     
     // If not found in DOM, load the messages!
     const firstMesEl = doc.querySelector('#chat .mes');
@@ -468,6 +473,10 @@ async function ensureMessageLoaded(mesId) {
             if (sheld) sheld.scrollTop = 0;
             try { window.scrollTo({ top: 0, left: 0, behavior: 'instant' }); } catch {}
 
+            if (doc.body.classList.contains('twt-reading-mode') && typeof activateWindowForMessage === 'function') {
+                activateWindowForMessage(mesId);
+            }
+
             // 等待双帧完成多列 DOM 实际排版与重绘
             await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
@@ -478,7 +487,11 @@ async function ensureMessageLoaded(mesId) {
     }
     
     // Query again
-    return doc.querySelector(`#chat .mes[mesid="${mesId}"]`);
+    const loadedMes = doc.querySelector(`#chat .mes[mesid="${mesId}"]`);
+    if (loadedMes && doc.body.classList.contains('twt-reading-mode') && typeof activateWindowForMessage === 'function') {
+        activateWindowForMessage(mesId);
+    }
+    return loadedMes;
 }
 
 function findSiblingAiMessageId(currentId, direction) {
@@ -590,6 +603,7 @@ async function scrollToMessageEdge(edge) {
     if (!mes) {
         // 未找到活跃 AI 消息，直接瞬间跳到绝对开头或绝对结尾
         if (doc.body.classList.contains('twt-reading-mode')) {
+            if (typeof activateWindowForMessage === 'function') activateWindowForMessage(edge);
             const step = (typeof getColStep === 'function' ? getColStep(chatContainer) : 0) || chatContainer.clientWidth || 1;
             if (edge === 'start') {
                 chatContainer.scrollLeft = 0;
@@ -625,9 +639,10 @@ async function scrollToMessageEdge(edge) {
         let targetScrollLeft = 0;
         
         for (let attempts = 0; attempts < 2; attempts++) {
+            const curScrollLeft = chatContainer.scrollLeft;
             const rect = mes.getBoundingClientRect();
-            const absoluteLeft = rect.left - chatRect.left + currentScrollLeft;
-            const absoluteRight = rect.right - chatRect.left + currentScrollLeft;
+            const absoluteLeft = rect.left - chatRect.left + curScrollLeft;
+            const absoluteRight = rect.right - chatRect.left + curScrollLeft;
             
             if (edge === 'start') {
                 targetScrollLeft = absoluteLeft;
@@ -663,6 +678,7 @@ async function scrollToMessageEdge(edge) {
         
         if (targetPage === currentPage) {
             // 已在边界或未找到相邻 AI 消息 -> 直接瞬间跳到聊天的绝对开头或绝对结尾！
+            if (typeof activateWindowForMessage === 'function') activateWindowForMessage(edge);
             if (edge === 'start') {
                 chatContainer.scrollLeft = 0;
                 setLastUserPage(0);
@@ -741,6 +757,7 @@ function scrollToAbsoluteEdge(edge) {
     const chatContainer = doc.getElementById('chat');
     if (!chatContainer) return;
     if (doc.body.classList.contains('twt-reading-mode')) {
+        if (typeof activateWindowForMessage === 'function') activateWindowForMessage(edge);
         chatContainer.scrollTop = 0;
         const step = (typeof getColStep === 'function' ? getColStep(chatContainer) : 0) || chatContainer.clientWidth || 1;
         if (edge === 'start') {
@@ -2417,6 +2434,7 @@ function scrollToMessage(mes) {
     if (!chatContainer) return;
     
     if (doc.body.classList.contains('twt-reading-mode')) {
+        if (typeof activateWindowForMessage === 'function') activateWindowForMessage(mes);
         chatContainer.scrollTop = 0;
         const chatRect = chatContainer.getBoundingClientRect();
         const step = (typeof getColStep === 'function' ? getColStep(chatContainer) : 0) || chatContainer.clientWidth || 1;
@@ -2455,7 +2473,9 @@ async function scrollToMessageOrNearest(mesId) {
 
     for (let i = 0; i < chatArray.length; i++) {
         const mesEl = doc.querySelector(`#chat .mes[mesid="${i}"]`);
-        if (mesEl && mesEl.getBoundingClientRect().height > 0) {
+        if (!mesEl) continue;
+        const isExplicitlyHidden = mesEl.style.display === 'none' || (mesEl.classList.contains('twt-toolcall-mes') && doc.body.classList.contains('twt-toolcall-hide'));
+        if (!isExplicitlyHidden) {
             const diff = Math.abs(i - mesId);
             if (diff < minDiff) {
                 minDiff = diff;
