@@ -926,7 +926,10 @@ function applyRestoreTarget(chat, cw) {
     lastUserPage = targetPage;
     chat.scrollLeft = targetPage * cw;
     chat.scrollTop = 0;
-    requestAnimationFrame(() => document.body.classList.remove("twt-chat-switching"));
+    requestAnimationFrame(() => {
+        document.body.classList.remove("twt-chat-switching");
+        chat.classList.remove("twt-chat-switching");
+    });
     clearTimeout(scrollUnlockTimer);
     scrollUnlockTimer = setTimeout(() => {
         isScrolling = false;
@@ -1013,23 +1016,26 @@ function updateColWidthWhenReady(retries = 4, interval = 60) {
     lastKnownScrollWidth = sw1;
     const initTotal = Math.max(1, Math.round(sw1 / rawW));
 
-    // 2. 立即同步预定位（使用同步可得的 chat_metadata 或默认最末页），零延迟消除进入高楼层聊天时的第 0 页闪现！
+    // 2. 默认永远直接同步定位在最新楼层末尾，杜绝首屏闪现与向中间回跳！
     isChatRestoring = true;
-    const syncSaved = (typeof chat_metadata !== 'undefined' && chat_metadata?.[TT_NS]) ? chat_metadata[TT_NS] : null;
-    chatRestoreTarget = resolveRestoreTargetFromSaved(syncSaved, initTotal);
+    chatRestoreTarget = { mode: 'end' };
     applyRestoreTarget(chat, rawW);
 
-    // 3. 异步拉取 TauriTavern metadata（如有更新则无缝更新目标），并在稳定期内持续守护目标位置
-    const shouldRestore = extension_settings?.twt?.autoRestoreReadingPosition !== false;
+    // 3. 仅在用户明确开启了 autoRestoreReadingPosition 且确有合法未读锚点时，才尝试恢复上次阅读位置
+    // （默认直接定位在最新楼层末尾，对齐所有常规阅读软件行为，杜绝跨楼层反复横跳）
+    const shouldRestore = extension_settings?.twt?.autoRestoreReadingPosition === true;
     if (shouldRestore) {
         restorePaginationPosition().then(asyncSaved => {
             if (!document.body.classList.contains('twt-reading-mode') || userInteractedSinceSwitch) return;
-            if (asyncSaved) {
+            if (asyncSaved && asyncSaved.anchorMesId && !asyncSaved.isAtEnd) {
                 const cw = stableColWidth > 0 ? stableColWidth : getColWidth(chat);
                 if (cw <= 0) return;
                 const curTotal = Math.max(1, Math.round(chat.scrollWidth / cw));
-                chatRestoreTarget = resolveRestoreTargetFromSaved(asyncSaved, curTotal);
-                applyRestoreTarget(chat, cw);
+                const target = resolveRestoreTargetFromSaved(asyncSaved, curTotal);
+                if (target && target.mode !== 'end') {
+                    chatRestoreTarget = target;
+                    applyRestoreTarget(chat, cw);
+                }
             }
         });
     }
@@ -1039,6 +1045,7 @@ function updateColWidthWhenReady(retries = 4, interval = 60) {
     chatRestoreSettleTimer = setTimeout(() => {
         isChatRestoring = false;
         document.body.classList.remove("twt-chat-switching");
+        chat.classList.remove("twt-chat-switching");
         if (!userInteractedSinceSwitch && document.body.classList.contains('twt-reading-mode')) {
             updateActiveReadingAnchor(true);
         }
@@ -1057,6 +1064,13 @@ function initMutationObserver() {
     mutationObserver = new MutationObserver((mutations) => {
         if (!document.body.classList.contains('twt-reading-mode')) return;
         if (document.body.classList.contains('twt-paragraph-editing')) return;
+
+        // 若发现 #chat 正在被酒馆清空或仅剩加载条，立即打上过渡遮罩
+        if (chat.children.length <= 1) {
+            document.body.classList.add("twt-chat-switching");
+            chat.classList.add("twt-chat-switching");
+        }
+
         if (isInputFocused()) return;
 
         // 检查是否有消息元素在“当前阅读锚点之前”被添加或移除（如酒馆历史截断移除最旧楼层，或在顶部插入历史消息）
@@ -1186,23 +1200,36 @@ function disconnectMutationObserver() {
 // ResizeObserver（带防抖与打字期静默）
 // ============================================================
 let resizeDebounceTimer = null;
+let lastObservedChatWidth = 0;
+let lastObservedChatHeight = 0;
+
 function initResizeObserver() {
     const chat = getChat();
     if (!chat || resizeObserver) return;
     resizeObserver = new ResizeObserver(() => {
-        if (isInputFocused()) return;
         clearTimeout(resizeDebounceTimer);
         resizeDebounceTimer = setTimeout(() => {
             if (!document.body.classList.contains('twt-reading-mode')) return;
-            if (isInputFocused()) return;
             const rawW = chat.getBoundingClientRect().width || chat.clientWidth;
-            if (rawW <= 0) return;
-            const currentVar = chat.style.getPropertyValue('--twt-col-width');
-            if (currentVar !== `${rawW}px`) {
+            const rawH = chat.clientHeight;
+            if (rawW <= 0 || rawH <= 0) return;
+
+            const widthChanged = Math.abs(rawW - lastObservedChatWidth) > 1;
+            const heightChanged = Math.abs(rawH - lastObservedChatHeight) > 10;
+            lastObservedChatWidth = rawW;
+            lastObservedChatHeight = rawH;
+
+            if (widthChanged) {
                 updateColWidth();
+            }
+
+            if (isChatRestoring && !userInteractedSinceSwitch && chatRestoreTarget) {
+                const cw = stableColWidth > 0 ? stableColWidth : rawW;
+                applyRestoreTarget(chat, cw);
+            } else if (!isInputFocused() && (widthChanged || heightChanged)) {
                 realignToActiveAnchor();
             }
-        }, 120);
+        }, 80);
     });
     resizeObserver.observe(chat);
 }
@@ -1999,10 +2026,31 @@ export function resetPaginationBinding(getSettings) {
     userInteractedSinceSwitch = false;
     isChatRestoring = true;
     document.body.classList.add("twt-chat-switching");
+    const currentChat = getChat();
+    if (currentChat) currentChat.classList.add("twt-chat-switching");
     chatRestoreTarget = { mode: 'end' };
     clearTimeout(chatRestoreSettleTimer);
     clearTimeout(savePositionTimer);
     invalidateMuluStoreCache();
+
+    // 关键防护：手机端切入聊天时立即强制失焦输入框并拦截初始自动聚焦，杜绝软键盘弹出折损视口高度导致列数翻倍、横跳与主线程卡死
+    const active = document.activeElement;
+    if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
+        active.blur();
+    }
+    const sendTextarea = document.getElementById('send_textarea');
+    if (sendTextarea) {
+        sendTextarea.blur();
+        if (!sendTextarea.__twt_guard_attached__) {
+            sendTextarea.__twt_guard_attached__ = true;
+            sendTextarea.addEventListener('focus', (e) => {
+                if (document.body.classList.contains('twt-reading-mode') && !userInteractedSinceSwitch && (Date.now() - lastChatSwitchTime < 800)) {
+                    e.preventDefault();
+                    sendTextarea.blur();
+                }
+            }, true);
+        }
+    }
 
     // 中止旧事件
     if (scrollEventsAbortController) {
@@ -2177,6 +2225,23 @@ function handlePageFlip(clientX, targetEl, settings) {
 // initPaginationEvent：全局一次性初始化（不随聊天切换重建）
 // ============================================================
 export function initPaginationEvent(getSettings) {
+
+    // 用户在侧栏/抽屉点击角色或聊天记录切换时，第一时间打上遮罩使 #chat 彻底静默，酒馆清屏期间 0 毫秒闪烁
+    const onNavClick = (e) => {
+        if (!document.body.classList.contains('twt-reading-mode')) return;
+        const t = e.target;
+        if (t && t.closest && t.closest('.character_select, .chat_select, [chat_id], [chid], #select_chat, #chat_list, .group_select, #rm_char_group_popup, .menu_button_chat, #dialogue_del_mes')) {
+            document.body.classList.add('twt-chat-switching');
+            const chatEl = getChat();
+            if (chatEl) chatEl.classList.add('twt-chat-switching');
+        }
+    };
+    document.addEventListener('click', onNavClick, true);
+    try {
+        if (window.parent && window.parent.document && window.parent.document !== document) {
+            window.parent.document.addEventListener('click', onNavClick, true);
+        }
+    } catch {}
 
     // ---- 点击翻页（使用捕获阶段监听，防止子元素或外部框架 stopPropagation 拦截）----
     const onDocumentClick = (e) => {

@@ -36,7 +36,8 @@ body.twt-reading-mode #chat {
 }
 
 /* 切换聊天室时的首帧过渡遮罩，杜绝酒馆清屏瞬间将第 0 页 (#show_more_messages) 闪现给用户 */
-body.twt-reading-mode.twt-chat-switching #chat {
+body.twt-reading-mode.twt-chat-switching #chat,
+body.twt-reading-mode #chat.twt-chat-switching {
     opacity: 0 !important;
 }
 
