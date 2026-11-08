@@ -35,6 +35,11 @@ body.twt-reading-mode #chat {
     contain: none !important;
 }
 
+/* 切换聊天室时的首帧过渡遮罩，杜绝酒馆清屏瞬间将第 0 页 (#show_more_messages) 闪现给用户 */
+body.twt-reading-mode.twt-chat-switching #chat {
+    opacity: 0 !important;
+}
+
 /* 防护消息块的离屏隔离（避免使用通用选择器 * 以防止大规模 CSS 匹配降级） */
 body.twt-reading-mode #chat,
 body.twt-reading-mode #chat > *,

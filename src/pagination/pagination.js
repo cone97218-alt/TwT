@@ -274,24 +274,25 @@ export function captureReadingAnchor() {
             }
             bestMid = mid;
         }
+        // 优先防护：如果当前已在末尾页（最新楼层），直接锚定最后一条可见消息，杜绝误抓取中途楼层
+        const step = getColStep(chat);
+        const total = step > 0 ? Math.max(1, Math.round(chat.scrollWidth / step)) : 1;
+        if (!visibleMes && lastUserPage >= total - 2) {
+            visibleMes = messages[len - 1];
+        }
+
         if (!visibleMes && bestMid >= 0) {
             const candidate = messages[bestMid];
             const cRect = candidate.getBoundingClientRect();
-            if (Math.abs(cRect.left - chatRect.left) < chatRect.width * 2 || Math.abs(cRect.right - chatRect.right) < chatRect.width * 2) {
+            if (cRect.left < chatRect.right && cRect.right > chatRect.left) {
                 visibleMes = candidate;
             }
         }
-        // 如果当前已经是末尾页但探测点落在空白处，兜底取最后一条可见消息，绝不回退到 messages[0]
-        if (!visibleMes) {
-            const step = getColStep(chat);
-            const total = step > 0 ? Math.max(1, Math.round(chat.scrollWidth / step)) : 1;
-            if (lastUserPage >= total - 2) {
-                visibleMes = messages[len - 1];
-            } else if (activeReadingAnchor && activeReadingAnchor.mesId) {
-                const prevEl = chat.querySelector(`.mes[mesid="${activeReadingAnchor.mesId}"]`);
-                if (prevEl && (prevEl.offsetWidth > 0 || prevEl.offsetHeight > 0)) {
-                    visibleMes = prevEl;
-                }
+
+        if (!visibleMes && activeReadingAnchor && activeReadingAnchor.mesId) {
+            const prevEl = chat.querySelector(`.mes[mesid="${activeReadingAnchor.mesId}"]`);
+            if (prevEl && (prevEl.offsetWidth > 0 || prevEl.offsetHeight > 0)) {
+                visibleMes = prevEl;
             }
         }
     }
@@ -925,6 +926,7 @@ function applyRestoreTarget(chat, cw) {
     lastUserPage = targetPage;
     chat.scrollLeft = targetPage * cw;
     chat.scrollTop = 0;
+    requestAnimationFrame(() => document.body.classList.remove("twt-chat-switching"));
     clearTimeout(scrollUnlockTimer);
     scrollUnlockTimer = setTimeout(() => {
         isScrolling = false;
@@ -1036,6 +1038,7 @@ function updateColWidthWhenReady(retries = 4, interval = 60) {
     clearTimeout(chatRestoreSettleTimer);
     chatRestoreSettleTimer = setTimeout(() => {
         isChatRestoring = false;
+        document.body.classList.remove("twt-chat-switching");
         if (!userInteractedSinceSwitch && document.body.classList.contains('twt-reading-mode')) {
             updateActiveReadingAnchor(true);
         }
@@ -1107,7 +1110,7 @@ function initMutationObserver() {
 
         // 视口相对锚点零误差对齐：若顶部发生增删，立刻在微任务阶段补偿 scrollLeft 位移，彻底消除跳动
         // 关键防护：若正在进行历史消息加载 (isLoadingMoreMessages)，由 handleMoreMessagesLoaded 统一执行位移补偿，杜绝提前介入导致双重位移叠加！
-        if (hasFrontChanges && activeReadingAnchor && activeReadingAnchor.mesId && !isTouching && !isLoadingMoreMessages) {
+        if (hasFrontChanges && !isChatRestoring && activeReadingAnchor && activeReadingAnchor.mesId && !isTouching && !isLoadingMoreMessages) {
             const anchorEl = chat.querySelector(`.mes[mesid="${activeReadingAnchor.mesId}"]`);
             if (anchorEl) {
                 const chatRect = chat.getBoundingClientRect();
@@ -1312,8 +1315,18 @@ export function tagToolCallMessages(settings = extension_settings?.twt) {
     const chat = getChat();
     if (!chat) return;
     if (isGenerating || isInputFocused()) return;
-    const selector = settings?.toolCallSelector?.trim() || '.mes.toolCall, .mes[is_system="true"].toolCall';
+    const baseSel = settings?.toolCallSelector?.trim() || '.mes.toolCall, .mes[is_system="true"].toolCall';
     try {
+        // 增量优化：优先仅查询尚未打标的节点，避免在近百楼层高频反复遍历
+        let selector = baseSel;
+        try {
+            selector = baseSel.split(',').map(s => {
+                const trimmed = s.trim();
+                return trimmed ? `${trimmed}:not(.twt-toolcall-mes)` : '';
+            }).filter(Boolean).join(', ') || baseSel;
+        } catch (_) {
+            selector = baseSel;
+        }
         const matches = chat.querySelectorAll(selector);
         for (let i = 0; i < matches.length; i++) {
             const el = matches[i];
@@ -1808,7 +1821,10 @@ export function refreshPagination(targetPage = null) {
 }
 
 export function scrollPageLeft() {
-    if (isInputFocused()) return;
+    if (isInputFocused()) {
+        const active = document.activeElement;
+        if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) active.blur();
+    }
     const chat = getChat();
     if (!chat) return;
     const cw = stableColWidth > 0 ? stableColWidth : getColWidth(chat);
@@ -1824,7 +1840,10 @@ export function scrollPageLeft() {
 }
 
 export function scrollPageRight() {
-    if (isInputFocused()) return;
+    if (isInputFocused()) {
+        const active = document.activeElement;
+        if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) active.blur();
+    }
     const chat = getChat();
     if (!chat) return;
     const cw = stableColWidth > 0 ? stableColWidth : getColWidth(chat);
@@ -1979,6 +1998,7 @@ export function resetPaginationBinding(getSettings) {
     lastChatSwitchTime = Date.now();
     userInteractedSinceSwitch = false;
     isChatRestoring = true;
+    document.body.classList.add("twt-chat-switching");
     chatRestoreTarget = { mode: 'end' };
     clearTimeout(chatRestoreSettleTimer);
     clearTimeout(savePositionTimer);
@@ -2124,6 +2144,10 @@ function handlePageFlip(clientX, targetEl, settings) {
     const ratio = clientX / winW;
 
     if (ratio < 0.3) {
+        if (isInputFocused()) {
+            const active = document.activeElement;
+            if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) active.blur();
+        }
         userInteractedSinceSwitch = true;
         isChatRestoring = false;
         clearTimeout(chatRestoreSettleTimer);
@@ -2135,6 +2159,10 @@ function handlePageFlip(clientX, targetEl, settings) {
         scrollToPage(chat, lastUserPage - 1, cw);
         return true;
     } else if (ratio > 0.7) {
+        if (isInputFocused()) {
+            const active = document.activeElement;
+            if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) active.blur();
+        }
         userInteractedSinceSwitch = true;
         isChatRestoring = false;
         clearTimeout(chatRestoreSettleTimer);
