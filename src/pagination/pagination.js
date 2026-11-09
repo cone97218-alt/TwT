@@ -748,7 +748,7 @@ export function activateWindowForMessage(mesOrId) {
  */
 function slideFloorWindowIfNeeded(chat, cw, direction = 'auto') {
     if (!chat || !document.body.classList.contains('twt-reading-mode')) return false;
-    if (isAligningNewMessage || isGenerating) return false;
+    if (isAligningNewMessage || checkIsActuallyGenerating()) return false;
     const step = cw || getColStep(chat);
     if (step <= 0) return false;
 
@@ -762,17 +762,18 @@ function slideFloorWindowIfNeeded(chat, cw, direction = 'auto') {
         applyFloorWindowByIndex(chat, total - 1, 2, 2);
     }
 
-    const sw = lastKnownScrollWidth > 0 ? lastKnownScrollWidth : (chat.scrollWidth || step);
+    const sw = chat.scrollWidth || step;
+    lastKnownScrollWidth = sw;
     const totalPages = Math.max(1, Math.round(sw / step));
     const curPage = Math.max(0, Math.min(totalPages - 1, Math.round(chat.scrollLeft / step)));
 
     const needSlideLeft = winStartIdx > 0 && (
         (direction === 'left' && curPage <= 2) ||
-        (direction === 'auto' && curPage <= 1)
+        (direction === 'auto' && totalPages >= 5 && curPage <= 1)
     );
     const needSlideRight = winEndIdx < total - 1 && (
         (direction === 'right' && curPage >= totalPages - 3) ||
-        (direction === 'auto' && curPage >= totalPages - 2)
+        (direction === 'auto' && totalPages >= 5 && curPage >= totalPages - 2)
     );
 
     if (!needSlideLeft && !needSlideRight) return false;
@@ -1100,7 +1101,7 @@ export function handleUserMessageSent() {
     isChatRestoring = false;
     clearTimeout(chatRestoreSettleTimer);
     hideLoadingOverlay();
-    isGenerating = true;
+    isGenerating = checkIsActuallyGenerating();
     updateActiveReadingAnchor();
 }
 
@@ -1547,7 +1548,7 @@ let scrollUnlockTimer = null;
 function getSyncedCurrentPage(chat, cw) {
     const step = cw || getColStep(chat);
     if (!chat || step <= 0) return lastUserPage;
-    const sw = lastKnownScrollWidth > 0 ? lastKnownScrollWidth : (chat.scrollWidth || step);
+    const sw = chat.scrollWidth || step;
     lastKnownScrollWidth = sw;
     const maxPage = Math.max(0, Math.round(sw / step) - 1);
     const actualPage = Math.max(0, Math.min(maxPage, Math.round(chat.scrollLeft / step)));
@@ -1562,7 +1563,7 @@ function scrollToPage(chat, page, cw, knownTotal = 0) {
     if (!chat) return;
     const step = cw || getColStep(chat);
     if (step <= 0) return;
-    const sw = knownTotal > 0 ? (knownTotal * step) : (lastKnownScrollWidth > 0 ? lastKnownScrollWidth : (chat.scrollWidth || step));
+    const sw = knownTotal > 0 ? (knownTotal * step) : (chat.scrollWidth || step);
     lastKnownScrollWidth = sw;
     const total = Math.max(1, Math.round(sw / step));
     const reqPage = page;
@@ -1576,9 +1577,6 @@ function scrollToPage(chat, page, cw, knownTotal = 0) {
     clearTimeout(scrollUnlockTimer);
     scrollUnlockTimer = setTimeout(() => {
         isScrolling = false;
-        if (!isAligningNewMessage && !isGenerating) {
-            slideFloorWindowIfNeeded(chat, step, 'auto');
-        }
         updateActiveReadingAnchor(true);
         debouncedSavePaginationPosition();
     }, 60);
@@ -3233,7 +3231,7 @@ function bindScrollEvents(getSettings) {
         if (cw > 0) {
             slideFloorWindowIfNeeded(chat, cw, 'auto');
         }
-        const sw = lastKnownScrollWidth > 0 ? lastKnownScrollWidth : (chat.scrollWidth || (cw * touchTotalPages));
+        const sw = chat.scrollWidth || (cw * touchTotalPages);
         if (sw > 0) lastKnownScrollWidth = sw;
         touchTotalPages = cw > 0 ? Math.max(1, Math.round(sw / cw)) : 1;
         touchStartPage = cw > 0 ? getSyncedCurrentPage(chat, cw) : 0;
